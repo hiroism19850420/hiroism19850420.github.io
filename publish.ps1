@@ -1,4 +1,4 @@
-# HTMLゲームを hiroism19850420.github.io に追加・更新して公開する
+﻿# HTMLゲームを hiroism19850420.github.io に追加・更新して公開する
 # 使い方: powershell -File publish.ps1 -Source <ゲームのフォルダ> -Slug <URL用の英数字名> -Title <表示名> [-Desc <説明>] [-Files a,b,c]
 param(
   [Parameter(Mandatory)][string]$Source,
