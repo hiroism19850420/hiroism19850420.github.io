@@ -39,11 +39,16 @@ if (-not (Test-Path (Join-Path $dest "index.html"))) { throw "index.html が見�
 # 2) 一覧データを更新
 $jsonPath = Join-Path $Repo "games.json"
 $games = @()
-if (Test-Path $jsonPath) { $games = @(Get-Content $jsonPath -Raw -Encoding UTF8 | ConvertFrom-Json) }
-$games = @($games | Where-Object { $_.slug -ne $Slug })
+if (Test-Path $jsonPath) {
+  $raw = [IO.File]::ReadAllText($jsonPath, [Text.Encoding]::UTF8)
+  if ($raw.Trim()) { $games = @(ConvertFrom-Json $raw | ForEach-Object { $_ }) }
+}
+$games = @($games | Where-Object { $_.slug -and $_.slug -ne $Slug })
 $games += [pscustomobject]@{ slug=$Slug; title=$Title; desc=$Desc; updated=(Get-Date -Format "yyyy-MM-dd") }
 $games = @($games | Sort-Object updated -Descending)
-[IO.File]::WriteAllText($jsonPath, (ConvertTo-Json $games -Depth 3), (New-Object Text.UTF8Encoding($false)))
+# ConvertTo-Json は1件だと配列にならない/入れ子になるため、1件ずつ変換して手で配列にする
+$jsonText = "[`n" + (($games | ForEach-Object { ConvertTo-Json $_ -Compress }) -join ",`n") + "`n]"
+[IO.File]::WriteAllText($jsonPath, $jsonText, (New-Object Text.UTF8Encoding($false)))
 
 # 3) トップページ(ゲーム一覧)を再生成
 $cards = ($games | ForEach-Object {
