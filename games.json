@@ -1,19 +1,25 @@
 [
     {
-        "slug":  "seesaw",
-        "title":  "てこシーソー",
-        "desc":  "てこのつりあいで遊ぶシーソーゲーム",
+        "slug":  "make-load",
+        "title":  "おばけのみち",
+        "desc":  "おばけのいる道を進むゲーム",
         "updated":  "2026-09-30"
     },
     {
         "value":  [
                       {
-                          "slug":  "menseki",
-                          "title":  "面積パズル",
-                          "desc":  "線の長さを1本ずつ答えて、?の面積を求めよう(全100問)",
+                          "slug":  "seesaw",
+                          "title":  "てこシーソー",
+                          "desc":  "てこのつりあいで遊ぶシーソーゲーム",
                           "updated":  "2026-09-30"
+                      },
+                      {
+                          "value":  [
+                                        "@{slug=menseki; title=面積パズル; desc=線の長さを1本ずつ答えて、?の面積を求めよう(全100問); updated=2026-09-30}"
+                                    ],
+                          "Count":  1
                       }
                   ],
-        "Count":  1
+        "Count":  2
     }
 ]
