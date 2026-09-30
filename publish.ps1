@@ -13,6 +13,7 @@ $Repo  = $PSScriptRoot
 $git   = "C:\Program Files\Git\cmd\git.exe"
 $gh    = "C:\Program Files\GitHub CLI\gh.exe"
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
+$env:Path = "C:\Program Files\Git\cmd;C:\Program Files\GitHub CLI;" + $env:Path
 
 if ($Slug -notmatch '^[a-z0-9-]+$') { throw "Slug は半角小文字英数字とハイフンだけにしてください: $Slug" }
 
