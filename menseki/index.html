@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>面積パズル</title>
+<style>
+:root{--bg:#fff8e7;--card:#fff;--ink:#2b2b2b;--main:#ff7a2f;--sub:#3b82f6;--ok:#22a06b;--ng:#e5484d;--hint:#f59e0b}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;background:var(--bg);color:var(--ink);min-height:100vh}
+.wrap{max-width:820px;margin:0 auto;padding:16px}
+h1{margin:8px 0 4px;text-align:center;color:var(--main);font-size:2rem}
+.sub{text-align:center;margin:0 0 16px;color:#777}
+.card{background:var(--card);border-radius:16px;padding:16px;box-shadow:0 2px 8px #0002}
+button{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:12px 20px;background:var(--main);color:#fff;font-weight:700}
+button.alt{background:var(--sub)}button.gray{background:#999}button.hintb{background:var(--hint)}
+button:disabled{opacity:.4;cursor:default}
+.levels{display:grid;gap:12px}
+.lv{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;font-size:1.1rem}
+.lv small{font-weight:400;opacity:.9}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap}
+.picwrap{position:relative;width:100%;border:2px solid #ddd;border-radius:8px;background:#fff;overflow:hidden;user-select:none}
+.picwrap img{width:100%;display:block}
+.badge{position:absolute;transform:translate(-50%,-50%);padding:.1em .45em;border-radius:.6em;font-weight:800;white-space:nowrap;line-height:1.3;box-shadow:0 1px 4px #0004}
+.badge.ok{background:#d9f7e8;color:#0a7a4a;border:2px solid var(--ok)}
+.badge.hint{background:#fff1cc;color:#a86400;border:2px solid var(--hint)}
+.badge.now{background:#dbeafe;color:#1d4ed8;border:3px dashed var(--sub);animation:pulse 1s infinite}
+.badge.pop{animation:pop .5s}
+@keyframes pulse{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.18)}}
+@keyframes pop{0%{transform:translate(-50%,-50%) scale(.3)}60%{transform:translate(-50%,-50%) scale(1.4)}100%{transform:translate(-50%,-50%) scale(1)}}
+.q{margin:12px 0 4px;text-align:center;font-weight:700;font-size:1.05rem;min-height:3em}
+.answer{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:6px;flex-wrap:wrap}
+.answer input{font:inherit;font-size:1.6rem;width:150px;text-align:center;padding:8px;border:3px solid var(--sub);border-radius:12px}
+.answer input.shake{animation:shake .4s;border-color:var(--ng)}
+@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+.msg{min-height:2em;text-align:center;font-weight:700;font-size:1.2rem;margin-top:8px}
+.msg.ok{color:var(--ok)}.msg.ng{color:var(--ng)}
+.nav{display:flex;justify-content:space-between;margin-top:12px}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}
+.grid button{padding:12px 0;background:#e5e7eb;color:#333}
+.grid button.done{background:var(--ok);color:#fff}
+.hidden{display:none}
+.stars{text-align:center;font-size:1.3rem}
+#confetti{position:fixed;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:50}
+.clear{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:60;background:#fff;border:6px solid var(--main);border-radius:24px;padding:20px 36px;text-align:center;font-size:2.2rem;font-weight:900;color:var(--main);box-shadow:0 8px 30px #0005;animation:pop2 .6s}
+.clear small{display:block;font-size:1.2rem;color:#555;margin-top:6px;font-weight:700}
+@keyframes pop2{0%{transform:translate(-50%,-50%) scale(.2)}70%{transform:translate(-50%,-50%) scale(1.15)}100%{transform:translate(-50%,-50%) scale(1)}}
+</style>
+</head>
+<body>
+<canvas id="confetti"></canvas>
+<div class="wrap">
+  <h1>面積パズル</h1>
+  <p class="sub">答えにたどりつくために、線の長さを1本ずつ答えていこう!</p>
+
+  <div id="menu" class="card">
+    <div class="stars" id="total"></div>
+    <div class="levels" id="levels"></div>
+    <p style="text-align:center"><button class="gray" id="sndMenu">♪ 音: ON</button></p>
+  </div>
+
+  <div id="game" class="card hidden">
+    <div class="top">
+      <button class="gray" id="back">← もどる</button>
+      <strong id="title"></strong>
+      <button class="hintb" id="hintBtn">ヒント</button>
+    </div>
+    <div class="picwrap" id="pw"><img id="pic" alt="問題"></div>
+    <div class="q" id="q"></div>
+    <div class="answer">
+      <input id="inp" type="text" inputmode="decimal" autocomplete="off" placeholder="こたえ">
+      <span id="unit"></span>
+      <button id="ok">こたえる</button>
+    </div>
+    <div class="msg" id="msg"></div>
+    <div class="nav">
+      <button class="gray" id="prev">← 前の問題</button>
+      <button class="gray" id="snd">♪ 音: ON</button>
+      <button id="next">次の問題 →</button>
+    </div>
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<script src="puzzles.js"></script>
+<script src="steps.js"></script>
+<script>
+const LEVEL_NAMES=["レベル1","レベル2","レベル3","レベル4","レベル5"];
+const PER=20, MAX_HINTS=3;
+let cur=0, cs=null;            // cs = 現在の問題の進行状況
+let solved={};                 // 問題番号 -> 星の数
+try{solved=JSON.parse(localStorage.getItem("menseki_v2")||"{}")}catch(e){}
+let soundOn=true;
+const $=id=>document.getElementById(id);
+function save(){try{localStorage.setItem("menseki_v2",JSON.stringify(solved))}catch(e){}}
+
+/* ---------- 音 ---------- */
+let AC=null;
+function ac(){ if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}} if(AC&&AC.state==="suspended")AC.resume(); return AC; }
+function tone(freq,t0,dur,type,vol){
+  const c=ac(); if(!c||!soundOn)return;
+  const o=c.createOscillator(),g=c.createGain();
+  o.type=type||"sine"; o.frequency.value=freq;
+  g.gain.setValueAtTime(0,c.currentTime+t0);
+  g.gain.linearRampToValueAtTime(vol||.3,c.currentTime+t0+.01);
+  g.gain.exponentialRampToValueAtTime(.001,c.currentTime+t0+dur);
+  o.connect(g);g.connect(c.destination);
+  o.start(c.currentTime+t0);o.stop(c.currentTime+t0+dur+.05);
+}
+function sPingPong(){ tone(1319,0,.35,"sine",.35); tone(988,.22,.55,"sine",.35); }      // ピンポン
+function sBuBu(){ tone(140,0,.2,"sawtooth",.28); tone(140,.25,.2,"sawtooth",.28); tone(110,.5,.55,"sawtooth",.3); } // ぶぶー
+function sHint(){ tone(660,0,.12,"triangle",.25); tone(880,.1,.2,"triangle",.25); }
+function sApplause(){
+  const c=ac(); if(!c||!soundOn)return;
+  // ファンファーレ
+  [523,659,784,1047,784,1047].forEach((f,i)=>tone(f,i*.13,.35,"triangle",.3));
+  // 拍手: ノイズの短いバーストをたくさん鳴らす
+  const len=c.sampleRate*.05, buf=c.createBuffer(1,len,c.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2);
+  for(let i=0;i<170;i++){
+    const t=.5+Math.random()*3.0, env=Math.sin(Math.PI*Math.min(1,(t-.4)/3.2));
+    const s=c.createBufferSource(); s.buffer=buf;
+    const f=c.createBiquadFilter(); f.type="bandpass"; f.frequency.value=1200+Math.random()*3500; f.Q.value=.8;
+    const g=c.createGain(); g.gain.value=.5*env*(.4+Math.random()*.6);
+    s.connect(f);f.connect(g);g.connect(c.destination);
+    s.start(c.currentTime+t);
+  }
+}
+function setSnd(){ const t="♪ 音: "+(soundOn?"ON":"OFF"); $("snd").textContent=t; $("sndMenu").textContent=t; }
+function toggleSnd(){ soundOn=!soundOn; setSnd(); if(soundOn){ac();sHint();} }
+$("snd").onclick=toggleSnd; $("sndMenu").onclick=toggleSnd;
+
+/* ---------- 紙吹雪 ---------- */
+const cv=$("confetti"), cx=cv.getContext("2d"); let parts=[], raf=0;
+function confetti(){
+  cv.width=innerWidth; cv.height=innerHeight;
+  const cols=["#ff4d4d","#ffb400","#2ecc71","#3b82f6","#a855f7","#ff7a2f","#ec4899"];
+  parts=[];
+  for(let i=0;i<220;i++)parts.push({x:Math.random()*cv.width,y:-20-Math.random()*cv.height*.6,w:6+Math.random()*8,h:10+Math.random()*10,
+    c:cols[i%cols.length],vy:2+Math.random()*4,vx:-2+Math.random()*4,r:Math.random()*6,vr:-.2+Math.random()*.4});
+  const start=performance.now(); cancelAnimationFrame(raf);
+  (function loop(now){
+    cx.clearRect(0,0,cv.width,cv.height);
+    parts.forEach(p=>{p.x+=p.vx+Math.sin(p.y/40);p.y+=p.vy;p.r+=p.vr;
+      cx.save();cx.translate(p.x,p.y);cx.rotate(p.r);cx.fillStyle=p.c;cx.fillRect(-p.w/2,-p.h/2,p.w,p.h);cx.restore();});
+    if(now-start<5500)raf=requestAnimationFrame(loop); else cx.clearRect(0,0,cv.width,cv.height);
+  })(start);
+}
+
+/* ---------- 数の入力 ---------- */
+function parseNum(s){
+  s=s.trim().replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)).replace(/[／÷]/g,"/").replace(/[．。]/g,".").replace(/\s+/g,"");
+  if(s==="")return NaN;
+  if(/^-?\d+(\.\d+)?\/\d+(\.\d+)?$/.test(s)){const [a,b]=s.split("/").map(Number);return a/b;}
+  if(/^-?\d+(\.\d+)?$/.test(s))return Number(s);
+  return NaN;
+}
+function val(v){ if(typeof v==="string"){const [a,b]=v.split("/").map(Number);return a/b;} return v; }
+function isRight(u,v){ const e=val(v); return typeof v==="string" ? Math.abs(u-e)<0.006 : Math.abs(u-e)<1e-6; }
+function show_v(v){ return typeof v==="string" ? v : String(v); }
+
+/* ---------- メニュー ---------- */
+function starsOf(k){return solved[k]||0}
+function renderMenu(){
+  const n=Object.keys(solved).length;
+  $("total").textContent="★ "+Object.values(solved).reduce((a,b)=>a+b,0)+"　(クリア "+n+" / "+PUZZLES.length+")";
+  $("levels").innerHTML="";
+  LEVEL_NAMES.forEach((nm,i)=>{
+    let c=0;for(let k=i*PER;k<(i+1)*PER;k++)if(solved[k])c++;
+    const b=document.createElement("button");
+    b.className="lv";
+    b.innerHTML="<span>"+nm+"</span><small>"+c+" / "+PER+" クリア</small>";
+    b.onclick=()=>{ac();start(i*PER)};
+    $("levels").appendChild(b);
+  });
+}
+function start(i){cur=i;$("menu").classList.add("hidden");$("game").classList.remove("hidden");show();}
+
+/* ---------- 問題の表示 ---------- */
+function stepsOf(k){ return STEPS[k+1] || [[50,50,PUZZLES[k].a]]; }
+function defUnit(k,i){
+  const st=stepsOf(k)[i], last=i===stepsOf(k).length-1;
+  if(st[4]!==undefined)return st[4];
+  if(last)return PUZZLES[k].u==="cm"?"cm":"cm²";
+  return (st[3]&&st[3].indexOf("面積")>=0)?"cm²":"cm";
+}
+function defQ(k,i){
+  const st=stepsOf(k)[i], last=i===stepsOf(k).length-1;
+  if(st[3])return st[3];
+  return last ? "? にあてはまる数は?" : "ゆれている「？」の線の長さは?";
+}
+function show(){
+  const p=PUZZLES[cur], steps=stepsOf(cur);
+  cs={idx:0,hints:0,done:steps.map(()=>null)};   // done[i]: null / "ok" / "hint"
+  $("title").textContent=LEVEL_NAMES[p.l-1]+" 第"+(cur+1)+"問";
+  $("pic").src="img/"+String(cur+1).padStart(3,"0")+".png";
+  $("prev").disabled=cur===0;$("next").disabled=cur===PUZZLES.length-1;
+  const base=Math.floor(cur/PER)*PER;
+  $("grid").innerHTML="";
+  for(let k=base;k<base+PER;k++){
+    const b=document.createElement("button");
+    b.textContent=(k+1)+(solved[k]?"":"");
+    if(solved[k])b.className="done";
+    b.onclick=()=>{cur=k;show()};
+    $("grid").appendChild(b);
+  }
+  $("msg").textContent="";$("msg").className="msg";
+  draw(); prompt_();
+}
+function fontPx(){ return Math.max(11,$("pw").clientWidth*.034); }
+function draw(popIdx){
+  const pw=$("pw"); pw.querySelectorAll(".badge").forEach(e=>e.remove());
+  const steps=stepsOf(cur), fp=fontPx();
+  steps.forEach((st,i)=>{
+    let cls=null,txt=null;
+    if(cs.done[i]){cls=cs.done[i];txt=show_v(st[2]);}
+    else if(i===cs.idx&&!cs.finished){cls="now";txt="？";}
+    if(!cls)return;
+    const d=document.createElement("div");
+    d.className="badge "+cls+(i===popIdx?" pop":"");
+    d.style.left=st[0]+"%";d.style.top=st[1]+"%";d.style.fontSize=fp+"px";
+    d.textContent=txt;
+    pw.appendChild(d);
+  });
+  const left=Math.max(0,Math.min(MAX_HINTS-cs.hints,remainHintable()));
+  $("hintBtn").textContent="ヒント (のこり"+left+")";
+  $("hintBtn").disabled=cs.finished||left===0;
+}
+function remainHintable(){ const n=stepsOf(cur).length; return Math.max(0,(n-1)-cs.idx); }
+function prompt_(){
+  if(cs.finished){$("q").textContent="";return;}
+  $("q").textContent=defQ(cur,cs.idx);
+  $("unit").textContent=defUnit(cur,cs.idx);
+  $("inp").value="";$("inp").focus();
+}
+window.addEventListener("resize",()=>{ if(cs&&!$("game").classList.contains("hidden"))draw(); });
+
+/* ---------- 答え合わせ ---------- */
+function check(){
+  if(cs.finished)return;
+  ac();
+  const u=parseNum($("inp").value); if(isNaN(u))return;
+  const steps=stepsOf(cur), st=steps[cs.idx], last=cs.idx===steps.length-1, m=$("msg");
+  if(isRight(u,st[2])){
+    cs.done[cs.idx]="ok";
+    if(last){
+      cs.finished=true;
+      const stars=Math.max(1,3-cs.hints);
+      if((solved[cur]||0)<stars)solved[cur]=stars;
+      save(); draw(cs.idx);
+      m.textContent="🎉 せいかい!  "+"★".repeat(stars)+"☆".repeat(3-stars);m.className="msg ok";
+      $("q").textContent="";
+      const b=$("grid").children[cur%PER];if(b)b.className="done";
+      sApplause(); confetti(); banner(stars);
+    }else{
+      const at=cs.idx; cs.idx++;
+      sPingPong();
+      m.textContent="⭕ ピンポン!";m.className="msg ok";
+      draw(at); prompt_();
+    }
+  }else{
+    sBuBu();
+    m.textContent="❌ ぶぶー…もういちど考えてみよう";m.className="msg ng";
+    const i=$("inp");i.classList.remove("shake");void i.offsetWidth;i.classList.add("shake");
+  }
+}
+function banner(stars){
+  const d=document.createElement("div");d.className="clear";
+  d.innerHTML="クリア!<small>"+"★".repeat(stars)+"☆".repeat(3-stars)+"</small>";
+  document.body.appendChild(d);setTimeout(()=>d.remove(),2600);
+}
+$("ok").onclick=check;
+$("inp").addEventListener("keydown",e=>{if(e.key==="Enter")check()});
+
+/* ---------- ヒント: 次の線の長さを教えてくれる(1問につき3回まで) ---------- */
+$("hintBtn").onclick=()=>{
+  ac();
+  if(cs.finished||cs.hints>=MAX_HINTS||remainHintable()===0)return;
+  cs.hints++; cs.done[cs.idx]="hint";
+  const at=cs.idx; cs.idx++;
+  sHint();
+  $("msg").textContent="💡 ヒント!  長さがわかったよ(オレンジの数字)";$("msg").className="msg";
+  draw(at); prompt_();
+};
+
+$("prev").onclick=()=>{cur--;show()};
+$("next").onclick=()=>{cur++;show()};
+$("back").onclick=()=>{$("game").classList.add("hidden");$("menu").classList.remove("hidden");renderMenu()};
+renderMenu();
+</script>
+</body>
+</html>
