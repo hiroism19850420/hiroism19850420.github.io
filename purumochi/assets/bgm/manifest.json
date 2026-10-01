@@ -1,0 +1,44 @@
+{
+ "title": {
+  "loop": 43.636364
+ },
+ "mogu": {
+  "loop": 38.4
+ },
+ "mogu_pinch": {
+  "loop": 34.285714
+ },
+ "miruru": {
+  "loop": 48.0
+ },
+ "miruru_pinch": {
+  "loop": 42.857143
+ },
+ "devi": {
+  "loop": 40.0
+ },
+ "devi_pinch": {
+  "loop": 35.714286
+ },
+ "drana": {
+  "loop": 34.285714
+ },
+ "drana_pinch": {
+  "loop": 30.612245
+ },
+ "tokoton": {
+  "loop": 38.4
+ },
+ "tokoton_pinch": {
+  "loop": 34.285714
+ },
+ "win": {
+  "loop": 0
+ },
+ "lose": {
+  "loop": 0
+ },
+ "clear": {
+  "loop": 0
+ }
+}
