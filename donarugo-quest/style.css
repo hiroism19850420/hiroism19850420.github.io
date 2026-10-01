@@ -1,0 +1,179 @@
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;overscroll-behavior:none;touch-action:manipulation}
+body{font-family:"DotGothic16","MS Gothic","Hiragino Kaku Gothic ProN",monospace;-webkit-user-select:none;user-select:none}
+button{font:inherit;color:inherit}
+[hidden]{display:none!important}
+
+#app{position:relative;margin:0 auto;width:min(100vw,56.25vh,540px);min-width:min(100vw,300px);height:100vh;height:100dvh;font-size:clamp(13px,4.3vw,22px);overflow:hidden;background:#000}
+@media (min-aspect-ratio:3/4){#app{width:min(100vw,62vh,540px);font-size:clamp(13px,2.5vh,22px)}}
+
+.screen{position:absolute;inset:0;display:none;flex-direction:column}
+.screen.on{display:flex}
+
+/* ウィンドウ */
+.win{background:rgba(0,0,0,.94);border:.16em solid #fff;border-radius:.45em;box-shadow:0 0 0 .1em #000,inset 0 0 0 .08em #000;padding:.45em .7em;line-height:1.45}
+
+/* ---------- タイトル ---------- */
+#title{align-items:center;justify-content:space-between;padding:8% 6% 5%;background:radial-gradient(ellipse at 50% 118%,#6a1626 0,#2a0b33 38%,#07040f 75%);overflow:hidden}
+#title .stars{position:absolute;inset:0;background-image:radial-gradient(1.5px 1.5px at 12% 18%,#fff 99%,transparent),radial-gradient(1px 1px at 30% 8%,#fff 99%,transparent),radial-gradient(2px 2px at 78% 14%,#ffe9a8 99%,transparent),radial-gradient(1px 1px at 64% 30%,#fff 99%,transparent),radial-gradient(1.5px 1.5px at 90% 40%,#fff 99%,transparent),radial-gradient(1px 1px at 8% 44%,#fff 99%,transparent),radial-gradient(1.5px 1.5px at 44% 22%,#cfe0ff 99%,transparent),radial-gradient(1px 1px at 22% 60%,#fff 99%,transparent),radial-gradient(1px 1px at 84% 66%,#fff 99%,transparent);animation:twinkle 3s ease-in-out infinite alternate}
+@keyframes twinkle{from{opacity:.55}to{opacity:1}}
+.logo{position:relative;text-align:center;margin-top:6%}
+.logo-emblem{width:44%;margin:0 auto -2%;display:block;filter:drop-shadow(0 .2em 0 #000)}
+.logo-main{font-family:"Dela Gothic One","DotGothic16",sans-serif;font-size:2.75em;line-height:1.08;letter-spacing:.02em;
+  background:linear-gradient(180deg,#fff8c9 0%,#ffd84a 38%,#f08a1c 62%,#b3401a 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(.05em .05em 0 #3a0d1c) drop-shadow(-.05em -.05em 0 #3a0d1c) drop-shadow(.05em -.05em 0 #3a0d1c) drop-shadow(-.05em .05em 0 #3a0d1c) drop-shadow(0 .12em 0 #000)}
+.logo-sub{margin-top:.5em;font-size:1.25em;letter-spacing:.3em;color:#ffe9a8;text-shadow:.08em .08em 0 #000}
+.title-menu{position:relative;display:flex;flex-direction:column;gap:.7em;width:82%}
+.btn{display:block;width:100%;background:rgba(0,0,0,.92);border:.16em solid #fff;border-radius:.45em;box-shadow:0 0 0 .1em #000;padding:.7em .6em;font-size:1.1em;text-align:center;cursor:pointer}
+.btn:active{background:#fff;color:#000}
+.btn.primary{animation:pulse 1.3s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 .1em #000,0 0 1.1em .2em rgba(255,216,74,.75)}}
+.note{position:relative;font-size:.74em;line-height:1.6;text-align:center;color:#d8d2ea;margin:0}
+.credit{position:relative;font-size:.58em;color:#8f87a6;margin:0;text-align:center}
+
+/* ---------- ゲーム画面 ---------- */
+#game{padding:.35em;gap:.3em;background:#000}
+#status{display:grid;grid-template-columns:auto 1fr;column-gap:.8em;align-items:center;padding:.3em .7em}
+#pname{grid-row:span 2;font-size:1.05em;max-width:7em;white-space:nowrap;overflow:hidden}
+.stat{display:flex;align-items:center;gap:.4em;font-size:.88em;line-height:1.25}
+.stat b{font-weight:normal;width:1.6em}
+.stat .bar{flex:1;height:.6em;background:#333;border:.08em solid #fff;border-radius:.3em;overflow:hidden}
+.stat .bar i{display:block;height:100%;width:100%;background:#4be06a;transition:width .25s}
+.stat .bar i.mp{background:#4aa3ff}
+.stat .bar i.mid{background:#ffd84a}.stat .bar i.low{background:#ff4a3b}
+.stat span{width:4.2em;text-align:right}
+#status.danger{border-color:#ff5a4a;color:#ff8a7a}
+#status.heal{animation:healglow .7s}
+@keyframes healglow{30%{box-shadow:0 0 0 .1em #000,0 0 1.2em .4em #6bff9a}}
+
+#field{position:relative;flex:1 1 auto;min-height:36%;border:.16em solid #fff;border-radius:.45em;overflow:hidden;background:#000}
+#bg,#bg svg,#bg img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#bg{transition:filter .6s}
+#mons{position:absolute;inset:0;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3%}
+.mon{position:relative;height:80%;aspect-ratio:1;flex:0 0 auto;transform-origin:50% 100%}
+.mon>.in{width:100%;height:100%;animation:idle 2.6s ease-in-out infinite;transform-origin:50% 100%}
+.mon svg,.mon img{width:100%;height:100%;display:block;overflow:visible;object-fit:contain}
+.mon.small{height:auto;width:41%;margin:0 -5%}
+.mon.small:nth-child(even){margin-bottom:8%}
+.mon.target::after{content:"";position:absolute;left:50%;top:-4%;width:0;height:0;border:.5em solid transparent;border-top-color:#fff;transform:translateX(-50%);animation:bob .6s ease-in-out infinite alternate}
+@keyframes bob{to{transform:translate(-50%,.3em)}}
+@keyframes idle{50%{transform:scale(1.025,.975)}}
+.mon.sleeping>.in{animation-duration:5s}
+.mon.appear{animation:appear .7s ease-out}
+@keyframes appear{from{opacity:0;filter:brightness(0);transform:translateY(8%) scale(.9)}60%{opacity:1;filter:brightness(0)}to{filter:none}}
+.mon.hit{animation:hit .42s}
+@keyframes hit{0%,40%{filter:brightness(4) saturate(0)}10%{transform:translateX(-4%)}30%{transform:translateX(4%)}50%{transform:translateX(-2%)}20%,60%{filter:none}80%{filter:brightness(3)}}
+.mon.atk{animation:atk .5s}
+@keyframes atk{35%{transform:scale(1.22) translateY(5%)}}
+.mon.die{animation:die 1.1s forwards}
+@keyframes die{0%{filter:brightness(5) saturate(0)}25%{filter:brightness(1) hue-rotate(-40deg)}100%{opacity:0;filter:brightness(4) saturate(0) blur(3px);transform:scale(1.15,.7)}}
+.mon.morph{animation:morph 1.4s}
+@keyframes morph{0%,100%{filter:none}20%,60%{filter:brightness(6) saturate(0)}40%,80%{filter:brightness(.2)}50%{transform:scale(1.12)}}
+.flicker{animation:flick .36s steps(2) infinite;transform-box:fill-box;transform-origin:50% 100%}
+@keyframes flick{to{transform:scale(1.07,1.12)}}
+.zzz{animation:zz 2.4s ease-in-out infinite}
+@keyframes zz{50%{transform:translate(4px,-8px);opacity:.5}}
+
+#fx,#floaters,#flash{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+#flash{opacity:0;background:#fff}
+.dmg{position:absolute;transform:translate(-50%,-50%);font-family:"Dela Gothic One","DotGothic16",sans-serif;font-size:2.1em;color:#fff;white-space:nowrap;
+  text-shadow:.07em .07em 0 #000,-.07em -.07em 0 #000,.07em -.07em 0 #000,-.07em .07em 0 #000,0 .14em 0 #000;animation:dmgpop 1.15s ease-out forwards}
+.dmg.crit{font-size:3em;color:#ffe14d}
+.dmg.weak{color:#ff9a3b}
+.dmg.heal{color:#7dffa0}
+.dmg.hurt{color:#ff5a4a;font-size:2.4em}
+.dmg.shout{font-size:3.6em;color:#ffe14d}
+.dmg.small{font-size:1.1em}
+@keyframes dmgpop{0%{transform:translate(-50%,-10%) scale(.3);opacity:0}16%{transform:translate(-50%,-90%) scale(1.25);opacity:1}30%{transform:translate(-50%,-60%) scale(1)}80%{opacity:1}100%{transform:translate(-50%,-130%) scale(1);opacity:0}}
+
+#chargeui{position:absolute;left:0;right:0;bottom:3%;text-align:center}
+#charge-name{font-family:"Dela Gothic One","DotGothic16",sans-serif;font-size:1.7em;white-space:nowrap;text-shadow:.07em .07em 0 #000,-.07em -.07em 0 #000,.07em -.07em 0 #000,-.07em .07em 0 #000;transform-origin:50% 100%}
+.pbar{margin:.25em auto 0;width:78%;height:.75em;background:rgba(0,0,0,.8);border:.12em solid #fff;border-radius:.4em;overflow:hidden}
+.pbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4aa3ff,#ffe14d 60%,#ff4a3b)}
+#chantui{position:absolute;left:3%;right:3%;bottom:3%;text-align:center;background:rgba(0,0,0,.72);border:.12em solid #ffe14d;border-radius:.45em;padding:.4em .3em .5em}
+#chantui .w{display:inline-block;margin:.1em .22em;font-size:1.02em;color:#77708c;transition:color .12s,transform .12s}
+#chantui .w.on{color:#ffe14d;transform:scale(1.18);text-shadow:0 0 .5em #ff8a1c}
+#chantui .cap{font-size:.66em;color:#fff;margin-bottom:.2em}
+
+#shoutui{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle,rgba(255,60,30,.15) 0,rgba(0,0,0,.72) 75%)}
+#shout-word{font-family:"Dela Gothic One",sans-serif;font-size:3.6em;color:#ffe14d;text-shadow:.06em .06em 0 #b3122e,-.06em -.06em 0 #b3122e,.06em -.06em 0 #b3122e,-.06em .06em 0 #b3122e,0 .14em 0 #000;animation:shoutbeat .32s ease-in-out infinite alternate}
+@keyframes shoutbeat{to{transform:scale(1.13) rotate(-2deg)}}
+#shout-sub{font-size:1.15em;margin-top:.2em;text-shadow:.08em .08em 0 #000}
+#shout-meter{width:80%;height:1.5em;margin-top:.6em;background:rgba(0,0,0,.85);border:.14em solid #fff;border-radius:.75em;overflow:hidden}
+#shout-meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ffe14d,#ff8a1c 55%,#ff2a2a)}
+#shout-time{width:80%;height:.4em;margin-top:.4em;background:#333;border-radius:.2em;overflow:hidden}
+#shout-time i{display:block;height:100%;width:100%;background:#fff}
+
+#ebar{display:grid;grid-template-columns:auto 1fr;gap:.15em .6em;align-items:center;padding:0 .3em;font-size:.86em}
+#ename{white-space:nowrap}
+.hpbar,.gbar{height:.55em;background:#2a2a2a;border:.08em solid #fff;border-radius:.3em;overflow:hidden}
+.hpbar i{display:block;height:100%;width:100%;background:#ff5a4a;transition:width .3s}
+.gbar{grid-column:1/3;height:.5em}
+.gbar i{display:block;height:100%;width:0;background:#ffb02e}
+.gbar.warn i{background:#ff2a2a;animation:blink .18s steps(2) infinite}
+.gbar.sleep i{background:#5a6aa6}
+@keyframes blink{to{opacity:.4}}
+
+#msg{height:5.6em;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;font-size:.98em;padding:.3em .7em}
+#msg p{margin:0;white-space:nowrap}
+#msg p.hint{color:#9fe8ff}
+#msg p.good{color:#ffe14d}
+#msg p.bad{color:#ff8a7a}
+
+#cmd{display:grid;grid-template-columns:1fr 1fr;gap:.05em .8em;padding:.35em .7em;font-size:.98em}
+.sp{display:flex;align-items:center;gap:.35em;white-space:nowrap;cursor:default}
+.sp i{width:.6em;height:.6em;border-radius:50%;flex:0 0 auto;border:.08em solid #fff}
+.sp em{margin-left:auto;font-style:normal;font-size:.8em;color:#9fd0ff}
+.sp.off{color:#666}.sp.off em{color:#666}
+.sp.new{animation:newsp 1s steps(2) 4}
+@keyframes newsp{to{color:#ffe14d}}
+.sp.wide{grid-column:1/3;font-size:.72em;white-space:normal;line-height:1.3;align-items:flex-start}
+.sp.wide i{margin-top:.35em}.sp.wide em{white-space:nowrap}
+.sp.first{font-size:1.3em;grid-column:1/3;justify-content:center;padding:.25em 0;animation:pulsetxt 1s ease-in-out infinite alternate}
+@keyframes pulsetxt{to{color:#ffe14d;transform:scale(1.06)}}
+.sp.tap{cursor:pointer}
+
+#mic{display:flex;align-items:center;gap:.5em;padding:.25em .6em;font-size:.82em}
+#mic svg{width:1.2em;height:1.2em;flex:0 0 auto}
+.meter{position:relative;flex:0 0 34%;height:.8em;background:#222;border:.08em solid #fff;border-radius:.4em;overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4be06a,#ffe14d 60%,#ff4a3b)}
+.meter b{position:absolute;top:0;bottom:0;width:.16em;background:#ff2a2a;box-shadow:0 0 .3em #ff2a2a}
+#heard{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#c9c4dc}
+#mic.off #heard{color:#ff8a7a}
+
+/* ---------- オーバーレイ ---------- */
+#overlay{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.9em;padding:8%;background:rgba(0,0,0,.9);text-align:center}
+#overlay.clear{background:rgba(0,0,0,.55)}
+#overlay h2{margin:0;font-weight:normal;font-size:1.35em;line-height:1.5}
+#overlay p{margin:0;line-height:1.7}
+#overlay .big{font-family:"Dela Gothic One","DotGothic16",sans-serif;font-size:2em;color:#ffe14d;line-height:1.3;word-break:keep-all}
+#overlay .sub{font-size:.8em;color:#b9b3cf}
+#overlay .card{width:100%}
+#overlay .row{display:flex;gap:.6em;width:100%}
+#overlay .row .btn{font-size:.95em}
+#overlay .meter{flex:none;width:80%;height:1.2em}
+.stagecard{animation:fadein .5s}
+@keyframes fadein{from{opacity:0}}
+.res-table{width:100%;border-collapse:collapse;font-size:.88em}
+.res-table td{padding:.25em .1em;text-align:left;white-space:nowrap}
+.res-table td:last-child{text-align:right;color:#ffe14d}
+.stamp{display:inline-block;border:.14em solid #ffe14d;color:#ffe14d;border-radius:.4em;padding:.1em .6em;transform:rotate(-4deg);font-size:.9em}
+.wave{display:flex;align-items:center;justify-content:center;gap:.18em;height:2.2em}
+.wave i{width:.28em;height:20%;background:#ffe14d;border-radius:.14em}
+.wave.play i{animation:wave .5s ease-in-out infinite alternate}
+.wave i:nth-child(2n){animation-delay:.1s}.wave i:nth-child(3n){animation-delay:.22s}.wave i:nth-child(5n){animation-delay:.33s}
+@keyframes wave{to{height:100%}}
+
+#gear{position:absolute;right:.5em;top:.5em;z-index:30;width:2em;height:2em;border-radius:50%;background:rgba(0,0,0,.6);border:.1em solid #777;color:#aaa;font-size:.9em;cursor:pointer;padding:0}
+#game.on~#gear{top:auto;bottom:.45em;right:.45em;opacity:.55}
+#settings{position:absolute;inset:0;z-index:40;background:rgba(0,0,0,.96);padding:6%;overflow:auto;font-size:.85em;-webkit-user-select:text;user-select:text}
+#settings h3{margin:.2em 0 .6em;font-weight:normal;font-size:1.2em}
+#settings label{display:block;margin:.6em 0 .2em}
+#settings select,#settings input[type=range]{width:100%;font:inherit;background:#000;color:#fff;border:.1em solid #fff;border-radius:.3em;padding:.3em}
+#settings pre{font:inherit;font-size:.8em;white-space:pre-wrap;background:#111;border:.08em solid #555;border-radius:.3em;padding:.5em;max-height:14em;overflow:auto;margin:.4em 0}
+#settings .btn{margin-top:.8em}
+#debug{position:fixed;left:0;top:0;z-index:50;background:rgba(0,0,0,.85);border:1px solid #0f0;color:#0f0;font:11px monospace;padding:4px;max-width:200px}
+#debug button{font:11px monospace;margin:1px;color:#000}
+#debug input{width:70px}
+.shake{animation:shake .5s}
+@keyframes shake{10%{transform:translate(-2%,1%)}30%{transform:translate(2%,-1%)}50%{transform:translate(-1.5%,-1%)}70%{transform:translate(1.5%,1%)}90%{transform:translate(-.5%,0)}}

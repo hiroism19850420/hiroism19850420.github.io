@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#000000">
+<title>ドナルゴクエスト そして絶叫へ</title>
+<meta name="description" content="こえで じゅもんを となえて たたかう おんせいにんしきバトル。おおきく ながく さけぶほど つよい！">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=DotGothic16&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=4">
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<div id="app">
+
+  <section id="title" class="screen on">
+    <div class="stars"></div>
+    <div class="logo">
+      <svg class="logo-emblem" viewBox="0 0 200 110" xmlns="http://www.w3.org/2000/svg">
+        <defs><linearGradient id="lg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff8c9"/><stop offset="1" stop-color="#e08a1c"/></linearGradient></defs>
+        <g stroke="#3a0d1c" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+          <path d="M100 8 L108 70 L100 84 L92 70 Z" fill="#e9eef8"/>
+          <path d="M78 70 L122 70 L122 78 L78 78 Z" fill="url(#lg1)"/>
+          <path d="M96 78 L104 78 L104 98 L96 98 Z" fill="#8a4a2a"/>
+          <circle cx="100" cy="102" r="6" fill="url(#lg1)"/>
+          <path d="M60 46 L28 30 L28 74 L60 60 Z" fill="url(#lg1)"/><path d="M60 46 L70 46 L70 60 L60 60 Z" fill="#b3122e"/>
+          <path d="M140 46 L172 30 L172 74 L140 60 Z" fill="url(#lg1)"/><path d="M140 46 L130 46 L130 60 L140 60 Z" fill="#b3122e"/>
+        </g>
+        <g fill="none" stroke="#ffe9a8" stroke-width="4" stroke-linecap="round"><path d="M18 36 Q8 52 18 68"/><path d="M6 26 Q-10 52 6 78" opacity=".6"/><path d="M182 36 Q192 52 182 68"/><path d="M194 26 Q210 52 194 78" opacity=".6"/></g>
+      </svg>
+      <div class="logo-main">ドナルゴ<br>クエスト</div>
+      <div class="logo-sub">そして絶叫へ…</div>
+    </div>
+    <div class="title-menu">
+      <button id="btn-new" class="btn primary">ぼうけんを はじめる</button>
+      <button id="btn-cont" class="btn" hidden>つづきから</button>
+    </div>
+    <p class="note">マイクを つかって こえで たたかう ゲームです。<br>おおきな こえを だせる ばしょで あそんでね。<br>（Chrome / Edge / Safari たいおう）</p>
+    <p class="credit">おんげん：GeneralUser GS　フォント：DotGothic16 / Dela Gothic One</p>
+  </section>
+
+  <section id="game" class="screen">
+    <div id="status" class="win">
+      <div id="pname">ゆうしゃ</div>
+      <div class="stat"><b>HP</b><div class="bar"><i id="hp-fill"></i></div><span id="hp-num">100</span></div>
+      <div class="stat"><b>MP</b><div class="bar"><i id="mp-fill" class="mp"></i></div><span id="mp-num">24</span></div>
+    </div>
+    <div id="field">
+      <div id="bg"></div>
+      <div id="mons"></div>
+      <canvas id="fx"></canvas>
+      <div id="floaters"></div>
+      <div id="flash"></div>
+      <div id="chargeui" hidden><div id="charge-name"></div><div class="pbar"><i id="charge-fill"></i></div></div>
+      <div id="chantui" hidden></div>
+      <div id="shoutui" hidden>
+        <div id="shout-word">SHOUT!!</div>
+        <div id="shout-sub">なんでも いい！ さけべ！！</div>
+        <div id="shout-meter"><i></i></div>
+        <div id="shout-time"><i></i></div>
+      </div>
+    </div>
+    <div id="ebar"><span id="ename"></span><div class="hpbar"><i id="ehp"></i></div><div class="gbar" id="gbar"><i id="egauge"></i></div></div>
+    <div id="msg" class="win"></div>
+    <div id="cmd" class="win"></div>
+    <div id="mic" class="win">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3" fill="#fff"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8"/></svg>
+      <div class="meter"><i id="mic-fill"></i><b id="mic-line" hidden></b></div>
+      <div id="heard">…</div>
+    </div>
+  </section>
+
+  <div id="overlay" hidden></div>
+  <button id="gear" aria-label="せってい">⚙</button>
+  <div id="settings" hidden>
+    <h3>せってい / マイクテスト</h3>
+    <label>BGMの おおきさ <input id="set-bgm" type="range" min="0" max="100" value="45"></label>
+    <label>マイクの つかいかた
+      <select id="set-mic">
+        <option value="auto">じどう（おすすめ）</option>
+        <option value="both">つねに おんりょうを はかる</option>
+        <option value="swap">さけびの ときだけ はかる</option>
+        <option value="off">おんりょうを はからない</option>
+      </select>
+    </label>
+    <label><input id="set-tap" type="checkbox"> じゅもんを タップでも だせる（テストよう）</label>
+    <pre id="diag"></pre>
+    <button id="set-close" class="btn">とじる</button>
+    <button id="set-title" class="btn">タイトルへ もどる</button>
+    <button id="set-reset" class="btn">セーブを けす</button>
+  </div>
+  <div id="debug" hidden></div>
+</div>
+<script src="assets/img/images.js?v=4"></script>
+<script src="js/bgm_manifest.js?v=4"></script>
+<script src="js/monsters.js?v=4"></script>
+<script src="js/audio.js?v=4"></script>
+<script src="js/voice.js?v=4"></script>
+<script src="js/fx.js?v=4"></script>
+<script src="js/game.js?v=4"></script>
+</body>
+</html>
