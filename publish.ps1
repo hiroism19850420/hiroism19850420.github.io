@@ -36,6 +36,15 @@ if ($Files) {
 }
 if (-not (Test-Path (Join-Path $dest "index.html"))) { throw "index.html が見つかりません: $dest" }
 
+# 1.5) アクセス解析(GoatCounter)を </head> の直前に入れる(入っていれば何もしない)
+$gc = '<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>'
+$idx = Join-Path $dest "index.html"
+$txt = [IO.File]::ReadAllText($idx, [Text.Encoding]::UTF8)
+if ($txt -notmatch 'goatcounter' -and $txt -match '</head>') {
+  $txt = $txt -replace '</head>', ($gc + '</head>')
+  [IO.File]::WriteAllText($idx, $txt, (New-Object Text.UTF8Encoding($false)))
+}
+
 # 2) 一覧データを更新
 $jsonPath = Join-Path $Repo "games.json"
 $games = @()
@@ -67,7 +76,7 @@ h1{text-align:center;color:#ff7a2f}
 .card{display:block;background:#fff;border-radius:16px;padding:16px;box-shadow:0 2px 8px #0002;text-decoration:none;color:inherit}
 .card:hover{transform:translateY(-2px)}
 .card h2{margin:0 0 6px;color:#3b82f6;font-size:1.2rem}.card p{margin:0 0 8px}.card small{color:#888}
-</style></head><body><div class="wrap"><h1>HTMLゲーム集</h1><div class="list">
+</style><script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head><body><div class="wrap"><h1>HTMLゲーム集</h1><div class="list">
 $cards
 </div></div></body></html>
 "@
