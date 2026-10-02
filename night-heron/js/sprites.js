@@ -151,9 +151,91 @@
     return c;
   }
 
-  function buildCharacter(pal) {
+  // ---------- 敵兵 ----------
+  const PAL_ENEMY = {
+    k: '#0a0d11',
+    h: '#5d6650', // ヘルメット
+    b: '#3c4334', // ヘルメットの縁
+    m: '#22272b', // 覆面
+    s: '#e2b48c',
+    e: '#161a1f',
+    u: '#8a8d69', // 戦闘服
+    U: '#62664c',
+    g: '#2b3226', // ベスト
+    G: '#3f4838',
+    r: '#444a52', // 小銃
+    w: '#14181c'
+  };
+
+  const UPPER_ENEMY = {
+    down: [
+      '....kkkkkk....',
+      '...khhhhhhk...',
+      '..khhhhhhhhk..',
+      '..khhhhhhhhk..',
+      '..kbbbbbbbbk..',
+      '..kmsessesmk..',
+      '..kmmmmmmmmk..',
+      '...kmmmmmmk...',
+      '..kkummmmukk..',
+      '.kuuugUUguuuk.',
+      '.kuUugUUguUuk.',
+      '.ksrrrrrrrrsk.',
+      '.kkkuUUUUukkk.',
+      '...kggggggk...'
+    ],
+    up: [
+      '....kkkkkk....',
+      '...khhhhhhk...',
+      '..khhhhhhhhk..',
+      '..khhhhhhhhk..',
+      '..kbbbbbbbbk..',
+      '..kmmmmmmmmk..',
+      '..kmmmmmmmmk..',
+      '...kmmmmmmk...',
+      '..kkuummuukk..',
+      '.kuugggggguuk.',
+      '.kuUgGGGGgUuk.',
+      '.ksUgGGGGgUsk.',
+      '.kkkuggggukkk.',
+      '...kggggggk...'
+    ],
+    side: [
+      '....kkkkkk....',
+      '...khhhhhhk...',
+      '..khhhhhhhhk..',
+      '..khhhhhhhhk..',
+      '..kbbbbbbbbbk.',
+      '..khhmmsesmk..',
+      '..khhmmmmmmk..',
+      '...khmmmmmk...',
+      '...kkummkk....',
+      '...kuuuugk....',
+      '...kuUuugkkkk.',
+      '...kuUssrrrrk.',
+      '...kkuUukkkk..',
+      '....kgggk.....'
+    ]
+  };
+
+  // 頭上の「！」
+  const MARK_ALERT = [
+    '.kkkk.',
+    '.krwk.',
+    '.krrk.',
+    '.krrk.',
+    '.krrk.',
+    '.krrk.',
+    '.krrk.',
+    '.kkkk.',
+    '.krwk.',
+    '.krrk.',
+    '.kkkk.'
+  ];
+
+  function buildCharacter(pal, upper) {
     const up = {};
-    for (const k in UPPER) up[k] = fromRows(UPPER[k], pal);
+    for (const k in upper) up[k] = fromRows(upper[k], pal);
     const lf = LEGS_FRONT.map((r) => fromRows(r, pal));
     lf.push(flip(lf[1]));
     const ls = LEGS_SIDE.map((r) => fromRows(r, pal));
@@ -175,6 +257,8 @@
     fromRows,
     flip,
     buildCharacter,
-    player: buildCharacter(PAL_PLAYER)
+    player: buildCharacter(PAL_PLAYER, UPPER),
+    enemy: buildCharacter(PAL_ENEMY, UPPER_ENEMY),
+    markAlert: fromRows(MARK_ALERT, { k: '#1a0505', r: '#ff3b30', w: '#ffd0c8' })
   };
 })();

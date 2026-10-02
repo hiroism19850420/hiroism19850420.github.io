@@ -70,6 +70,7 @@
   function update(dt) {
     Game.time += dt;
     player.update(dt);
+    for (const e of Game.enemies) e.update(dt, player);
     camera.update(dt, player, view, map);
     UI.update(dt, player, map);
   }
@@ -91,7 +92,18 @@
     if (sw > 0 && sh > 0) ctx.drawImage(map.canvas, sx, sy, sw, sh, sx, sy, sw, sh);
 
     map.drawDynamic(ctx, Game.time, { x: cx, y: cy }, view);
-    player.draw(ctx, snap);
+
+    // 画面の近くにいる敵だけ描く
+    const margin = C.ENEMY.VIEW_DIST * T + 48;
+    const near = Game.enemies.filter((e) =>
+      e.x > cx - margin && e.x < cx + view.w + margin &&
+      e.y > cy - margin && e.y < cy + view.h + margin);
+    for (const e of near) e.drawCone(ctx);
+    // 手前のものが上に重なるよう、足元の位置の順に描く
+    const actors = near.concat(player).sort((a, b) => a.y - b.y);
+    for (const a of actors) a.draw(ctx, snap);
+    for (const e of near) e.drawMark(ctx, snap);
+
     if (Game.debug) drawDebugWorld(cx, cy);
 
     ctx.setTransform(s, 0, 0, s, 0, 0);
@@ -124,6 +136,44 @@
     ctx.moveTo(player.x, player.y);
     ctx.lineTo(player.x + player.dir.x * 20, player.y + player.dir.y * 20);
     ctx.stroke();
+
+    // 敵：巡回ルート、視界レイ、プレイヤーへの視線、状態名
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    for (const e of Game.enemies) {
+      ctx.strokeStyle = 'rgba(90,170,255,0.6)';
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      e.route.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      if (e.route.length > 2) ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#5af';
+      for (const p of e.route) ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+
+      ctx.strokeStyle = 'rgba(255,255,120,0.28)';
+      ctx.lineWidth = 0.5;
+      ctx.beginPath();
+      for (let i = 0; i < e.cone.length; i += 3) {
+        ctx.moveTo(e.x, e.y);
+        ctx.lineTo(e.cone[i], e.cone[i + 1]);
+      }
+      ctx.stroke();
+
+      ctx.strokeStyle = e.sees ? '#f44' : 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(e.x, e.y);
+      ctx.lineTo(player.x, player.y);
+      ctx.stroke();
+
+      const label = e.state + (e.state === 'patrol' ? ':' + e.phase : '');
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(e.x - 26, e.y - 50, 52, 10);
+      ctx.fillStyle = e.state === 'spotted' ? '#f66' : '#9f9';
+      ctx.fillText(label, e.x, e.y - 40);
+    }
   }
 
   function drawDebugText() {
@@ -133,7 +183,8 @@
       'pos ' + player.x.toFixed(1) + ', ' + player.y.toFixed(1) +
         '  tile ' + Math.floor(player.x / T) + ', ' + Math.floor(player.y / T),
       'face ' + player.face + '  dir ' + player.dir.x.toFixed(2) + ', ' + player.dir.y.toFixed(2),
-      'zone ' + (z ? z.name : '-'),
+      'zone ' + (z ? z.name : '-') +
+        '  spotted by ' + Game.enemies.filter((e) => e.state === 'spotted').length,
       'view ' + view.w.toFixed(0) + 'x' + view.h.toFixed(0) + '  x' + view.scale +
         '  canvas ' + canvas.width + 'x' + canvas.height
     ];
@@ -170,9 +221,15 @@
     draw();
   }
 
+  // コンソールから1コマずつ動かして確かめるための入口
+  Game.update = update;
+  Game.draw = draw;
+  Game.resize = resize;
+
   // ---------- 起動 ----------
   map.load();
   player.init(map);
+  Game.enemies = map.enemyDefs.map((def) => new NH.Enemy(def));
   setDebug(Game.debug);
   resize();
   camera.snap(player, view, map);
