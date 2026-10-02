@@ -48,6 +48,7 @@
 
   // ---------- 状態の切り替え ----------
   Enemy.prototype.suspect = function (x, y) {
+    this.wakeTarget = null;
     if (this.state !== 'suspicious') {
       this.state = 'suspicious';
       this.phase = 'notice';
@@ -69,6 +70,8 @@
   // 背後から倒されて気絶する
   Enemy.prototype.stun = function () {
     this.state = 'stunned';
+    this.discovered = false;
+    this.wakeTarget = null;
     this.timer = E.STUN_TIME;
     this.gauge = 0;
     this.sees = false;
@@ -82,10 +85,26 @@
   // 気絶から起き上がる。フロアが警戒・捜索中ならそれに加わり、そうでなければ疑念
   Enemy.prototype.wake = function () {
     this.state = 'patrol';
-    const phase = NH.Alert.phase;
-    if (phase === 'alert') this.enterSpotted(E.REACT_TIME);
-    else if (phase === 'search') this.enterSearch();
+    this.discovered = false;
+    const A = NH.Alert;
+    const near = Math.hypot(this.x - A.lastKnown.x, this.y - A.lastKnown.y) <= C.ALERT.RESPOND_DIST * T;
+    if (A.phase === 'alert' && near) this.enterSpotted(E.REACT_TIME);
+    else if (A.phase === 'search' && near) this.enterSearch();
     else this.suspect(this.x, this.y);
+  };
+
+  // 視界に気絶した仲間がいれば、疑念を抱いて駆け寄る（着いたら起こす）
+  Enemy.prototype.noticeBodies = function () {
+    if (this.state !== 'patrol') return;
+    const range = E.VIEW_DIST * T, fov = E.FOV * RAD;
+    for (const o of NH.Game.enemies) {
+      if (o.state !== 'stunned' || o.discovered) continue;
+      if (!AI.inCone(this.x, this.y, this.angle, o.x, o.y, range, fov)) continue;
+      o.discovered = true;
+      this.suspect(o.x, o.y);
+      this.wakeTarget = o;
+      return;
+    }
   };
 
   Enemy.prototype.enterSpotted = function (delay) {
@@ -123,6 +142,7 @@
       return;
     }
     this.perceive(dt, player);
+    this.noticeBodies();
     this.moving = false;
 
     switch (this.state) {
@@ -167,7 +187,8 @@
         // 近いほど早く気づく。疑念・捜索中は目が鋭くなる
         const k = Math.min(1, dist / range);
         const time = E.SIGHT_TIME_NEAR + (E.SIGHT_TIME_FAR - E.SIGHT_TIME_NEAR) * k;
-        const mult = this.state === 'search' ? 4 : this.state === 'suspicious' ? 1.5 : 1;
+        const caution = NH.Alert.phase !== 'none' ? C.ALERT.CAUTION_SIGHT_MULT : 1;
+        const mult = this.state === 'search' ? 4 : this.state === 'suspicious' ? 1.5 * caution : caution;
         this.gauge = Math.min(1, this.gauge + dt / time * mult);
       }
     } else if (!hot) {
@@ -187,7 +208,9 @@
   Enemy.prototype.patrol = function (dt) {
     if (this.phase === 'walk') {
       const wp = this.route[this.wp];
-      if (this.goTo(wp.x, wp.y, E.SPEED, dt) === true) {
+      // フロアが警戒・捜索中は、持ち場に残った敵も足を速める
+      const speed = E.SPEED * (NH.Alert.phase !== 'none' ? C.ALERT.CAUTION_SPEED_MULT : 1);
+      if (this.goTo(wp.x, wp.y, speed, dt) === true) {
         this.phase = 'look';
         this.timer = 0;
         this.baseAngle = this.route.length > 1 ? this.wantAngle : this.homeAngle;
@@ -211,10 +234,15 @@
       this.wantAngle = Math.atan2(p.y - this.y, p.x - this.x);
       if (this.timer >= E.NOTICE_TIME) { this.phase = 'go'; this.timer = 0; }
     } else if (this.phase === 'go') {
-      if (this.goTo(p.x, p.y, E.SUSPECT_SPEED, dt) !== false || this.timer > 10) {
+      // 気絶した仲間のところへ行くときは、手前で止まる
+      const w = this.wakeTarget;
+      const reached = w && Math.hypot(w.x - this.x, w.y - this.y) < 22;
+      if (reached || this.goTo(p.x, p.y, E.SUSPECT_SPEED, dt) !== false || this.timer > 10) {
         this.phase = 'look';
         this.timer = 0;
         this.baseAngle = this.angle;
+        if (w && w.state === 'stunned') w.timer = Math.min(w.timer, 0.8); // 仲間を起こす
+        this.wakeTarget = null;
       }
     } else {
       this.wantAngle = this.baseAngle + Math.sin(this.timer * 2.4) * 80 * RAD;

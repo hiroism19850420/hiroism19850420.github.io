@@ -194,6 +194,7 @@
       const cv = this.canvas = NH.Sprites.makeCanvas(this.pxW, this.pxH);
       const g = cv.getContext('2d');
       this.leds = [];
+      this.ducts = [];
 
       for (let ty = 0; ty < this.h; ty++) {
         for (let tx = 0; tx < this.w; tx++) {
@@ -216,7 +217,14 @@
           else if (ch === 'D' || ch === 'T') drawDesk(g, tx, ty, ch);
           else if (ch === 'K') drawLocker(g, tx, ty);
           else if (ch === 'V') drawRack(g, tx, ty);
-          else if (ch === '=') drawDuct(g, tx, ty);
+          else if (ch === '=') {
+            drawDuct(g, tx, ty);
+            this.ducts.push({
+              x: tx * T, y: ty * T,
+              up: !this.isSolid(tx, ty - 1), down: !this.isSolid(tx, ty + 1),
+              left: !this.isSolid(tx - 1, ty), right: !this.isSolid(tx + 1, ty)
+            });
+          }
         }
       }
 
@@ -241,8 +249,22 @@
       }
     },
 
-    // 毎フレーム描く小物（ラックの点滅ランプ）
+    // 毎フレーム描く小物（通気口のシャッター、ラックの点滅ランプ）
     drawDynamic(ctx, time, cam, view) {
+      if (NH.Alert.ductLocked()) {
+        const blink = Math.sin(time * 9) > 0;
+        for (const d of this.ducts) {
+          ctx.fillStyle = 'rgba(120,16,12,0.72)';
+          ctx.fillRect(d.x + 2, d.y + 2, T - 4, T - 4);
+          ctx.fillStyle = '#2a0806';
+          for (let i = 5; i < T - 4; i += 5) ctx.fillRect(d.x + 2, d.y + i, T - 4, 2);
+          ctx.fillStyle = blink ? '#ff4a3a' : '#a01d14';
+          if (d.up) ctx.fillRect(d.x, d.y, T, 3);
+          if (d.down) ctx.fillRect(d.x, d.y + T - 3, T, 3);
+          if (d.left) ctx.fillRect(d.x, d.y, 3, T);
+          if (d.right) ctx.fillRect(d.x + T - 3, d.y, 3, T);
+        }
+      }
       for (const l of this.leds) {
         if (l.x < cam.x - 4 || l.y < cam.y - 4 || l.x > cam.x + view.w || l.y > cam.y + view.h) continue;
         if ((time + l.phase) % l.period < l.period * 0.5) {

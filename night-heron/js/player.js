@@ -15,6 +15,7 @@
     animT: 0,
     stepT: 0,              // 次の足音までの時間
     knockT: 0,             // 壁叩きの待ち時間
+    canDuct: false,        // いま通気口を通れるか
     action: null,          // いまアクションキーでできること { type: 'ko' | 'knock', ... }
 
     init(map) {
@@ -35,7 +36,7 @@
     },
 
     free(x, y) {
-      return !NH.Map.rectSolid(x - P.HIT_W / 2, y - P.HIT_H / 2, P.HIT_W, P.HIT_H, this.crawling);
+      return !NH.Map.rectSolid(x - P.HIT_W / 2, y - P.HIT_H / 2, P.HIT_W, P.HIT_H, this.canDuct);
     },
 
     // 低い通気口の中にいるか
@@ -117,6 +118,9 @@
         if (!this.crawling) this.crawling = true;
         else if (!this.inDuct()) this.crawling = false;
       }
+
+      // 通気口を通れるのは匍匐中だけ。シャッターが閉まっている間は、すでに中にいる場合だけ動ける
+      this.canDuct = this.crawling && (!NH.Alert.ductLocked() || this.inDuct());
 
       const mv = Input.getMove();
       this.moving = mv.x !== 0 || mv.y !== 0;
