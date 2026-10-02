@@ -26,7 +26,7 @@
     fire: { name: 'ファイヤー', stem: 'ファイヤ', elem: 'fire', mp: 0, base: 10, al: ['ファイヤ', 'ファイア', 'フアイヤ', 'ハイヤ', 'fire'] },
     ice: { name: 'フリーザー', stem: 'フリーザ', elem: 'ice', mp: 0, base: 10, al: ['フリザ', 'フリイザ', 'プリザ', 'ブリザ', 'freezer', 'frieza'] },
     thunder: { name: 'サンダー', stem: 'サンダ', elem: 'thunder', mp: 0, base: 10, al: ['サンダ', 'thunder', 'サンダア'] },
-    heal: { name: 'リカバー', stem: 'リカバ', mp: 3, al: ['リカバ', 'recover'] },
+    heal: { name: 'リカバー', stem: 'リカバ', mp: 3, heal: 1, al: ['リカバ', 'recover'] },
     barrier: { name: 'バリア', stem: 'バリア', mp: 2, al: ['バリア', 'バリヤ', 'barrier'] },
     // ながい呪文。key = これが聞こえたら確定 / up = もとの呪文(from)を溜めている間に聞こえたら切り替わる
     dragon: { name: 'ドラゴンファイヤースペシャル', stem: 'ドラゴンファイヤースペシャル', elem: 'fire', mp: 5, base: 30, big: true, from: 'fire', fx: 'dragon', al: [],
@@ -37,10 +37,19 @@
       key: ['ボルト', 'bolt', 'レボリュ', 'revolution'], up: [] },
     meteor: { name: 'メテオストライクアタック', stem: 'メテオストライクアタック', mp: 8, base: 30, all: true, big: true, fx: 'meteor', al: [],
       key: ['メテオ', 'meteor', 'ミーティア'], up: [] },
+    // かくし呪文。さいしょから つかえるが、じゅもんの一覧にも ヒントにも 出さない
+    mpfull: { name: 'リテ・ラトバリタ・ウルス・アリアロス・バル・ネトリール', stem: 'リテ・ラトバリタ・ウルス・アリアロス・バル・ネトリール', mp: 0, big: true, hidden: true, al: [],
+      seq: ['リテ', 'ラトバリタ', 'ウルス', 'アリアロス', 'バル', 'ネトリール'] },   // seq = ぜんぶ この順で言えたら発動
+    balus: { name: 'バルス', stem: 'バルス', mp: 0, hidden: true, al: ['バルス', 'バルズ', 'barusu', 'balus', 'balse', 'bals'] },
   };
+  const HIDDEN = ['mpfull', 'balus'];
   const BASE_SPELLS = ['fire', 'thunder', 'ice', 'heal'];      // さいしょから つかえる
-  const SP_ORDER = ['fire', 'thunder', 'ice', 'heal', 'barrier', 'dragon', 'sfreeze', 'tbolt', 'meteor'];
-  const ELC = { fire: '#ff5a2a', ice: '#5bd6ff', thunder: '#ffe14d', heal: '#6bff9a', barrier: '#7fe7ff', dragon: '#ff7a1c', sfreeze: '#bff2ff', tbolt: '#fff36b', meteor: '#c98aff', ult: '#fff' };
+  const SP_ORDER = ['fire', 'thunder', 'ice', 'heal', 'barrier', 'my1', 'my2', 'dragon', 'sfreeze', 'tbolt', 'meteor'];
+  // オリジナルじゅもん(プレイヤーが じぶんで なまえを きめる)。ファイヤーより つよく、ながい呪文より よわい
+  const MY_IDS = ['my1', 'my2'];
+  const MY = { minLen: 5, maxLen: 16, takes: 3, mp: 3, base: 18, healMp: 5, healMul: 1.5 };
+  const MY_ELEMS = { fire: 'ほのお', thunder: 'かみなり', ice: 'こおり', heal: 'かいふく' };
+  const ELC = { fire: '#ff5a2a', ice: '#5bd6ff', thunder: '#ffe14d', heal: '#6bff9a', barrier: '#7fe7ff', dragon: '#ff7a1c', sfreeze: '#bff2ff', tbolt: '#fff36b', meteor: '#c98aff', ult: '#fff', mpfull: '#8fd8ff', balus: '#bff2ff' };
   const DESTROYER_AL = ['デストロイヤ', 'デストロイア', 'デストロイ', 'destroyer', 'destroy'];   // 究極呪文のしめくくりの言葉
   const UT = {
     eternal: { label: 'エターナル', al: ['エターナル', 'eternal'] },
@@ -96,10 +105,13 @@
   const norm = (s) => (s || '').normalize('NFKC').toLowerCase()
     .replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60))
     .replace(/[ー－―‐\-~〜\s・、。,.!！?？「」『』…]/g, '');
-  Object.values(SPELLS).forEach(s => { s.al = s.al.map(norm); if (s.key) s.key = s.key.map(norm); if (s.up) s.up = s.up.map(norm); });
+  Object.values(SPELLS).forEach(s => { s.al = s.al.map(norm); if (s.key) s.key = s.key.map(norm); if (s.up) s.up = s.up.map(norm); if (s.seq) s.seq = s.seq.map(norm); });
   Object.values(UT).forEach(s => { s.al = s.al.map(norm); });
   const hasAny = (n, list) => list.some(a => n.includes(a));
+  const inOrder = (n, words) => { let i = 0; for (const w of words) { const j = n.indexOf(w, i); if (j < 0) return false; i = j + w.length; } return true; };
   function findSpell(n) {
+    // 0) かくし呪文は おぼえていなくても つかえる
+    for (const id of HIDDEN) { const s = SPELLS[id]; if (s.seq ? inOrder(n, s.seq) : hasAny(n, s.al)) return id; }
     // 1) ながい呪文は、合言葉が聞こえた時点で確定(もとの呪文と つづきの言葉が そろっていても確定)
     for (const id of P.spells) {
       const s = SPELLS[id];
@@ -124,9 +136,51 @@
       return;
     }
   }
+  // ---------- オリジナルじゅもん ----------
+  const cleanSpell = (s) => [...(s || '').normalize('NFKC').replace(/[\s、。,.!！?？「」『』…<>&"'`\\]/g, '')].slice(0, MY.maxLen).join('');
+  const hasKanji = (s) => /[一-龠々]/.test(s);
+  const sim = (a, b) => 1 - lev(a, b) / Math.max(a.length, b.length, 1);
+  // みじかすぎる なまえは ことわる。漢字に聞き取られたときは 文字数が へるので、言っていた長さ(秒)でも みる
+  function lenOK(name, dur) {
+    const n = [...name].length;
+    return n >= MY.minLen || (hasKanji(name) && n >= 3 && (dur == null || dur >= 0.9));
+  }
+  // いまある呪文と まぎらわしい ことばか(slot = じぶんの枠は くらべない)
+  function clash(n, slot) {
+    const words = [];
+    for (const [id, s] of Object.entries(SPELLS)) { if (id === MY_IDS[slot]) continue; words.push(...s.al, ...(s.key || []), ...(s.up || [])); }
+    Object.values(UT).forEach(s => words.push(...s.al));
+    return words.some(w => w && (n.includes(w) || w.includes(n) || sim(n, w) >= 0.6));
+  }
+  function loadCustom() {
+    let a = null;
+    try { a = JSON.parse(localStorage.getItem('donarugo_custom')); } catch (e) { }
+    return [0, 1].map(i => {
+      const c = Array.isArray(a) ? a[i] : null;
+      if (!c || typeof c.name !== 'string' || !MY_ELEMS[c.elem] || !Array.isArray(c.al)) return null;
+      const name = cleanSpell(c.name), al = c.al.filter(x => typeof x === 'string').map(norm).filter(x => x.length >= 3).slice(0, 12);
+      return name && al.length ? { name, elem: c.elem, al } : null;
+    });
+  }
+  function saveCustom() { try { localStorage.setItem('donarugo_custom', JSON.stringify(custom)); } catch (e) { } }
+  // custom の中身を SPELLS と つかえる呪文の一覧に はんえいする
+  function applyCustom() {
+    MY_IDS.forEach((id, i) => {
+      const c = custom[i];
+      if (!c) { delete SPELLS[id]; return; }
+      const heal = c.elem === 'heal';
+      SPELLS[id] = { name: c.name, stem: c.name.replace(/[ー～〜]+$/, '') || c.name, custom: true, wide: [...c.name].length > 6, al: c.al.slice(),
+        mp: heal ? MY.healMp : MY.mp, heal: heal ? MY.healMul : 0, elem: heal ? undefined : c.elem, base: MY.base, fx: c.elem };
+      ELC[id] = ELC[c.elem];
+    });
+    P.spells = sortSpells(P.spells.filter(id => !MY_IDS.includes(id)).concat(myIds()));
+  }
+  const myIds = () => MY_IDS.filter(id => SPELLS[id]);
+  const baseSpells = () => sortSpells(BASE_SPELLS.concat(myIds()));
+
   // たたかいを ここまで進めた人が おぼえているはずの呪文
   function spellsUpTo(stage) {
-    const out = BASE_SPELLS.slice();
+    const out = baseSpells();
     for (let i = 0; i < stage; i++) for (const id of STAGES[i].battles) { const l = ENEMIES[id].learn; if (l && l !== 'ult' && !out.includes(l)) out.push(l); }
     return out;
   }
@@ -139,7 +193,8 @@
   function fuzzy(n) {
     if (n.length < 2 || n.length > 12) return null;
     let best = null, bs = 0;
-    for (const id of P.spells) { const a = SPELLS[id].al[0]; if (!a) continue; const s = 1 - lev(n, a) / Math.max(n.length, a.length); if (s > bs) { bs = s; best = id; } }
+    // オリジナルじゅもんは 聞き取りが ぶれやすいので、おぼえた言いかた ぜんぶと くらべる
+    for (const id of P.spells) for (const a of (SPELLS[id].custom ? SPELLS[id].al : SPELLS[id].al.slice(0, 1))) { const s = 1 - lev(n, a) / Math.max(n.length, a.length); if (s > bs) { bs = s; best = id; } }
     return bs >= 0.5 ? best : null;
   }
   const hasUltPrefix = (n) => ['eternal', 'infinity', 'ultimate', 'final'].some(k => UT[k].al.some(a => n.includes(a)));
@@ -149,9 +204,11 @@
   const stats = { maxVol: 0, maxDmg: 0, crits: 0 };
   const cal = { loud: 0 };
   let save = loadSave(), B = null, stageIdx = 0, lastShout = { url: null, text: '', peak: 0 }, newSpell = null;
-  let nameWait = null, screamWait = null, tapMode = DEBUG, settingsOpen = false, started = false, runId = 0;
+  let nameWait = null, spellWait = null, screamWait = null, tapMode = DEBUG, settingsOpen = false, started = false, runId = 0;
   const dbg = { vol: 0.85, dur: 1500 };
   const IMG = new Set(window.DQ_IMAGES || []);
+  let custom = loadCustom();
+  applyCustom();
 
   function loadSave() { try { return JSON.parse(localStorage.getItem('donarugo_save')) || null; } catch (e) { return null; } }
   function saveGame() { save = { name: P.name, stage: Math.max(stageIdx, save ? save.stage || 0 : 0), spells: P.spells, ult: P.ult, loud: cal.loud, cast: true }; try { localStorage.setItem('donarugo_save', JSON.stringify(save)); } catch (e) { } }
@@ -184,7 +241,7 @@
     for (const id of SP_ORDER) {
       if (!P.spells.includes(id)) continue;
       const sp = SPELLS[id];
-      h += `<div class="sp ${sp.big ? 'long' : ''} ${P.mp < sp.mp ? 'off' : ''} ${newSpell === id ? 'new' : ''} ${tapMode ? 'tap' : ''}" data-say="${sp.name}" ${sp.big ? 'data-long="1"' : ''}><i style="background:${ELC[id]}"></i>${sp.name}${sp.mp ? `<em>MP${sp.mp}</em>` : ''}</div>`;
+      h += `<div class="sp ${sp.big || sp.wide ? 'long' : ''} ${P.mp < sp.mp ? 'off' : ''} ${newSpell === id ? 'new' : ''} ${tapMode ? 'tap' : ''}" data-say="${sp.name}" ${sp.big ? 'data-long="1"' : ''}><i style="background:${ELC[id]}"></i>${sp.name}${sp.mp ? `<em>MP${sp.mp}</em>` : ''}</div>`;
     }
     if (P.ult) for (const t of ['A', 'B']) {
       const used = B && B.ultUsed[t];
@@ -269,6 +326,7 @@
   Voice.on('heard', (h) => {
     showHeard(h.text);
     if (nameWait) { nameWait(h); return; }
+    if (spellWait) { spellWait(h); return; }
     if (screamWait) { screamWait.text = h.text.trim(); return; }
     if (!B) return;
     if (B.state === 'shout') { if (B.shout) { B.shout.text = h.text.trim(); B.shout.chars = Math.max(B.shout.chars, norm(h.text).length); } return; }
@@ -332,13 +390,14 @@
     const pw = c.vol ? power((c.last - c.t0) / 1000, c.peak) : { len: CFG.noVolPower, vol: CFG.noVolPower, p: CFG.noVolPower };
     if (c.vol) stats.maxVol = Math.max(stats.maxVol, c.peak);
     if (!save || !save.cast) { save = save || {}; save.cast = true; setTimeout(() => say('（ごびを のばして おおきく さけぶと いりょくアップ！）', 'hint'), 1300); }
-    if (sp.big) { say(`${P.name}は じゅもんを となえた！`); say(`${sp.name}！`, 'good'); }
+    if (c.id === 'mpfull') say(`${P.name}は いにしえの ことばを となえた！`);
+    else if (sp.big || sp.wide) { say(`${P.name}は じゅもんを となえた！`); say(`${sp.name}！`, 'good'); }
     else say(`${P.name}は ${sp.name}を となえた！`);
     if (B.sleeping) {
       const loud = c.vol ? c.peak > B.wakeLine : c.id === 'meteor';
       if (loud) wake();
     }
-    if (c.id === 'heal') doHeal(pw, c.q); else if (c.id === 'barrier') doBarrier(); else if (B.sleeping) chipHit(); else attack(sp, c.id, pw, c.q);
+    if (c.id === 'mpfull') doMpFull(); else if (c.id === 'balus') doBalus(); else if (sp.heal) doHeal(pw, c.q * sp.heal); else if (c.id === 'barrier') doBarrier(); else if (B.sleeping) chipHit(); else attack(sp, c.id, pw, c.q);
     renderStatus(); renderSpells();
   }
   function doBarrier() {
@@ -347,6 +406,29 @@
     FX.barrier(s.W / 2, s.H * 0.86); AudioSys.sfx('barrier');
     say('ひかりの かべが あらわれた！', 'good'); say('（つぎの こうげきを はんぶんに する）', 'hint');
     B.lock = Math.max(B.lock, 0.6);
+  }
+  // かくし呪文: MPを ぜんぶ もどす
+  function doMpFull() {
+    const s = FX.size();
+    P.mp = CFG.mp;
+    FX.flash(ELC.mpfull, 0.5, 500); FX.heal(s.W / 2, s.H * 0.9, 1); AudioSys.sfx('heal'); FX.floater('MP MAX', s.W / 2, s.H * 0.82, 'heal');
+    anim($('#status'), 'heal', 700);
+    say('MPが ぜんかいふくした！', 'good'); B.lock = Math.max(B.lock, 0.7);
+  }
+  // かくし呪文: いまいる てきを みんな のこりHP 2 に、じぶんは HP 1 にする
+  function doBalus() {
+    if (B.sleeping) wake();
+    const s = FX.size(), lost = P.hp - 1;
+    FX.flash(ELC.balus, 0.95, 700); FX.shake(18, 1.0); AudioSys.sfx('ultimate');
+    alive().forEach((u, i) => {
+      const c = center(u), dmg = Math.max(0, u.hp - 2);
+      applyDmg(u, dmg);
+      setTimeout(() => { anim(u.el, 'hit', 430); if (dmg > 0) FX.floater(dmg, c.x, c.y - i * 6, 'crit'); renderEnemy(); }, 500 + i * 70);
+    });
+    P.hp = 1;
+    if (lost > 0) { FX.floater('-' + lost, s.W / 2, s.H * 0.86, 'hurt'); anim($('#status'), 'shake', 500); }
+    say('ほろびの ひかりが あたりを つつんだ！', 'good'); say(`${P.name}の HPも 1に なった！`, 'bad');
+    B.lock = Math.max(B.lock, 1.6);
   }
   function doHeal(pw, q) {
     const amt = Math.round(CFG.healBase * (1 + 0.6 * pw.p) * q), s = FX.size();
@@ -748,23 +830,107 @@
   }
   const cleanName = (s) => [...(s || '').normalize('NFKC').replace(/[\s、。,.!！?？「」『』…<>&"']/g, '')].slice(0, 6).join('');
 
+  // ---------- オリジナルじゅもんの とうろく ----------
+  async function customEditor(first) {
+    const my = runId;
+    for (;;) {
+      const rows = custom.map((c, i) => c
+        ? `<div class="win slot"><div class="sp"><i style="background:${ELC[c.elem]}"></i>${c.name}<em>${MY_ELEMS[c.elem]}</em></div><div class="row"><button class="btn" id="cs-new${i}">つくりなおす</button><button class="btn" id="cs-del${i}">けす</button></div></div>`
+        : `<button class="btn" id="cs-new${i}">＋ じゅもんを つくる</button>`).join('');
+      showOv(`<h2>オリジナルじゅもん</h2><p class="sub">すきな ことばを じゅもんに できる（2つまで）。<br>${MY.minLen}もじ いじょう。ファイヤーより つよい。<br>こうげきは MP${MY.mp}、かいふくは MP${MY.healMp}。</p>${rows}
+        <button class="btn primary" id="cs-go">${first ? (custom.some(Boolean) ? 'ぼうけんへ' : 'つくらずに はじめる') : 'もどる'}</button>`);
+      const b = await Promise.race([tapOn('#cs-go')].concat(custom.flatMap((c, i) => [tapOn('#cs-new' + i)].concat(c ? [tapOn('#cs-del' + i)] : []))));
+      if (my !== runId) return;
+      if (b === 'cs-go') { hideOv(); return; }
+      const i = +b.slice(-1);
+      if (b.startsWith('cs-del')) custom[i] = null;
+      else { const c = await makeSpell(i); if (my !== runId) return; if (!c) continue; custom[i] = c; }
+      saveCustom(); applyCustom(); renderSpells();
+    }
+  }
+  // 1かいぶんの こえを きく。{text, alts} か、おされた ボタンの id を かえす
+  function listenSpell(btnIds) {
+    return new Promise(res => {
+      let tm = null, got = null;
+      const done = (v) => { clearTimeout(tm); spellWait = null; res(v); };
+      spellWait = (h) => {
+        const s = cleanSpell(h.text); if (!s) return;
+        got = { text: s, alts: (h.alts || []).map(cleanSpell).filter(Boolean) };
+        const el = $('#cs-heard'); if (el) el.textContent = s;
+        clearTimeout(tm);
+        if (h.final) done(got); else tm = setTimeout(() => done(got), 1600);
+      };
+      btnIds.forEach(id => tapOn('#' + id).then(done));
+    });
+  }
+  async function makeSpell(slot) {
+    const my = runId, heardAl = [];
+    let name = '', dur = null, note = '';
+    // こえで とうろく。おなじ じゅもんを なんどか言ってもらい、聞き取られた言いかたを ぜんぶ おぼえる
+    if (!(Voice.st.mode === 'none' || Voice.st.denied)) for (let k = 0; k < MY.takes; k++) {
+      showOv(`<h2>${k ? 'おなじ じゅもんを<br>もういちど' : 'じゅもんを<br>となえてください'}</h2><p class="sub">${k + 1}かいめ / ${MY.takes}かい</p><div class="meter"><i id="cs-fill"></i></div><p class="big" id="cs-heard">…</p><p class="sub err">${note}</p>
+        <button class="btn" id="cs-skip">${k ? 'ここで おわる' : 'もじで いれる'}</button><button class="btn" id="cs-cancel">やめる</button>`);
+      note = '';
+      const meter = setInterval(() => { const f = $('#cs-fill'); if (f) f.style.width = (Voice.st.level * 100).toFixed(0) + '%'; }, 50);
+      const r = await listenSpell(['cs-skip', 'cs-cancel']);
+      clearInterval(meter); Voice.consume();
+      if (my !== runId || r === 'cs-cancel') return null;
+      if (r === 'cs-skip') break;
+      const said = [r.text].concat(r.alts).map(norm).filter(a => a.length >= 3);
+      if (!k) {
+        const lu = Voice.lastUtt(), u = Voice.utt(), now = performance.now();
+        dur = u.active ? (now - u.start) / 1000 : lu && now - lu.end < 4000 ? (lu.end - lu.start) / 1000 : null;
+        if (!lenOK(r.text, dur)) { note = `みじかすぎる… ${MY.minLen}もじ いじょうに してね`; AudioSys.sfx('miss'); k--; continue; }
+        if (clash(norm(r.text), slot)) { note = 'ほかの じゅもんと まぎらわしい…'; AudioSys.sfx('miss'); k--; continue; }
+        name = r.text;
+      } else if (!said.some(a => heardAl.some(b => sim(a, b) >= 0.34))) { note = 'ちがう ことばに きこえた…'; AudioSys.sfx('miss'); k--; continue; }
+      heardAl.push(...said);
+      AudioSys.sfx('word'); await sleep(450);
+      if (my !== runId) return null;
+    }
+    // なまえの かくにんと、ぞくせい えらび
+    showOv(`<p>じゅもんの なまえ</p><input id="cs-name" maxlength="${MY.maxLen}" value="${name}" placeholder="じゅもんの なまえ"><p class="sub">${MY.minLen}もじ いじょう。なおしたい ときは かきかえてね</p>
+      <div class="elems">${Object.keys(MY_ELEMS).map(e => `<button class="btn el" data-el="${e}"><i style="background:${ELC[e]}"></i>${MY_ELEMS[e]}</button>`).join('')}</div>
+      <p class="sub err" id="cs-err"></p><div class="row"><button class="btn primary" id="cs-ok">これで おぼえる</button><button class="btn" id="cs-back">やめる</button></div>`);
+    let elem = custom[slot] ? custom[slot].elem : 'fire';
+    const pick = (e) => { elem = e; ov.querySelectorAll('.el').forEach(b => b.classList.toggle('on', b.dataset.el === e)); };
+    ov.querySelectorAll('.el').forEach(b => b.addEventListener('click', () => { AudioSys.sfx('cursor'); pick(b.dataset.el); }));
+    pick(elem);
+    return new Promise(res => {
+      $('#cs-back').addEventListener('click', () => { AudioSys.sfx('cursor'); res(null); });
+      $('#cs-ok').addEventListener('click', () => {
+        const nm = cleanSpell($('#cs-name').value), n = norm(nm);
+        const err = n.length < 3 || !lenOK(nm, nm === name ? dur : null) ? `${MY.minLen}もじ いじょうの じゅもんに してね` : clash(n, slot) ? 'ほかの じゅもんと まぎらわしい…' : '';
+        if (err) { $('#cs-err').textContent = err; AudioSys.sfx('miss'); return; }
+        const al = [...new Set([n].concat(heardAl))].filter(a => !clash(a, slot)).slice(0, 12);
+        AudioSys.sfx('word'); res({ name: nm, elem, al });
+      });
+    });
+  }
+
   // ---------- タイトル ----------
   function toTitle() {
-    runId++; B = null; hideOv(); show('title'); AudioSys.duck(1); AudioSys.playBgm('title', 0.5);
+    runId++; B = null; nameWait = spellWait = null; hideOv(); show('title'); AudioSys.duck(1); AudioSys.playBgm('title', 0.5);
     save = loadSave(); $('#btn-cont').hidden = !(save && save.name && (save.stage > 0 || (save.spells && save.spells.length > 1)));
+  }
+  let voiceBusy = false;
+  async function ensureVoice() {
+    if (started) return true;
+    if (voiceBusy) return false;
+    voiceBusy = true;
+    await Voice.begin(AudioSys.ctx, $('#set-mic').value);
+    if (Voice.st.mode === 'none' && !DEBUG) {
+      tapMode = true; $('#set-tap').checked = true;
+      showOv(`<h2>この ブラウザは おんせいにんしきに たいおうしていません</h2><p class="sub">Chrome・Edge・Safari で ひらくと こえで あそべます。<br>このまま タップで じゅもんを だす テストモードで はじめます。</p><button class="btn" id="ns-ok">OK</button>`);
+      await tapOn('#ns-ok'); hideOv();
+    }
+    started = true; voiceBusy = false;
+    return true;
   }
   async function begin(cont) {
     AudioSys.init(); AudioSys.sfx('cursor');
     AudioSys.preload(['battle', 'win', 'learn', 'boss']);
-    if (!started) {
-      started = true;
-      await Voice.begin(AudioSys.ctx, $('#set-mic').value);
-      if (Voice.st.mode === 'none' && !DEBUG) {
-        tapMode = true; $('#set-tap').checked = true;
-        showOv(`<h2>この ブラウザは おんせいにんしきに たいおうしていません</h2><p class="sub">Chrome・Edge・Safari で ひらくと こえで あそべます。<br>このまま タップで じゅもんを だす テストモードで はじめます。</p><button class="btn" id="ns-ok">OK</button>`);
-        await tapOn('#ns-ok'); hideOv();
-      }
-    }
+    if (!(await ensureVoice())) return;
     AudioSys.stopBgm(0.4);
     stats.maxVol = stats.maxDmg = stats.crits = 0;
     if (cont && save) {
@@ -774,15 +940,31 @@
       P.name = save.name; P.spells = sortSpells(spellsUpTo(st).concat(old)); P.ult = !!save.ult; cal.loud = save.loud || 0;
       return runStage(st);
     }
-    P.spells = BASE_SPELLS.slice(); P.ult = false; save = null; stageIdx = 0;
+    P.spells = baseSpells(); P.ult = false; save = null; stageIdx = 0;
     try { localStorage.removeItem('donarugo_save'); } catch (e) { }
     show('game'); setBg('field'); renderStatus(); renderSpells(); msgEl.innerHTML = '';
+    const my = ++runId;
     await nameEntry();
+    if (my !== runId) return;
+    await customEditor(true);
+    if (my !== runId) return;
     return runStage(0);
+  }
+  // タイトルや せっていから オリジナルじゅもんを つくりなおす
+  async function openCustom() {
+    settingsOpen = false; $('#settings').hidden = true;
+    AudioSys.init(); AudioSys.sfx('cursor');
+    if (!(await ensureVoice())) return;
+    toTitle();
+    const my = runId;
+    await customEditor(false);
+    if (my === runId) hideOv();
   }
   $('#title').addEventListener('pointerdown', (e) => { if (!e.target.closest('button') && !AudioSys.ctx) { AudioSys.init(); AudioSys.playBgm('title', 0.5); } });
   $('#btn-new').addEventListener('click', () => begin(false));
   $('#btn-cont').addEventListener('click', () => begin(true));
+  $('#btn-my').addEventListener('click', openCustom);
+  $('#set-my').addEventListener('click', openCustom);
 
   // ---------- せってい / マイクテスト ----------
   function renderDiag() {
@@ -804,7 +986,7 @@
     P, CFG, stats, get B() { return B; }, say: (t, v = dbg.vol, d = dbg.dur) => Voice.sim(t, v, d), yell: (v = 0.95, d = 2500) => Voice.simLevel(v, d),
     stage: (i) => { P.spells = sortSpells(spellsUpTo(i)); P.ult = false; runStage(i); },
     kill: () => { if (B && B.state === 'active') { const u = target(); applyDmg(u, u.hp); renderEnemy(); } },
-    estalos: async () => { P.spells = SP_ORDER.slice(); P.ult = true; stageIdx = 3; show('game'); P.hp = CFG.hp; P.mp = CFG.mp; runId++; const my = runId; const r = await runBattle('estalos'); if (my !== runId) return; r === 'dead' ? onDeath(3, 'estalos') : result('true'); },
+    estalos: async () => { P.spells = SP_ORDER.filter(id => SPELLS[id]); P.ult = true; stageIdx = 3; show('game'); P.hp = CFG.hp; P.mp = CFG.mp; runId++; const my = runId; const r = await runBattle('estalos'); if (my !== runId) return; r === 'dead' ? onDeath(3, 'estalos') : result('true'); },
     result,
   };
   if (DEBUG) {

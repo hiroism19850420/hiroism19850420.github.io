@@ -155,6 +155,15 @@ button{font:inherit;color:inherit}
 #overlay .row{display:flex;gap:.6em;width:100%}
 #overlay .row .btn{font-size:.95em}
 #overlay .meter{flex:none;width:80%;height:1.2em}
+#overlay .slot{width:100%;display:flex;flex-direction:column;gap:.4em;padding:.5em .6em}
+#overlay .slot .row .btn{font-size:.8em;padding:.4em}
+#overlay input{font:inherit;width:90%;text-align:center;background:#000;color:#fff;border:.14em solid #fff;border-radius:.4em;padding:.4em;-webkit-user-select:text;user-select:text}
+#overlay .err{color:#ff8a7a;min-height:1.7em}
+.elems{display:grid;grid-template-columns:1fr 1fr;gap:.5em;width:100%}
+.elems .btn{display:flex;align-items:center;justify-content:center;gap:.4em;font-size:.95em;padding:.5em}
+.elems .btn i{width:.7em;height:.7em;border-radius:50%;border:.08em solid #fff;flex:0 0 auto}
+.elems .btn.on{background:#fff;color:#000}
+.btn.small{font-size:.9em;padding:.5em .6em}
 .stagecard{animation:fadein .5s}
 @keyframes fadein{from{opacity:0}}
 .res-table{width:100%;border-collapse:collapse;font-size:.88em}
