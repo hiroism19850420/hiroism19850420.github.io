@@ -16,6 +16,8 @@
     volMin: 0.5, volFull: 0.92,       // 声の大きさ(0〜1)。volFull で満点
     critBase: 1 / 16, critVol: 1 / 16, critEstalos: 1 / 5, critMul: 3,
     shoutTime: 3.0, shoutNeed: 0.2, shoutFull: 1.4,
+    shoutGap: 0.08, shoutMinK: 0.35,  // まわりの音より これだけ大きければ「叫び」と数える / そのときの最低の進み
+    barrierMul: 0.5,
     noVolPower: 0.3,                  // 音量を測れない端末での固定威力(0〜1)
     healBase: 40, chipRate: 0.15, chipsToWake: 3,
     ultA: 60, ultB: 100,
@@ -25,35 +27,50 @@
     ice: { name: 'フリーザー', stem: 'フリーザ', elem: 'ice', mp: 0, base: 10, al: ['フリザ', 'フリイザ', 'プリザ', 'ブリザ', 'freezer', 'frieza'] },
     thunder: { name: 'サンダー', stem: 'サンダ', elem: 'thunder', mp: 0, base: 10, al: ['サンダ', 'thunder', 'サンダア'] },
     heal: { name: 'リカバー', stem: 'リカバ', mp: 3, al: ['リカバ', 'recover'] },
-    destroy: { name: 'デストロイヤー', stem: 'デストロイヤ', mp: 8, base: 30, all: true, al: ['デストロイヤ', 'デストロイア', 'デストロイ', 'destroyer', 'destroy'] },
+    barrier: { name: 'バリア', stem: 'バリア', mp: 2, al: ['バリア', 'バリヤ', 'barrier'] },
+    // ながい呪文。key = これが聞こえたら確定 / up = もとの呪文(from)を溜めている間に聞こえたら切り替わる
+    dragon: { name: 'ドラゴンファイヤースペシャル', stem: 'ドラゴンファイヤースペシャル', elem: 'fire', mp: 5, base: 30, big: true, from: 'fire', fx: 'dragon', al: [],
+      key: ['ドラゴン', 'dragon'], up: ['スペシャル', 'special'] },
+    sfreeze: { name: 'スーパーフリーザーグランドイリュージョン', stem: 'スーパーフリーザーグランドイリュージョン', elem: 'ice', mp: 5, base: 30, big: true, from: 'ice', fx: 'sfreeze', al: [],
+      key: ['スーパーフ', 'superf', 'イリュージョン', 'illusion', 'グランド', 'grand'], up: ['スーパー', 'super'] },
+    tbolt: { name: 'サンダーボルトレボリューション', stem: 'サンダーボルトレボリューション', elem: 'thunder', mp: 5, base: 30, big: true, from: 'thunder', fx: 'tbolt', al: [],
+      key: ['ボルト', 'bolt', 'レボリュ', 'revolution'], up: [] },
+    meteor: { name: 'メテオストライクアタック', stem: 'メテオストライクアタック', mp: 8, base: 30, all: true, big: true, fx: 'meteor', al: [],
+      key: ['メテオ', 'meteor', 'ミーティア'], up: [] },
   };
-  const SP_ORDER = ['fire', 'ice', 'thunder', 'heal', 'destroy'];
-  const ELC = { fire: '#ff5a2a', ice: '#5bd6ff', thunder: '#ffe14d', heal: '#6bff9a', destroy: '#c98aff', ult: '#fff' };
+  const BASE_SPELLS = ['fire', 'thunder', 'ice', 'heal'];      // さいしょから つかえる
+  const SP_ORDER = ['fire', 'thunder', 'ice', 'heal', 'barrier', 'dragon', 'sfreeze', 'tbolt', 'meteor'];
+  const ELC = { fire: '#ff5a2a', ice: '#5bd6ff', thunder: '#ffe14d', heal: '#6bff9a', barrier: '#7fe7ff', dragon: '#ff7a1c', sfreeze: '#bff2ff', tbolt: '#fff36b', meteor: '#c98aff', ult: '#fff' };
+  const DESTROYER_AL = ['デストロイヤ', 'デストロイア', 'デストロイ', 'destroyer', 'destroy'];   // 究極呪文のしめくくりの言葉
   const UT = {
     eternal: { label: 'エターナル', al: ['エターナル', 'eternal'] },
     infinity: { label: 'インフィニティ', al: ['インフィニティ', 'インフィニテイ', 'インフィニチ', 'infinity'] },
     ultimate: { label: 'アルティメット', al: ['アルティメット', 'アルテメット', 'アルチメット', 'アルティメイト', 'ultimate'] },
     final: { label: 'ファイナル', al: ['ファイナル', 'final'] },
-    destroyer: { label: 'デストロイヤー', al: SPELLS.destroy.al },
+    destroyer: { label: 'デストロイヤー', al: DESTROYER_AL },
   };
   const UT_ORDER = ['eternal', 'infinity', 'ultimate', 'final', 'destroyer'];
   const UT_A = ['ultimate', 'final', 'destroyer'];
   const ULT_NAME = { A: 'アルティメット・ファイナル・デストロイヤー', B: 'エターナル・インフィニティ・アルティメット・ファイナル・デストロイヤー' };
   const LEARN_TEXT = {
-    ice: 'こおりの じゅもん。<br>ほのおや どろの てきに よくきく。',
-    heal: 'HPを かいふくする じゅもん。<br>MPを 3 つかう。',
-    thunder: 'いかずちの じゅもん。<br>みずの てきに よくきく。',
-    destroy: 'てき ぜんたいを ふきとばす だいまほう。<br>MPを 8 つかう。',
+    barrier: 'つぎに うける こうげきを<br>はんぶんに する じゅもん。<br>MPを 2 つかう。',
+    dragon: 'ほのおの だいまほう。<br>ファイヤーより ずっと つよい。<br>MPを 5 つかう。',
+    sfreeze: 'こおりの だいまほう。<br>フリーザーより ずっと つよい。<br>MPを 5 つかう。',
+    tbolt: 'いかずちの だいまほう。<br>サンダーより ずっと つよい。<br>MPを 5 つかう。',
+    meteor: 'てき ぜんたいに ほしを おとす だいまほう。<br>MPを 8 つかう。',
     ult: 'きゅうきょくの じゅもん。<br>1かいの たたかいで それぞれ 1どだけ。<br>ながく！ せいかくに！ さいだいおんりょうで！',
   };
 
   const ENEMIES = {
-    pururin: { name: 'プルリン', art: 'pururin', hp: 34, gauge: 9, atk: [5, 7], weak: null, shoutAt: 0.3, learn: 'ice', bgm: 'battle', bg: 'field', h: 58 },
-    dorohands: { name: 'ドロハンズ', art: 'dorohands', hp: 28, gauge: 6.5, atk: [6, 8], weak: 'ice', shoutAt: 0.3, group: true, max: 3, learn: 'heal', bgm: 'battle', bg: 'field',
+    // さいしょの相手。ファイヤー1〜2回で たおせる
+    kawachi: { name: 'カワチー', art: 'kawachi', hp: 14, gauge: 11, atk: [1, 2], weak: null, shoutAt: 0.3, learn: 'barrier', bgm: 'battle', bg: 'field', h: 46,
+      intro: ['ちいさくて まるくて… とても かわいい。'] },
+    pururin: { name: 'プルリン', art: 'pururin', hp: 30, gauge: 10, atk: [3, 5], weak: null, shoutAt: 0.3, learn: 'dragon', bgm: 'battle', bg: 'field', h: 58 },
+    dorohands: { name: 'ドロハンズ', art: 'dorohands', hp: 28, gauge: 6.5, atk: [6, 8], weak: 'ice', shoutAt: 0.3, group: true, max: 3, learn: 'sfreeze', bgm: 'battle', bg: 'field',
       intro: ['どろの からだは こおらせると もろそうだ。'] },
-    muza: { name: 'まおうムーザ', art: 'muza', hp: 520, gauge: 5.6, atk: [20, 25], big: { every: 3, atk: [34, 40], msg: 'は はげしい ほのおを はいた！' }, weak: 'ice', learn: 'thunder', bgm: 'boss', bg: 'castle', h: 88,
+    muza: { name: 'まおうムーザ', art: 'muza', hp: 520, gauge: 5.6, atk: [20, 25], big: { every: 3, atk: [34, 40], msg: 'は はげしい ほのおを はいた！' }, weak: 'ice', learn: 'tbolt', bgm: 'boss', bg: 'castle', h: 88,
       intro: ['りょうてに ほのおを まとっている…'] },
-    despierre: { name: 'デスピエール', resist: 0.5, learn: 'destroy', bgm: 'boss', bg: 'circus', h: 90, intro: ['みずの かめんを つけている…'],
+    despierre: { name: 'デスピエール', resist: 0.5, learn: 'meteor', bgm: 'boss', bg: 'circus', h: 90, intro: ['みずの かめんを つけている…'],
       forms: [
         { art: 'despierre1', hp: 160, weak: 'thunder', gauge: 5.2, atk: [16, 20] },
         { art: 'despierre2', hp: 160, weak: 'fire', gauge: 4.8, atk: [19, 24], msg: ['かめんが われた！', 'こおりの かめんに かわった！'] },
@@ -69,7 +86,7 @@
       sleep: true, estalos: true, shoutAt: 0.08, bg: 'abyss', h: 96, intro: ['…ねむっている ようだ。', 'おおごえを だすと おきてしまいそうだ…'] },
   };
   const STAGES = [
-    { title: 'はじまりの そうげん', battles: ['pururin', 'dorohands'] },
+    { title: 'はじまりの そうげん', battles: ['kawachi', 'pururin', 'dorohands'] },
     { title: 'まおうの しろ', battles: ['muza'] },
     { title: 'まよなかの サーカス', battles: ['despierre'] },
     { title: 'まかいの はて', battles: ['milgados', 'estalos'] },
@@ -79,13 +96,41 @@
   const norm = (s) => (s || '').normalize('NFKC').toLowerCase()
     .replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60))
     .replace(/[ー－―‐\-~〜\s・、。,.!！?？「」『』…]/g, '');
-  Object.values(SPELLS).forEach(s => { s.al = s.al.map(norm); });
+  Object.values(SPELLS).forEach(s => { s.al = s.al.map(norm); if (s.key) s.key = s.key.map(norm); if (s.up) s.up = s.up.map(norm); });
   Object.values(UT).forEach(s => { s.al = s.al.map(norm); });
+  const hasAny = (n, list) => list.some(a => n.includes(a));
   function findSpell(n) {
+    // 1) ながい呪文は、合言葉が聞こえた時点で確定(もとの呪文と つづきの言葉が そろっていても確定)
+    for (const id of P.spells) {
+      const s = SPELLS[id];
+      if (!s.big) continue;
+      if (hasAny(n, s.key)) return id;
+      if (s.from && s.up.length && hasAny(n, s.up) && hasAny(n, SPELLS[s.from].al)) return id;
+    }
+    // 2) それ以外は、いちばん早く出てきた呪文
     let best = null, bi = 1e9;
     for (const id of P.spells) for (const a of SPELLS[id].al) { const i = n.indexOf(a); if (i >= 0 && i < bi) { bi = i; best = id; } }
     return best;
   }
+  // 「サンダー」を溜めている間に「…ボルトレボリューション」まで言い切ったら、上の呪文に切り替える
+  function tryUpgrade(h) {
+    const c = B.charge, ns = [h.text].concat(h.alts || []).map(norm);
+    for (const id of P.spells) {
+      const s = SPELLS[id];
+      if (s.from !== c.id) continue;
+      if (!ns.some(n => hasAny(n, s.key) || hasAny(n, s.up))) continue;
+      if (P.mp < s.mp) { if (!c.noMp) { c.noMp = true; say('MPが たりない！', 'bad'); AudioSys.sfx('miss'); } return; }
+      c.id = id; AudioSys.sfx('word'); FX.flash(ELC[id], 0.3, 180);
+      return;
+    }
+  }
+  // たたかいを ここまで進めた人が おぼえているはずの呪文
+  function spellsUpTo(stage) {
+    const out = BASE_SPELLS.slice();
+    for (let i = 0; i < stage; i++) for (const id of STAGES[i].battles) { const l = ENEMIES[id].learn; if (l && l !== 'ult' && !out.includes(l)) out.push(l); }
+    return out;
+  }
+  const sortSpells = (a) => SP_ORDER.filter(id => a.includes(id));
   function lev(a, b) {
     const m = a.length, n = b.length; let prev = Array.from({ length: n + 1 }, (_, j) => j);
     for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
@@ -94,13 +139,13 @@
   function fuzzy(n) {
     if (n.length < 2 || n.length > 12) return null;
     let best = null, bs = 0;
-    for (const id of P.spells) { const a = SPELLS[id].al[0]; const s = 1 - lev(n, a) / Math.max(n.length, a.length); if (s > bs) { bs = s; best = id; } }
+    for (const id of P.spells) { const a = SPELLS[id].al[0]; if (!a) continue; const s = 1 - lev(n, a) / Math.max(n.length, a.length); if (s > bs) { bs = s; best = id; } }
     return bs >= 0.5 ? best : null;
   }
   const hasUltPrefix = (n) => ['eternal', 'infinity', 'ultimate', 'final'].some(k => UT[k].al.some(a => n.includes(a)));
 
   // ============================================================ 状態
-  const P = { name: 'ゆうしゃ', hp: CFG.hp, mp: CFG.mp, spells: ['fire'], ult: false };
+  const P = { name: 'ゆうしゃ', hp: CFG.hp, mp: CFG.mp, spells: BASE_SPELLS.slice(), ult: false, barrier: false };
   const stats = { maxVol: 0, maxDmg: 0, crits: 0 };
   const cal = { loud: 0 };
   let save = loadSave(), B = null, stageIdx = 0, lastShout = { url: null, text: '', peak: 0 }, newSpell = null;
@@ -132,14 +177,14 @@
     $('#hp-num').textContent = P.hp + '/' + CFG.hp;
     $('#mp-fill').style.width = (P.mp / CFG.mp * 100) + '%'; $('#mp-num').textContent = P.mp + '/' + CFG.mp;
     $('#status').classList.toggle('danger', h <= 0.25);
+    $('#status').classList.toggle('barrier', !!P.barrier);
   }
   function renderSpells() {
     let h = '';
-    const first = P.spells.length === 1 && !P.ult && !(save && save.cast);
     for (const id of SP_ORDER) {
       if (!P.spells.includes(id)) continue;
       const sp = SPELLS[id];
-      h += `<div class="sp ${P.mp < sp.mp ? 'off' : ''} ${newSpell === id ? 'new' : ''} ${first ? 'first' : ''} ${tapMode ? 'tap' : ''}" data-say="${sp.name}"><i style="background:${ELC[id]}"></i>${sp.name}${sp.mp ? `<em>MP${sp.mp}</em>` : ''}</div>`;
+      h += `<div class="sp ${sp.big ? 'long' : ''} ${P.mp < sp.mp ? 'off' : ''} ${newSpell === id ? 'new' : ''} ${tapMode ? 'tap' : ''}" data-say="${sp.name}" ${sp.big ? 'data-long="1"' : ''}><i style="background:${ELC[id]}"></i>${sp.name}${sp.mp ? `<em>MP${sp.mp}</em>` : ''}</div>`;
     }
     if (P.ult) for (const t of ['A', 'B']) {
       const used = B && B.ultUsed[t];
@@ -198,6 +243,7 @@
       const d = ENEMIES[id];
       B = { id, d, form: 0, gauge: 0, lock: 0, state: 'intro', actions: 0, units: [], charge: null, chant: null, pending: null,
         ultUsed: { A: false, B: false }, sleeping: !!d.sleep, chips: 0, loudT: 0, t0: 0, hintAt: 0, hintN: 0, resolve };
+      P.barrier = false;
       const f = fdef();
       setBg(d.bg); $('#mons').innerHTML = ''; msgEl.innerHTML = ''; FX.clear();
       $('#chargeui').hidden = $('#chantui').hidden = $('#shoutui').hidden = true;
@@ -226,7 +272,8 @@
     if (screamWait) { screamWait.text = h.text.trim(); return; }
     if (!B) return;
     if (B.state === 'shout') { if (B.shout) { B.shout.text = h.text.trim(); B.shout.chars = Math.max(B.shout.chars, norm(h.text).length); } return; }
-    if (B.state !== 'active' || B.charge) return;
+    if (B.state !== 'active') return;
+    if (B.charge) { tryUpgrade(h); return; }
     if (B.lock > 0.25 || B.wantShout || B.wantMorph || B.wantWake) { B.pending = Object.assign({ t: performance.now() }, h); return; }
     hear(h);
   });
@@ -264,10 +311,11 @@
   }
   function drawCharge(c, dur) {
     const sp = SPELLS[c.id], pw = power(dur, c.peak), el = $('#charge-name');
-    el.textContent = sp.stem + 'ー'.repeat(1 + Math.min(8, Math.floor(Math.max(0, dur - 0.5) * 3.5))) + '！';
-    el.style.color = ELC[c.id]; el.style.transform = 'none';
-    const fit = FX.size().W * 0.94 / Math.max(1, el.scrollWidth);
-    el.style.transform = `scale(${Math.min(1 + pw.p * 0.35, fit).toFixed(2)})`;
+    el.textContent = sp.stem + 'ー'.repeat(sp.big ? Math.min(4, Math.floor(Math.max(0, dur - 1.6) * 3.5)) : 1 + Math.min(8, Math.floor(Math.max(0, dur - 0.5) * 3.5))) + '！';
+    // ながい名前でも まんなかに おさまるよう、はばに合わせて ちぢめる
+    el.style.color = ELC[c.id]; el.style.transform = 'translateX(-50%)';
+    const fit = FX.size().W * 0.94 / Math.max(1, el.offsetWidth);
+    el.style.transform = `translateX(-50%) scale(${Math.min(1 + pw.p * 0.35, fit).toFixed(2)})`;
     $('#charge-fill').style.width = (pw.p * 100).toFixed(0) + '%';
   }
   function updateCharge(now) {
@@ -284,13 +332,21 @@
     const pw = c.vol ? power((c.last - c.t0) / 1000, c.peak) : { len: CFG.noVolPower, vol: CFG.noVolPower, p: CFG.noVolPower };
     if (c.vol) stats.maxVol = Math.max(stats.maxVol, c.peak);
     if (!save || !save.cast) { save = save || {}; save.cast = true; setTimeout(() => say('（ごびを のばして おおきく さけぶと いりょくアップ！）', 'hint'), 1300); }
-    say(`${P.name}は ${sp.name}を となえた！`);
+    if (sp.big) { say(`${P.name}は じゅもんを となえた！`); say(`${sp.name}！`, 'good'); }
+    else say(`${P.name}は ${sp.name}を となえた！`);
     if (B.sleeping) {
-      const loud = c.vol ? c.peak > B.wakeLine : c.id === 'destroy';
+      const loud = c.vol ? c.peak > B.wakeLine : c.id === 'meteor';
       if (loud) wake();
     }
-    if (c.id === 'heal') doHeal(pw, c.q); else if (B.sleeping) chipHit(); else attack(sp, c.id, pw, c.q);
+    if (c.id === 'heal') doHeal(pw, c.q); else if (c.id === 'barrier') doBarrier(); else if (B.sleeping) chipHit(); else attack(sp, c.id, pw, c.q);
     renderStatus(); renderSpells();
+  }
+  function doBarrier() {
+    const s = FX.size();
+    P.barrier = true;
+    FX.barrier(s.W / 2, s.H * 0.86); AudioSys.sfx('barrier');
+    say('ひかりの かべが あらわれた！', 'good'); say('（つぎの こうげきを はんぶんに する）', 'hint');
+    B.lock = Math.max(B.lock, 0.6);
   }
   function doHeal(pw, q) {
     const amt = Math.round(CFG.healBase * (1 + 0.6 * pw.p) * q), s = FX.size();
@@ -316,12 +372,9 @@
   function attack(sp, id, pw, q) {
     const f = fdef(), targets = sp.all ? alive() : [target()];
     const fxAt = sp.all && targets.length > 1 ? { x: FX.size().W / 2, y: FX.size().H * 0.55 } : center(targets[0]);
-    const delay = id === 'destroy' ? 480 : 90;
-    if (id === 'fire') { FX.fire(fxAt.x, fxAt.y, pw.p); AudioSys.sfx('fire'); }
-    else if (id === 'ice') { FX.ice(fxAt.x, fxAt.y, pw.p); AudioSys.sfx('ice'); }
-    else if (id === 'thunder') { FX.thunder(fxAt.x, fxAt.y, pw.p); AudioSys.sfx('thunder'); }
-    else { FX.destroy(fxAt.x, fxAt.y, pw.p); AudioSys.sfx('destroy'); }
-    B.lock = Math.max(B.lock, id === 'destroy' ? 1.5 : 0.8);
+    const delay = { meteor: 760, dragon: 420, sfreeze: 380, tbolt: 300 }[id] || 90;
+    FX[sp.fx || id](fxAt.x, fxAt.y, pw.p); AudioSys.sfx(sp.fx || id);
+    B.lock = Math.max(B.lock, id === 'meteor' ? 1.7 : sp.big ? 1.2 : 0.8);
     let tag = '';
     if (sp.elem && f.weak === sp.elem) tag = 'weak'; else if (sp.elem && f.weak && B.d.resist) tag = 'resist';
     const mul = tag === 'weak' ? 2 : tag === 'resist' ? B.d.resist : 1;
@@ -439,9 +492,12 @@
     let dmg = RI(...(big ? f.big.atk : f.atk)); if (B.d.group) dmg += 2 * (n - 1);
     alive().forEach(u => anim(u.el, 'atk', 500));
     FX.slash(); AudioSys.sfx('enemyAtk'); setTimeout(() => AudioSys.sfx('hurt'), 120);
+    const guarded = P.barrier;
+    if (guarded) { P.barrier = false; dmg = Math.max(1, Math.ceil(dmg * CFG.barrierMul)); FX.barrier(s.W / 2, s.H * 0.86); AudioSys.sfx('guard'); }
     P.hp = Math.max(0, P.hp - dmg);
     FX.floater('-' + dmg, s.W / 2, s.H * 0.86, 'hurt'); anim($('#status'), 'shake', 500);
     say(big ? `${B.d.name}${f.big.msg}` : `${B.d.name}の こうげき！`);
+    if (guarded) say('バリアが こうげきを やわらげた！', 'good');
     say(`${P.name}は ${dmg}の ダメージを うけた！`, 'bad');
     B.lock = Math.max(B.lock, 0.6); renderStatus();
     if (P.hp <= 0) {
@@ -468,9 +524,12 @@
   function updateShout(dt) {
     const s = B.shout; if (!s || !s.ready || s.ending) return;
     s.t += dt;
-    const has = Voice.levelOK(), lv = has ? Voice.st.raw : 0, k = clamp((lv - 0.5) / 0.4);
+    // 小さめの声でも届くように、まわりの音より はっきり大きければ「叫び」と数える。大声ほど早く たまる
+    const has = Voice.levelOK(), lv = has ? Voice.st.raw : 0;
+    const base = Math.max(0.2, Math.min(0.5, Voice.st.floor + CFG.shoutGap));
+    const k = lv > base ? Math.max(CFG.shoutMinK, clamp((lv - 0.5) / 0.4)) : 0;
     s.score += dt * k; s.peak = Math.max(s.peak, lv); s.has = s.has || has;
-    $('#shout-meter i').style.width = (clamp(s.has ? s.score / CFG.shoutFull : s.chars / 8) * 100).toFixed(0) + '%';
+    $('#shout-meter i').style.width = (clamp(Math.max(s.has ? s.score / CFG.shoutFull : 0, s.chars / 8)) * 100).toFixed(0) + '%';
     $('#shout-time i').style.width = (clamp(1 - s.t / CFG.shoutTime) * 100).toFixed(0) + '%';
     if (k > 0.1) { const c = center(target()); FX.shoutSpark(c.x, c.y, k); if (k > 0.5) FX.shake(5 * k, 0.12); }
     if (s.t >= CFG.shoutTime) endShout();
@@ -482,7 +541,8 @@
     await Voice.shoutPhase(false);
     $('#shoutui').hidden = true; AudioSys.duck(1);
     if (B !== b) return;
-    const sc = s.has ? clamp(s.score / CFG.shoutFull) : clamp(s.chars / 8);
+    // 音量で測れた分と、ことばとして聞き取れた分の、大きいほうを採る
+    const sc = clamp(Math.max(s.has ? s.score / CFG.shoutFull : 0, s.chars / 8));
     keepShout(url, s.text, s.peak);
     const u = target(), c = center(u);
     if (sc >= CFG.shoutNeed) {
@@ -534,7 +594,7 @@
         B.loudT = Voice.st.raw > B.wakeLine ? B.loudT + dt : Math.max(0, B.loudT - dt * 2);
         if (B.loudT > 0.16) wake();
       }
-      if (B.id === 'pururin' && !(save && save.cast) && B.hintN < 3 && now - B.hintAt > 6000) { B.hintAt = now; B.hintN++; say('（こえに だして 「ファイヤー」と となえよう）', 'hint'); }
+      if (B.id === 'kawachi' && !(save && save.cast) && B.hintN < 3 && now - B.hintAt > 6000) { B.hintAt = now; B.hintN++; say('（こえに だして 「ファイヤー」と となえよう）', 'hint'); }
       renderGauge();
     } else if (B.state === 'shout') updateShout(dt);
   }
@@ -549,7 +609,7 @@
   async function learnCard(id) {
     newSpell = id; renderSpells();
     const name = id === 'ult' ? `${ULT_NAME.A}<br><br>${ULT_NAME.B}` : SPELLS[id].name;
-    showOv(`<p>${P.name}は あたらしい じゅもんを おぼえた！</p><p class="big" style="${id === 'ult' ? 'font-size:1.05em' : ''}">${name}</p><p class="sub">${LEARN_TEXT[id]}</p><button class="btn" id="lc-ok">つぎへ</button>`, 'clear');
+    showOv(`<p>${P.name}は あたらしい じゅもんを おぼえた！</p><p class="big" style="${id === 'ult' ? 'font-size:1.05em' : SPELLS[id].big ? 'font-size:1.3em;word-break:normal' : ''}">${name}</p><p class="sub">${LEARN_TEXT[id]}</p><button class="btn" id="lc-ok">つぎへ</button>`, 'clear');
     AudioSys.jingle('learn');
     const my = runId;
     await Promise.race([tapOn('#lc-ok'), sleep(9000)]);
@@ -579,7 +639,7 @@
       if (res === 'dead') return onDeath(i, id);
       const d = ENEMIES[id];
       if (d.learn === 'ult') { if (!P.ult) { P.ult = true; await learnCard('ult'); } }
-      else if (d.learn && !P.spells.includes(d.learn)) { P.spells.push(d.learn); await learnCard(d.learn); }
+      else if (d.learn && !P.spells.includes(d.learn)) { P.spells = sortSpells(P.spells.concat(d.learn)); await learnCard(d.learn); }
       if (my !== runId) return;
       saveGame();
     }
@@ -708,10 +768,13 @@
     AudioSys.stopBgm(0.4);
     stats.maxVol = stats.maxDmg = stats.crits = 0;
     if (cont && save) {
-      P.name = save.name; P.spells = save.spells.slice(); P.ult = !!save.ult; cal.loud = save.loud || 0;
-      return runStage(Math.min(save.stage || 0, STAGES.length - 1));
+      // 古いセーブでも、いまの呪文の並びに そろえる(デストロイヤーは メテオに おきかえ)
+      const st = Math.min(save.stage || 0, STAGES.length - 1);
+      const old = (save.spells || []).map(id => id === 'destroy' ? 'meteor' : id).filter(id => SPELLS[id]);
+      P.name = save.name; P.spells = sortSpells(spellsUpTo(st).concat(old)); P.ult = !!save.ult; cal.loud = save.loud || 0;
+      return runStage(st);
     }
-    P.spells = ['fire']; P.ult = false; save = null; stageIdx = 0;
+    P.spells = BASE_SPELLS.slice(); P.ult = false; save = null; stageIdx = 0;
     try { localStorage.removeItem('donarugo_save'); } catch (e) { }
     show('game'); setBg('field'); renderStatus(); renderSpells(); msgEl.innerHTML = '';
     await nameEntry();
@@ -739,7 +802,7 @@
   // ---------- デバッグ ----------
   window.DQ = {
     P, CFG, stats, get B() { return B; }, say: (t, v = dbg.vol, d = dbg.dur) => Voice.sim(t, v, d), yell: (v = 0.95, d = 2500) => Voice.simLevel(v, d),
-    stage: (i) => { P.spells = SP_ORDER.slice(0, [1, 3, 4, 5][i]); P.ult = false; runStage(i); },
+    stage: (i) => { P.spells = sortSpells(spellsUpTo(i)); P.ult = false; runStage(i); },
     kill: () => { if (B && B.state === 'active') { const u = target(); applyDmg(u, u.hp); renderEnemy(); } },
     estalos: async () => { P.spells = SP_ORDER.slice(); P.ult = true; stageIdx = 3; show('game'); P.hp = CFG.hp; P.mp = CFG.mp; runId++; const my = runId; const r = await runBattle('estalos'); if (my !== runId) return; r === 'dead' ? onDeath(3, 'estalos') : result('true'); },
     result,

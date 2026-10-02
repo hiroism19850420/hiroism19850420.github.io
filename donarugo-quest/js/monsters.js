@@ -14,6 +14,33 @@
   const shadow = (rx = 130, y = 372) => `<ellipse cx="200" cy="${y}" rx="${rx}" ry="${rx * 0.12}" fill="#000" opacity=".32"/>`;
   const wrap = (inner, cls = '') => `<svg class="mon-svg ${cls}" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg" overflow="visible">${inner}</svg>`;
 
+  // ---------------------------------------------------------------- カワチー(さいしょの相手。ちいさくて まるい)
+  function kawachi() {
+    const p = 'kw' + (U++);
+    const body = 'M84 286 C84 196 136 150 200 150 C264 150 316 196 316 286 C316 342 268 366 200 366 C132 366 84 342 84 286 Z';
+    const spark = (x, y, s) => `<path class="flicker" d="M${x} ${y - 13 * s} Q${x + 2 * s} ${y - 2 * s} ${x + 13 * s} ${y} Q${x + 2 * s} ${y + 2 * s} ${x} ${y + 13 * s} Q${x - 2 * s} ${y + 2 * s} ${x - 13 * s} ${y} Q${x - 2 * s} ${y - 2 * s} ${x} ${y - 13 * s} Z" fill="#fff6b0" ${S3}/>`;
+    return wrap(`<defs>${rg(p + 'b', '#ffffff', '#ffe3cf', .4, .3, .9)}${rg(p + 'e', '#ffd9e2', '#ff9db5', .4, .35, .8)}${lg(p + 'r', '#ff8fb1', '#e8436e')}</defs>
+      ${shadow(104, 368)}
+      <g class="part-body">
+      ${both(`<circle cx="132" cy="170" r="34" fill="url(#${p}b)" ${S}/><circle cx="134" cy="174" r="17" fill="url(#${p}e)"/>`)}
+      <path d="M200 362 C232 372 258 366 262 352" fill="none" ${S}/>
+      ${both(`<ellipse cx="164" cy="362" rx="27" ry="13" fill="url(#${p}b)" ${S}/>`)}
+      <path d="${body}" fill="url(#${p}b)" ${S}/>
+      <path d="M100 300 C120 344 280 344 300 300 C296 340 258 358 200 358 C142 358 104 340 100 300 Z" fill="#ffc9ad" opacity=".5"/>
+      <ellipse cx="150" cy="190" rx="34" ry="15" transform="rotate(-28 150 190)" fill="#fff" opacity=".9"/>
+      ${both(`<ellipse cx="96" cy="292" rx="17" ry="24" transform="rotate(24 96 292)" fill="url(#${p}b)" ${S}/>`)}
+      ${both(`<ellipse cx="160" cy="258" rx="12" ry="15" fill="${OL}"/><circle cx="155" cy="251" r="5.5" fill="#fff"/><circle cx="164" cy="264" r="2.5" fill="#fff" opacity=".9"/>`)}
+      ${both(`<ellipse cx="128" cy="286" rx="19" ry="11" fill="#ff9db5" opacity=".75"/>`)}
+      <path d="M186 276 Q193 288 200 277 Q207 288 214 276" fill="none" ${S5}/>
+      <g transform="rotate(-18 262 150)">
+        <path d="M262 150 C238 128 226 136 228 152 C226 168 240 174 262 152 Z" fill="url(#${p}r)" ${S5}/>
+        <path d="M262 150 C286 128 298 136 296 152 C298 168 284 174 262 152 Z" fill="url(#${p}r)" ${S5}/>
+        <circle cx="262" cy="151" r="9" fill="#ffd0dc" ${S3}/>
+      </g>
+      ${spark(72, 196, 1)}${spark(334, 232, .8)}${spark(318, 120, .6)}
+      </g>`);
+  }
+
   // ---------------------------------------------------------------- プルリン
   function pururin() {
     const p = 'pu' + (U++);
@@ -275,7 +302,7 @@
   }
 
   const MAP = {
-    pururin: pururin, dorohands: dorohands, muza: muza,
+    kawachi: kawachi, pururin: pururin, dorohands: dorohands, muza: muza,
     despierre1: () => despierre(0), despierre2: () => despierre(1), despierre3: () => despierre(2),
     milgados1: milgados1, milgados2: milgados2,
     estalos_sleep: () => estalos(false), estalos: () => estalos(true),

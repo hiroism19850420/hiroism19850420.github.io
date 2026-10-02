@@ -109,6 +109,16 @@ window.AudioSys = (function () {
     enemyAtk() { noise(0.22, { f0: 700, f1: 120, vol: 0.6 }); tone(140, 0.25, { type: 'sawtooth', to: 45, vol: 0.4 }); },
     hurt() { tone(330, 0.1, { vol: 0.2 }); tone(220, 0.14, { at: 0.09, vol: 0.2 }); tone(147, 0.2, { at: 0.2, vol: 0.2 }); },
     destroy() { tone(60, 0.5, { type: 'sawtooth', to: 240, vol: 0.3 }); noise(1.5, { at: 0.45, f0: 3200, f1: 70, vol: 0.8 }); tone(70, 1.3, { type: 'sine', at: 0.45, to: 28, vol: 0.7 }); },
+    dragon() { noise(0.45, { f0: 200, f1: 1800, vol: 0.4, atk: 0.3 }); tone(70, 0.45, { type: 'sawtooth', to: 200, vol: 0.25 });
+      noise(1.1, { at: 0.38, f0: 400, f1: 3200, vol: 0.75, atk: 0.04 }); tone(120, 1.0, { type: 'sawtooth', at: 0.38, to: 40, vol: 0.4 }); noise(0.6, { at: 0.6, type: 'bandpass', f0: 1100, f1: 300, vol: 0.4 }); },
+    sfreeze() { [2400, 3100, 3800, 2900, 4300, 3500].forEach((f, i) => tone(f, 0.22, { type: 'sine', at: i * 0.045, vol: 0.14 })); noise(0.35, { type: 'highpass', f0: 5000, vol: 0.28 });
+      [4600, 3600, 5200, 4000, 5600, 3000].forEach((f, i) => tone(f, 0.3, { type: 'sine', at: 0.34 + i * 0.04, vol: 0.15 })); noise(0.9, { at: 0.34, type: 'highpass', f0: 3500, vol: 0.5 }); tone(1600, 0.7, { type: 'triangle', at: 0.34, to: 300, vol: 0.2 }); },
+    tbolt() { [0, 0.07, 0.14, 0.21].forEach(d => noise(0.1, { at: d, type: 'highpass', f0: 2500, vol: 0.5 })); noise(1.3, { at: 0.28, f0: 2200, f1: 90, vol: 0.8 }); tone(100, 1.1, { type: 'sine', at: 0.28, to: 30, vol: 0.6 });
+      noise(0.14, { at: 0.28, type: 'highpass', f0: 3000, vol: 0.7 }); },
+    meteor() { [0, 1, 2, 3, 4, 5].forEach(i => { tone(1400 - i * 60, 0.26, { type: 'sawtooth', at: i * 0.085, to: 200, vol: 0.12 }); noise(0.2, { at: i * 0.085 + 0.26, type: 'bandpass', f0: 700, vol: 0.4 }); });
+      tone(1200, 0.34, { type: 'sawtooth', at: 0.57, to: 120, vol: 0.2 }); noise(1.5, { at: 0.91, f0: 3200, f1: 70, vol: 0.85 }); tone(70, 1.3, { type: 'sine', at: 0.91, to: 28, vol: 0.7 }); },
+    barrier() { [660, 880, 1320].forEach((f, i) => tone(f, 0.35, { type: 'sine', at: i * 0.07, vol: 0.16 })); tone(1760, 0.5, { type: 'triangle', at: 0.2, vol: 0.1 }); },
+    guard() { tone(1320, 0.12, { type: 'triangle', vol: 0.2 }); tone(880, 0.25, { type: 'sine', at: 0.05, vol: 0.18 }); noise(0.12, { type: 'highpass', f0: 4000, vol: 0.2 }); },
     ultimate() { tone(80, 1.2, { type: 'sawtooth', to: 1400, vol: 0.28 }); noise(1.2, { type: 'bandpass', f0: 300, f1: 5000, vol: 0.3, atk: 0.8 });
       noise(2.4, { at: 1.2, f0: 5000, f1: 50, vol: 0.9 }); tone(60, 2.2, { type: 'sine', at: 1.2, to: 22, vol: 0.8 }); [0, 0.3, 0.55, 0.85].forEach(d => noise(0.5, { at: 1.5 + d, type: 'bandpass', f0: 500, vol: 0.5 })); },
     shout() { tone(440, 0.16, { type: 'sawtooth', vol: 0.25 }); tone(660, 0.16, { type: 'sawtooth', at: 0.14, vol: 0.25 }); tone(880, 0.4, { type: 'sawtooth', at: 0.28, vol: 0.28 }); },

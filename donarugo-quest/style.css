@@ -43,6 +43,8 @@ button{font:inherit;color:inherit}
 .stat .bar i.mid{background:#ffd84a}.stat .bar i.low{background:#ff4a3b}
 .stat span{width:4.2em;text-align:right}
 #status.danger{border-color:#ff5a4a;color:#ff8a7a}
+#status.barrier{border-color:#7fe7ff;box-shadow:0 0 0 .1em #000,0 0 .9em .15em rgba(127,231,255,.75)}
+#status.barrier #pname::after{content:" ◆";color:#7fe7ff}
 #status.heal{animation:healglow .7s}
 @keyframes healglow{30%{box-shadow:0 0 0 .1em #000,0 0 1.2em .4em #6bff9a}}
 
@@ -86,8 +88,8 @@ button{font:inherit;color:inherit}
 .dmg.small{font-size:1.1em}
 @keyframes dmgpop{0%{transform:translate(-50%,-10%) scale(.3);opacity:0}16%{transform:translate(-50%,-90%) scale(1.25);opacity:1}30%{transform:translate(-50%,-60%) scale(1)}80%{opacity:1}100%{transform:translate(-50%,-130%) scale(1);opacity:0}}
 
-#chargeui{position:absolute;left:0;right:0;bottom:3%;text-align:center}
-#charge-name{font-family:"Dela Gothic One","DotGothic16",sans-serif;font-size:1.7em;white-space:nowrap;text-shadow:.07em .07em 0 #000,-.07em -.07em 0 #000,.07em -.07em 0 #000,-.07em .07em 0 #000;transform-origin:50% 100%}
+#chargeui{position:absolute;left:0;right:0;bottom:3%;text-align:left}
+#charge-name{display:inline-block;position:relative;left:50%;font-family:"Dela Gothic One","DotGothic16",sans-serif;font-size:1.7em;white-space:nowrap;text-shadow:.07em .07em 0 #000,-.07em -.07em 0 #000,.07em -.07em 0 #000,-.07em .07em 0 #000;transform-origin:50% 100%}
 .pbar{margin:.25em auto 0;width:78%;height:.75em;background:rgba(0,0,0,.8);border:.12em solid #fff;border-radius:.4em;overflow:hidden}
 .pbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4aa3ff,#ffe14d 60%,#ff4a3b)}
 #chantui{position:absolute;left:3%;right:3%;bottom:3%;text-align:center;background:rgba(0,0,0,.72);border:.12em solid #ffe14d;border-radius:.45em;padding:.4em .3em .5em}
@@ -129,6 +131,7 @@ button{font:inherit;color:inherit}
 @keyframes newsp{to{color:#ffe14d}}
 .sp.wide{grid-column:1/3;font-size:.72em;white-space:normal;line-height:1.3;align-items:flex-start}
 .sp.wide i{margin-top:.35em}.sp.wide em{white-space:nowrap}
+.sp.long{grid-column:1/3;font-size:.8em;line-height:1.3}
 .sp.first{font-size:1.3em;grid-column:1/3;justify-content:center;padding:.25em 0;animation:pulsetxt 1s ease-in-out infinite alternate}
 @keyframes pulsetxt{to{color:#ffe14d;transform:scale(1.06)}}
 .sp.tap{cursor:pointer}

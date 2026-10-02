@@ -100,6 +100,66 @@ window.FX = (function () {
       for (let i = 0; i < (big ? 5 : 2); i++) setTimeout(() => bolt(x + R(-40, 40) * u, -2 * u, x + R(-10, 10) * u, y, .3, '#fff', 2), 150 + i * 180);
     }, 1200);
   }
+  // ---------- ながい呪文 ----------
+  function dragon(x, y, pw) {
+    // 炎の竜が うねりながら立ちのぼり、敵のところで はじける
+    const u = U();
+    for (let i = 0; i < 70; i++) {
+      const t = i / 70, px = x + Math.sin(t * 9) * 20 * u * (1 - t * 0.6), py = H * 1.02 - (H * 1.02 - y) * t;
+      p({ x: px, y: py, vx: R(-6, 6) * u, vy: R(-24, -8) * u, life: R(.35, .6), size: (2.5 + 5 * t) * u, grow: -3 * u, color: pick(['#ffe14d', '#ff9a1c', '#ff4a1c', '#fff3a0']), delay: t * 0.36 });
+    }
+    setTimeout(() => {
+      fire(x, y, 1);
+      burst(x, y, 90, ['#fff3a0', '#ffd24a', '#ff7a1c', '#ff3b1c'], 170, 1.0, 6);
+      for (let i = 0; i < 3; i++) p({ x, y, life: .6 + i * .12, size: 6 * u, grow: (120 + i * 40) * u, color: i ? '#ff9a1c' : '#fff3a0', shape: 'r', w: (2.4 - i * .5) * u });
+      flash('#ff7a1c', .75, 380); shake(13 + pw * 8, .6);
+    }, 380);
+  }
+  function sfreeze(x, y, pw) {
+    const u = U();
+    ice(x, y, 1);
+    for (let i = 0; i < 22; i++) { const a = i / 22 * Math.PI * 2, d = R(55, 80) * u; p({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d, vx: -Math.cos(a) * d * 2.6, vy: -Math.sin(a) * d * 2.6, life: .36, size: R(4, 8) * u, color: pick(['#ffffff', '#cdf6ff', '#8fe4ff']), shape: 'd', rot: a + Math.PI / 2 }); }
+    setTimeout(() => {
+      for (let i = 0; i < 26; i++) { const a = R(0, Math.PI * 2), sp = R(60, 150) * u; p({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: R(.6, 1.1), size: R(4, 9) * u, color: pick(['#ffffff', '#e6fbff', '#9fe8ff', '#5bc8ff']), shape: 'd', rot: R(0, 6), vr: R(-8, 8), drag: 2 }); }
+      for (let i = 0; i < 3; i++) p({ x, y, life: .6 + i * .14, size: 6 * u, grow: (120 + i * 45) * u, color: i % 2 ? '#8fe4ff' : '#fff', shape: 'r', w: (2.2 - i * .5) * u });
+      for (let i = 0; i < 40; i++) p({ x: R(0, W), y: R(-10, 0) * u, vx: R(-6, 6) * u, vy: R(40, 90) * u, life: R(.8, 1.4), size: R(.7, 1.8) * u, color: '#fff', delay: R(0, .3) });
+      flash('#e6fbff', .8, 420); shake(12 + pw * 8, .6);
+    }, 340);
+  }
+  function tbolt(x, y, pw) {
+    const u = U();
+    for (let i = 0; i < 7; i++) setTimeout(() => { bolt(x + R(-46, 46) * u, -2 * u, x + R(-8, 8) * u, y + R(-6, 10) * u, .3, i % 2 ? '#fff36b' : '#ffe95a', 2.2); flash('#fffbd0', .6, 120); }, i * 70);
+    setTimeout(() => {
+      burst(x, y, 80, ['#fff', '#fff36b', '#ffe14d'], 190, .7, 3);
+      for (let i = 0; i < 2; i++) p({ x, y, life: .5 + i * .15, size: 6 * u, grow: (150 + i * 50) * u, color: i ? '#ffe14d' : '#fff', shape: 'r', w: (2.4 - i * .7) * u });
+      for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; bolt(x, y, x + Math.cos(a) * 60 * u, y + Math.sin(a) * 60 * u, .22, '#fff', 1.2); }
+      flash('#fff', .9, 380); shake(15 + pw * 8, .65);
+    }, 280);
+  }
+  function meteor(x, y, pw) {
+    // ほしが つぎつぎ ななめに ふってきて、さいごに 大きいのが おちる
+    const u = U(), n = 6;
+    const drop = (tx, ty, big) => {
+      const sx = tx + R(34, 60) * u, sy = -8 * u, T = big ? 0.34 : 0.26;
+      const vx = (tx - sx) / T, vy = (ty - sy) / T;
+      p({ x: sx, y: sy, vx, vy, life: T, size: (big ? 8 : 4.5) * u, color: '#fff3c0' });
+      for (let k = 1; k <= 7; k++) p({ x: sx, y: sy, vx, vy, life: T, size: (big ? 6.5 : 3.6) * u * (1 - k * .1), grow: -4 * u, color: pick(['#ffd24a', '#ff8a1c', '#c98aff']), delay: k * .022 });
+      setTimeout(() => {
+        burst(tx, ty, big ? 130 : 30, ['#fff', '#ffd24a', '#ff8a1c', '#c98aff'], big ? 200 : 110, big ? 1.2 : .7, big ? 7 : 4);
+        p({ x: tx, y: ty, life: big ? .8 : .45, size: 5 * u, grow: (big ? 190 : 90) * u, color: '#fff', shape: 'r', w: (big ? 2.6 : 1.6) * u });
+        if (big) { p({ x: tx, y: ty, life: .5, size: 10 * u, grow: 160 * u, color: '#ffe9c0' }); flash('#fff', .95, 520); shake(16 + pw * 10, .8); }
+        else { flash('#ffd24a', .3, 140); shake(6, .2); }
+      }, T * 1000);
+    };
+    for (let i = 0; i < n; i++) setTimeout(() => drop(x + R(-30, 30) * u, y + R(-16, 16) * u, false), i * 85);
+    setTimeout(() => drop(x, y, true), n * 85 + 60);
+  }
+  function barrier(x, y) {
+    const u = U();
+    for (let i = 0; i < 3; i++) p({ x, y, life: .55 + i * .12, size: 8 * u, grow: (90 + i * 30) * u, color: i % 2 ? '#fff' : '#7fe7ff', shape: 'r', w: (1.8 - i * .4) * u, delay: i * .06 });
+    for (let i = 0; i < 26; i++) { const a = Math.PI + i / 25 * Math.PI, d = 34 * u; p({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * .6, vx: 0, vy: R(-26, -10) * u, life: R(.5, .9), size: R(1, 2.4) * u, color: pick(['#7fe7ff', '#fff', '#bff2ff']), shape: pick(['c', 'd']), delay: R(0, .2) }); }
+    flash('#7fe7ff', .28, 300);
+  }
   function crit(x, y) {
     const u = U();
     for (let i = 0; i < 14; i++) { const a = i / 14 * Math.PI * 2; p({ x, y, vx: Math.cos(a) * 150 * u, vy: Math.sin(a) * 150 * u, life: .35, size: 9 * u, color: '#fff', shape: 'l', rot: a, drag: 3, w: 1.2 * u }); }
@@ -166,5 +226,5 @@ window.FX = (function () {
   }
   function clear() { ps = []; bolts = []; dark = darkTo = 0; }
 
-  return { init, resize, update, clear, flash, shake, darken, floater, fire, ice, thunder, heal, destroy, ultimate, crit, chip, slash, shoutSpark, shoutEnd, dieDust, size: () => ({ W, H }) };
+  return { init, resize, update, clear, flash, shake, darken, floater, fire, ice, thunder, heal, destroy, dragon, sfreeze, tbolt, meteor, barrier, ultimate, crit, chip, slash, shoutSpark, shoutEnd, dieDust, size: () => ({ W, H }) };
 })();
