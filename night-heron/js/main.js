@@ -13,6 +13,9 @@
     paused: false,
     debug: C.DEBUG,
     time: 0,
+    captureT: 0,   // 捕まった演出の残り時間
+    captures: 0,   // 捕まった回数
+    enemies: [],
     fps: 60,
     view: { w: 640, h: 360, scale: 1 } // w, h は画面に映るワールドの大きさ
   };
@@ -69,10 +72,56 @@
   // ---------- update / draw ----------
   function update(dt) {
     Game.time += dt;
+    if (Game.captureT > 0) {
+      // 捕まった：少し止めてから、開始位置に戻す
+      Game.captureT -= dt;
+      if (Game.captureT <= 0) reset();
+      return;
+    }
     player.update(dt);
     for (const e of Game.enemies) e.update(dt, player);
+    separateEnemies();
+    NH.Alert.update(dt);
     camera.update(dt, player, view, map);
     UI.update(dt, player, map);
+  }
+
+  // 敵どうしが1点に重ならないよう、近すぎる組を少し押し離す
+  function separateEnemies() {
+    const E = C.ENEMY, MIN = 16, list = Game.enemies;
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i], b = list[j];
+        if (a.state === 'patrol' && b.state === 'patrol') continue;
+        let dx = b.x - a.x, dy = b.y - a.y;
+        const d = Math.hypot(dx, dy);
+        if (d >= MIN) continue;
+        if (d < 0.01) { dx = 1; dy = 0; } else { dx /= d; dy /= d; }
+        const push = (MIN - d) / 2;
+        for (const [e, s] of [[a, -1], [b, 1]]) {
+          const nx = e.x + dx * push * s, ny = e.y + dy * push * s;
+          if (!map.rectSolid(nx - E.HIT_W / 2, ny - E.HIT_H / 2, E.HIT_W, E.HIT_H)) { e.x = nx; e.y = ny; }
+        }
+      }
+    }
+  }
+
+  // 仮の代償：追跡中の敵に追いつかれたら、開始位置からやり直し（フェーズ5でライフ制に置き換える）
+  Game.capture = function () {
+    if (Game.captureT > 0) return;
+    Game.captureT = 1.8;
+    Game.captures++;
+    NH.Audio.play('caught');
+  };
+
+  function reset() {
+    Game.captureT = 0;
+    NH.Alert.reset();
+    player.init(map);
+    Game.enemies = map.enemyDefs.map((def) => new NH.Enemy(def));
+    for (const e of Game.enemies) e.update(0, player);
+    camera.snap(player, view, map);
+    UI.zone = null;
   }
 
   function draw() {
@@ -168,10 +217,23 @@
       ctx.lineTo(player.x, player.y);
       ctx.stroke();
 
-      const label = e.state + (e.state === 'patrol' ? ':' + e.phase : '');
+      // A* の経路（これから通る部分）
+      if (e.path && e.path.length) {
+        ctx.strokeStyle = '#f0f';
+        ctx.beginPath();
+        ctx.moveTo(e.x, e.y);
+        for (let i = e.pathI; i < e.path.length; i++) ctx.lineTo(e.path[i].x, e.path[i].y);
+        ctx.stroke();
+        const g = e.path[e.path.length - 1];
+        ctx.fillStyle = '#f0f';
+        ctx.fillRect(g.x - 2, g.y - 2, 4, 4);
+      }
+
+      const hot = e.state === 'spotted' || e.state === 'alert';
+      const label = e.state + (hot ? '' : ':' + e.phase) + ' ' + Math.round(e.gauge * 100);
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(e.x - 26, e.y - 50, 52, 10);
-      ctx.fillStyle = e.state === 'spotted' ? '#f66' : '#9f9';
+      ctx.fillRect(e.x - 38, e.y - 50, 76, 10);
+      ctx.fillStyle = hot ? '#f66' : e.state === 'patrol' ? '#9f9' : '#fd5';
       ctx.fillText(label, e.x, e.y - 40);
     }
   }
@@ -183,8 +245,9 @@
       'pos ' + player.x.toFixed(1) + ', ' + player.y.toFixed(1) +
         '  tile ' + Math.floor(player.x / T) + ', ' + Math.floor(player.y / T),
       'face ' + player.face + '  dir ' + player.dir.x.toFixed(2) + ', ' + player.dir.y.toFixed(2),
-      'zone ' + (z ? z.name : '-') +
-        '  spotted by ' + Game.enemies.filter((e) => e.state === 'spotted').length,
+      'zone ' + (z ? z.name : '-') + '  captures ' + Game.captures,
+      'floor ' + NH.Alert.phase + ' ' + NH.Alert.timer.toFixed(1) +
+        '  seeing ' + Game.enemies.filter((e) => e.sees).length,
       'view ' + view.w.toFixed(0) + 'x' + view.h.toFixed(0) + '  x' + view.scale +
         '  canvas ' + canvas.width + 'x' + canvas.height
     ];
@@ -228,11 +291,9 @@
 
   // ---------- 起動 ----------
   map.load();
-  player.init(map);
-  Game.enemies = map.enemyDefs.map((def) => new NH.Enemy(def));
-  setDebug(Game.debug);
   resize();
-  camera.snap(player, view, map);
+  reset();
+  setDebug(Game.debug);
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', resize);
   if (window.ResizeObserver) new ResizeObserver(resize).observe(stage);

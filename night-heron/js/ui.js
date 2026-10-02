@@ -23,8 +23,78 @@
 
     draw(ctx, view, map) {
       this.drawVignette(ctx, view);
+      this.drawAlert(ctx, view);
       this.drawBanner(ctx, map);
       this.drawHint(ctx, view);
+      this.drawCaptured(ctx, view);
+    },
+
+    // 警戒：画面端の赤い点滅と残り時間。捜索：黄色の残り時間
+    drawAlert(ctx, view) {
+      const A = NH.Alert;
+      if (A.phase === 'none') return;
+      const alert = A.phase === 'alert';
+      const t = NH.Game.time;
+
+      const key = view.w + 'x' + view.h;
+      if (key !== this.edgeKey) {
+        const mk = (rgb) => {
+          const g = ctx.createRadialGradient(
+            view.w / 2, view.h / 2, Math.min(view.w, view.h) * 0.42,
+            view.w / 2, view.h / 2, Math.max(view.w, view.h) * 0.62);
+          g.addColorStop(0, 'rgba(' + rgb + ',0)');
+          g.addColorStop(1, 'rgba(' + rgb + ',1)');
+          return g;
+        };
+        this.edgeRed = mk('255,30,20');
+        this.edgeYellow = mk('255,200,40');
+        this.edgeKey = key;
+      }
+      ctx.save();
+      ctx.globalAlpha = alert ? 0.3 + 0.28 * Math.sin(t * 9) : 0.16;
+      ctx.fillStyle = alert ? this.edgeRed : this.edgeYellow;
+      ctx.fillRect(0, 0, view.w, view.h);
+      ctx.restore();
+
+      // 残り時間
+      const label = alert ? '警戒' : '捜索';
+      const num = Math.max(0, A.timer).toFixed(2).padStart(5, '0');
+      const w = 104, h = 22, x = Math.round(view.w / 2 - w / 2), y = 8;
+      const blink = alert && Math.sin(t * 9) > 0;
+      ctx.save();
+      ctx.fillStyle = alert ? (blink ? '#d3231a' : '#8e120d') : '#8a6a08';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(x + 40, y + 2, w - 42, h - 4);
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 13px ' + FONT;
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, x + 20, y + h / 2 + 0.5);
+      ctx.font = 'bold 15px monospace';
+      ctx.fillStyle = alert ? '#ff8a7a' : '#ffd95a';
+      ctx.fillText(num, x + 40 + (w - 42) / 2, y + h / 2 + 1);
+      ctx.restore();
+    },
+
+    // 捕まったときの暗転
+    drawCaptured(ctx, view) {
+      const G = NH.Game;
+      if (G.captureT <= 0) return;
+      const k = Math.min(1, (1.8 - G.captureT) / 0.4);
+      ctx.save();
+      ctx.fillStyle = 'rgba(20,0,0,' + (0.78 * k) + ')';
+      ctx.fillRect(0, 0, view.w, view.h);
+      ctx.globalAlpha = k;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 30px ' + FONT;
+      ctx.fillStyle = '#ff5a4a';
+      ctx.fillText('捕まった', view.w / 2, view.h / 2 - 8);
+      ctx.font = 'bold 11px ' + FONT;
+      ctx.fillStyle = '#e8c8c0';
+      ctx.fillText('開始位置に戻ります', view.w / 2, view.h / 2 + 20);
+      ctx.restore();
     },
 
     drawVignette(ctx, view) {

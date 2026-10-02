@@ -233,6 +233,21 @@
     '.kkkk.'
   ];
 
+  // 頭上の「？」
+  const MARK_QUESTION = [
+    '.kkkkk.',
+    'kyyyyyk',
+    'kykkkyk',
+    'kkk.kyk',
+    '..kkyyk',
+    '..kyykk',
+    '..kykk.',
+    '..kkk..',
+    '..kyk..',
+    '..kyk..',
+    '..kkk..'
+  ];
+
   function buildCharacter(pal, upper) {
     const up = {};
     for (const k in upper) up[k] = fromRows(upper[k], pal);
@@ -259,6 +274,7 @@
     buildCharacter,
     player: buildCharacter(PAL_PLAYER, UPPER),
     enemy: buildCharacter(PAL_ENEMY, UPPER_ENEMY),
-    markAlert: fromRows(MARK_ALERT, { k: '#1a0505', r: '#ff3b30', w: '#ffd0c8' })
+    markAlert: fromRows(MARK_ALERT, { k: '#1a0505', r: '#ff3b30', w: '#ffd0c8' }),
+    markQuestion: fromRows(MARK_QUESTION, { k: '#1a1505', y: '#ffd23c' })
   };
 })();

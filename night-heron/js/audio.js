@@ -1,0 +1,66 @@
+// 効果音。Web Audio API で合成する（フェーズ6で足音や扉の音を足す）。
+(function () {
+  let ctx = null, master = null;
+
+  // ブラウザの制限で、最初の操作のあとでないと音を出せない
+  function unlock() {
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = 0.3;
+      master.connect(ctx.destination);
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+  }
+  for (const ev of ['pointerdown', 'pointerup', 'touchend', 'keydown']) {
+    window.addEventListener(ev, unlock, { passive: true });
+  }
+
+  // 1音。f1 を指定すると、鳴っている間に高さが f0 から f1 へ動く
+  function tone(type, f0, f1, start, dur, vol) {
+    const t = ctx.currentTime + start;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    g.connect(master);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+
+  const SOUNDS = {
+    // 発見の「！」：鋭い立ち上がりと、濁った和音の余韻
+    alert() {
+      tone('sawtooth', 520, 1480, 0, 0.07, 0.5);
+      tone('square', 1480, 0, 0.06, 0.55, 0.32);
+      tone('square', 1976, 0, 0.06, 0.55, 0.22);
+      tone('square', 1397, 0, 0.06, 0.45, 0.18);
+      tone('sine', 120, 60, 0, 0.3, 0.7);
+    },
+    // 疑念の「？」
+    suspect() {
+      tone('sine', 620, 0, 0, 0.09, 0.35);
+      tone('sine', 880, 0, 0.11, 0.16, 0.35);
+    },
+    // 捕まった
+    caught() {
+      tone('sawtooth', 320, 70, 0, 0.6, 0.45);
+      tone('sine', 90, 40, 0, 0.7, 0.7);
+    }
+  };
+
+  NH.Audio = {
+    unlock,
+    play(name) {
+      if (!ctx || ctx.state !== 'running' || !SOUNDS[name]) return;
+      SOUNDS[name]();
+    }
+  };
+})();
