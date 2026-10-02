@@ -34,7 +34,10 @@
       this.timer = C.ALERT.ALERT_TIME;
       this.lastKnown = { x: player.x, y: player.y };
       this.seen = true;
-      if (was !== 'alert') NH.Audio.play('alert');
+      if (was !== 'alert') {
+        NH.Audio.play('alert');
+        NH.Game.stats.alerts++;
+      }
       this.callResponders(by);
     },
 

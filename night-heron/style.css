@@ -91,10 +91,12 @@ body.touch #pad {
   position: absolute;
   right: calc(14px + env(safe-area-inset-right));
   bottom: calc(14px + env(safe-area-inset-bottom));
-  width: 190px;
-  height: 120px;
+  width: 200px;
+  height: 180px;
   pointer-events: none;
 }
+#buttons button[hidden] { display: none; }
+#buttons button.off { opacity: .35; }
 #buttons button {
   position: absolute;
   padding: 0;
@@ -133,6 +135,33 @@ body.touch #pad {
   width: 66px;
   height: 66px;
   font-size: 14px;
+}
+#btnWeapon {
+  right: 92px;
+  bottom: 78px;
+  width: 62px;
+  height: 62px;
+  font-size: 14px;
+  line-height: 1.1;
+  border-color: rgba(140, 220, 255, .55);
+}
+#btnWeapon small {
+  display: block;
+  font-size: 11px;
+  color: #9fe8ff;
+}
+#btnItem {
+  right: 14px;
+  bottom: 118px;
+  width: 56px;
+  height: 56px;
+  font-size: 14px;
+  border-color: rgba(230, 200, 140, .55);
+}
+#btnItem.on {
+  border-color: rgba(255, 215, 140, .95);
+  color: #ffe9c0;
+  background: rgba(90, 60, 20, .55);
 }
 #btnCrawl.on {
   border-color: rgba(120, 200, 255, .9);

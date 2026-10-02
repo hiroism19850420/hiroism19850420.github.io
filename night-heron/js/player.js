@@ -16,7 +16,17 @@
     stepT: 0,              // 次の足音までの時間
     knockT: 0,             // 壁叩きの待ち時間
     canDuct: false,        // いま通気口を通れるか
-    action: null,          // いまアクションキーでできること { type: 'ko' | 'knock', ... }
+    action: null,          // いまアクションキーでできること { type: 'door' | 'ko' | 'knock', ... }
+
+    life: 0,
+    hurtT: 0,              // 被弾後の無敵時間
+    keyLevel: 0,           // 持っているカードキーのレベル
+    hasBox: false,
+    boxed: false,          // 段ボール箱をかぶっているか
+    hasGun: false,
+    ammo: 0,
+    fireT: 0,
+    lockedT: 0,            // 「カードキーが必要」を出したあとの待ち時間
 
     init(map) {
       this.x = map.start.x;
@@ -29,6 +39,15 @@
       this.stepT = 0;
       this.knockT = 0;
       this.action = null;
+      this.life = P.MAX_LIFE;
+      this.hurtT = 0;
+      this.keyLevel = 0;
+      this.hasBox = false;
+      this.boxed = false;
+      this.hasGun = false;
+      this.ammo = 0;
+      this.fireT = 0;
+      this.lockedT = 0;
     },
 
     hitbox() {
@@ -87,8 +106,11 @@
       this.face = h || v;
     },
 
-    // アクションキーでいまできることを探す。気絶が壁叩きより優先
+    // アクションキーでいまできることを探す。扉、気絶、壁叩きの順に優先
     findAction() {
+      if (this.boxed) return null;
+      const door = NH.Map.doorNear(this.x, this.y);
+      if (door && !this.crawling) return { type: 'door', door, ok: this.keyLevel >= door.level };
       if (!this.crawling) {
         let best = null, bestD = P.KO_RANGE;
         for (const e of NH.Game.enemies) {
@@ -110,13 +132,37 @@
       return null;
     },
 
+    hurt(damage) {
+      if (this.hurtT > 0 || this.life <= 0) return;
+      this.life = Math.max(0, this.life - damage);
+      this.hurtT = P.HURT_INVULN;
+      NH.Audio.play('hurt');
+    },
+
     update(dt) {
       const Input = NH.Input;
+      const G = NH.Game;
+      this.hurtT = Math.max(0, this.hurtT - dt);
+      this.knockT = Math.max(0, this.knockT - dt);
+      this.fireT = Math.max(0, this.fireT - dt);
+      this.lockedT = Math.max(0, this.lockedT - dt);
 
-      // 匍匐の切り替え（通気口の中では立てない）
-      if (Input.pressed('crawl')) {
+      // 匍匐の切り替え（通気口の中では立てない。箱をかぶっている間はできない）
+      if (Input.pressed('crawl') && !this.boxed) {
         if (!this.crawling) this.crawling = true;
         else if (!this.inDuct()) this.crawling = false;
+      }
+
+      // 段ボール箱をかぶる・脱ぐ
+      if (Input.pressed('item') && this.hasBox) {
+        if (this.boxed) {
+          this.boxed = false;
+          NH.Audio.play('box');
+        } else if (!this.crawling || !this.inDuct()) {
+          this.crawling = false;
+          this.boxed = true;
+          NH.Audio.play('box');
+        }
       }
 
       // 通気口を通れるのは匍匐中だけ。シャッターが閉まっている間は、すでに中にいる場合だけ動ける
@@ -127,7 +173,8 @@
       if (this.moving) {
         this.dir = mv;
         this.updateFace(mv);
-        const step = (this.crawling ? P.CRAWL_SPEED : P.SPEED) * dt;
+        const speed = this.boxed ? P.BOX_SPEED : this.crawling ? P.CRAWL_SPEED : P.SPEED;
+        const step = speed * dt;
         const hitX = this.moveX(mv.x * step);
         const hitY = this.moveY(mv.y * step);
         if (hitX && mv.y === 0) this.nudge('y', Math.sign(mv.x), step);
@@ -143,28 +190,69 @@
         this.stepT -= dt;
         if (this.stepT <= 0) {
           this.stepT = P.STEP_INTERVAL;
-          NH.Game.noise(this.x, this.y, P.STEP_RADIUS, noisy === 'water' ? 'stepWater' : 'stepMetal');
+          G.noise(this.x, this.y, P.STEP_RADIUS, noisy === 'water' ? 'stepWater' : 'stepMetal');
         }
       } else {
         this.stepT = 0;
       }
 
       // アクション
-      this.knockT = Math.max(0, this.knockT - dt);
       this.action = this.findAction();
       if (Input.pressed('action') && this.action) {
-        if (this.action.type === 'ko') {
-          this.action.enemy.stun();
+        const a = this.action;
+        if (a.type === 'door') {
+          if (a.ok) {
+            NH.Map.openDoor(a.door);
+          } else if (this.lockedT <= 0) {
+            this.lockedT = 1;
+            NH.Audio.play('locked');
+            G.toast('カードキー Lv' + a.door.level + ' が必要だ');
+          }
+        } else if (a.type === 'ko') {
+          a.enemy.stun();
+          G.stats.kos++;
         } else if (this.knockT <= 0) {
           this.knockT = P.KNOCK_COOLDOWN;
-          NH.Game.noise(this.x, this.y, P.KNOCK_RADIUS, 'knock');
+          G.noise(this.x, this.y, P.KNOCK_RADIUS, 'knock');
+        }
+      }
+
+      // 麻酔銃
+      if (Input.pressed('weapon') && this.hasGun && !this.boxed && this.fireT <= 0) {
+        if (this.ammo > 0) {
+          this.ammo--;
+          this.fireT = P.FIRE_COOLDOWN;
+          G.fire('player', this.x, this.y, Math.atan2(this.dir.y, this.dir.x));
+        } else {
+          this.fireT = P.FIRE_COOLDOWN;
+          NH.Audio.play('empty');
+          G.toast('麻酔弾がない');
         }
       }
     },
 
     draw(ctx, snap) {
+      // 被弾直後は点滅させる
+      if (this.hurtT > 0 && Math.floor(this.hurtT * 30) % 2) return;
       const S = NH.Sprites.SCALE;
       const x = snap(this.x), y = snap(this.y);
+
+      if (this.boxed) {
+        const img = NH.Sprites.boxWorn;
+        const w = img.width * S, h = img.height * S;
+        const feet = y + P.HIT_H / 2;
+        const step = this.moving ? Math.floor(this.animT * 10) % 2 : 0;
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(x - w / 2 + 1, feet - 4, w - 2, 5);
+        if (this.moving) {
+          // 箱の下から足がのぞく
+          ctx.fillStyle = '#0a0d11';
+          ctx.fillRect(x - 7 + step * 2, feet - 3, 5, 3);
+          ctx.fillRect(x + 2 - step * 2, feet - 3, 5, 3);
+        }
+        ctx.drawImage(img, x - w / 2, feet - h - 2 - (this.moving ? step : 0), w, h);
+        return;
+      }
 
       if (this.crawling) {
         const frame = this.moving ? Math.floor(this.animT * P.CRAWL_ANIM_FPS) % 2 : 0;

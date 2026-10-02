@@ -59,7 +59,7 @@
       const map = NH.Map, W = map.w, H = map.h;
       const stx = Math.floor(sx / T), sty = Math.floor(sy / T);
       const gx = Math.floor(tx / T), gy = Math.floor(ty / T);
-      if (map.isSolid(gx, gy)) return null;
+      if (map.blocksEnemy(gx, gy)) return null;
       const start = stx + sty * W, goal = gx + gy * W;
       if (start === goal) return [{ x: tx, y: ty }];
 
@@ -84,9 +84,9 @@
         const cx = cur % W, cy = (cur - cx) / W;
         for (const [dx, dy, cost] of DIRS) {
           const nx = cx + dx, ny = cy + dy;
-          if (map.isSolid(nx, ny)) continue;
+          if (map.blocksEnemy(nx, ny)) continue;
           // 斜めは、角をかすめないときだけ通す
-          if (dx && dy && (map.isSolid(cx + dx, cy) || map.isSolid(cx, cy + dy))) continue;
+          if (dx && dy && (map.blocksEnemy(cx + dx, cy) || map.blocksEnemy(cx, cy + dy))) continue;
           const ni = nx + ny * W;
           if (closed[ni]) continue;
           const g = gCost[cur] + cost;

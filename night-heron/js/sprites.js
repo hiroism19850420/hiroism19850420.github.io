@@ -354,6 +354,90 @@
     };
   }
 
+  // ---------- アイテム ----------
+  const ICON_PAL = {
+    k: '#0a0d11', w: '#f2f2ea', d: '#20262c',
+    b: '#c8a066', B: '#9c7444', t: '#e6d6a8',      // 段ボール
+    g: '#3b434c', G: '#6c7884',                     // 銃
+    y: '#ffd23c', r: '#d8402e',                     // 弾
+    o: '#5b7a3a'                                    // 回復
+  };
+  const ICONS = {
+    box: [
+      '.kkkkkkkk.',
+      'kbbbttbbbk',
+      'kbbbttbbbk',
+      'kkkkkkkkkk',
+      'kBBBttBBBk',
+      'kBBBBBBBBk',
+      'kBBBBBBBBk',
+      'kkkkkkkkkk'
+    ],
+    gun: [
+      '.kkkkkkkkkk.',
+      'kggggggggggk',
+      'kgGGGGGGggkk',
+      '.kkkkkgggk..',
+      '.....kggk...',
+      '.....kggk...',
+      '.....kkkk...'
+    ],
+    ammo: [
+      '..kkkk..',
+      '.kyyyyk.',
+      '.kyyyyk.',
+      '.kwwwwk.',
+      '.kwwwwk.',
+      '.kwwwwk.',
+      '.krrrrk.',
+      '..kkkk..'
+    ],
+    ration: [
+      'kkkkkkkkkk',
+      'kooooooook',
+      'kowwwwwwok',
+      'kowrrrrwok',
+      'kowwwwwwok',
+      'kooooooook',
+      'kkkkkkkkkk'
+    ],
+    key: [
+      'kkkkkkkkkk',
+      'kcccccccck',
+      'kcwwwccdck',
+      'kcccccccck',
+      'kcddddddck',
+      'kcccccccck',
+      'kkkkkkkkkk'
+    ]
+  };
+
+  // かぶっている段ボール箱
+  const BOX_WORN = [
+    '.kkkkkkkkkkk.',
+    'kbbbbbtbbbbbk',
+    'kbbbbbtbbbbbk',
+    'kbbbbbtbbbbbk',
+    'kkkkkkkkkkkkk',
+    'kBBBBBtBBBBBk',
+    'kBBkkBtBkkBBk',
+    'kBBBBBBBBBBBk',
+    'kBBBBBBBBBBBk',
+    'kBBBBBBBBBBBk',
+    'kkkkkkkkkkkkk'
+  ];
+
+  function buildIcons() {
+    const out = {};
+    for (const k in ICONS) {
+      if (k === 'key') continue;
+      out[k] = fromRows(ICONS[k], ICON_PAL);
+    }
+    out.key1 = fromRows(ICONS.key, Object.assign({}, ICON_PAL, { c: '#3aa0ff' }));
+    out.key2 = fromRows(ICONS.key, Object.assign({}, ICON_PAL, { c: '#ff7a3a' }));
+    return out;
+  }
+
   function buildCharacter(pal, upper) {
     const up = {};
     for (const k in upper) up[k] = fromRows(upper[k], pal);
@@ -381,6 +465,8 @@
     player: buildCharacter(PAL_PLAYER, UPPER),
     enemy: buildCharacter(PAL_ENEMY, UPPER_ENEMY),
     playerProne: buildProne(PAL_PLAYER),
+    icons: buildIcons(),
+    boxWorn: fromRows(BOX_WORN, ICON_PAL),
     enemyProne: buildProne(PAL_ENEMY),
     markAlert: fromRows(MARK_ALERT, { k: '#1a0505', r: '#ff3b30', w: '#ffd0c8' }),
     markQuestion: fromRows(MARK_QUESTION, { k: '#1a1505', y: '#ffd23c' })

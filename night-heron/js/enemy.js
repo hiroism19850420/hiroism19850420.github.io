@@ -67,12 +67,13 @@
     this.investigate = { x, y };
   };
 
-  // 背後から倒されて気絶する
-  Enemy.prototype.stun = function () {
+  // 気絶する。sleep が true なら麻酔弾で眠った（頭上に Zzz）
+  Enemy.prototype.stun = function (sleep) {
     this.state = 'stunned';
+    this.asleep = !!sleep;
     this.discovered = false;
     this.wakeTarget = null;
-    this.timer = E.STUN_TIME;
+    this.timer = sleep ? E.SLEEP_TIME : E.STUN_TIME;
     this.gauge = 0;
     this.sees = false;
     this.moving = false;
@@ -110,6 +111,8 @@
   Enemy.prototype.enterSpotted = function (delay) {
     this.state = 'spotted';
     this.timer = delay;
+    this.shootT = E.SHOOT_FIRST;
+    this.wakeTarget = null;
     this.gauge = 1;
     this.mark = '!';
     this.markT = 0;
@@ -178,6 +181,12 @@
     const touch = dist < E.TOUCH_DIST;
     this.sees = touch || AI.inCone(this.x, this.y, this.angle, player.x, player.y, range, E.FOV * RAD);
     const hot = this.state === 'alert' || this.state === 'spotted';
+
+    // 段ボール箱：止まっていれば見つからない。動いているのを見られると怪しまれる（警戒中の敵には効かない）
+    if (player.boxed && this.sees && !touch && !hot) {
+      this.sees = false;
+      if (player.moving && (this.state === 'patrol' || this.state === 'suspicious')) this.suspect(player.x, player.y);
+    }
 
     if (this.sees) {
       this.lastSeen = { x: player.x, y: player.y };
@@ -250,8 +259,25 @@
     }
   };
 
-  // 警戒：見えていればプレイヤーへ、見えなければ最後に見た地点へ走る
+  // 警戒：見えていて射程内なら撃つ。見えなければ最後に見た地点へ走る
   Enemy.prototype.chase = function (dt, player) {
+    const d = Math.hypot(player.x - this.x, player.y - this.y);
+    if (this.sees && d < E.SHOOT_RANGE * T) {
+      const aim = Math.atan2(player.y - this.y, player.x - this.x);
+      this.wantAngle = aim;
+      // ある程度までは詰めてくる
+      if (d > E.SHOOT_KEEP * T) this.goTo(player.x, player.y, E.ALERT_SPEED * 0.55, dt);
+      this.wantAngle = aim;
+      this.shootT -= dt;
+      if (this.shootT <= 0 && Math.abs(AI.angleDiff(aim, this.angle)) < 0.3) {
+        this.shootT = E.SHOOT_INTERVAL;
+        NH.Game.fire('enemy', this.x, this.y, aim + (Math.random() * 2 - 1) * E.BULLET_SPREAD);
+      }
+      this.timer = 0;
+      this.baseAngle = this.angle;
+      return;
+    }
+    this.shootT = Math.max(this.shootT, 0.3);
     const t = this.sees ? player : NH.Alert.lastKnown;
     if (this.goTo(t.x, t.y, E.ALERT_SPEED, dt) !== false) {
       // 着いたのに見当たらない：その場で見回す
@@ -261,7 +287,6 @@
       this.timer = 0;
       this.baseAngle = this.angle;
     }
-    if (Math.hypot(player.x - this.x, player.y - this.y) < E.CATCH_DIST) NH.Game.capture();
   };
 
   // 捜索：最後に見た地点の周りを、場所を変えながら探す
@@ -430,9 +455,20 @@
   // 頭上の「！」「？」
   Enemy.prototype.drawMark = function (ctx, snap) {
     if (this.state === 'stunned') {
-      // 気絶：頭の上を星が回る。起き上がる直前は点滅する
+      // 気絶：頭の上を星が回る（眠っているときは Zzz）。起き上がる直前は点滅する
       if (this.timer < 2 && Math.floor(this.timer * 8) % 2) return;
       const x = snap(this.x), y = snap(this.y) - 16;
+      if (this.asleep) {
+        ctx.font = 'bold 8px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        for (let i = 0; i < 3; i++) {
+          const k = (this.markT * 0.6 + i / 3) % 1;
+          ctx.fillStyle = 'rgba(190,225,255,' + (1 - k) + ')';
+          ctx.fillText('Z', x + 6 + k * 8, y - k * 14);
+        }
+        return;
+      }
       for (let i = 0; i < 3; i++) {
         const a = this.markT * 4 + i * Math.PI * 2 / 3;
         ctx.fillStyle = i ? '#ffe680' : '#ffffff';

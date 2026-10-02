@@ -24,7 +24,21 @@ NH.CONFIG = {
     KNOCK_RADIUS: 7,     // 壁叩きの音が届く距離（タイル）
     KNOCK_COOLDOWN: 0.8, // 壁叩きの間隔（秒）
     STEP_RADIUS: 4.5,    // 金属床・水たまりの足音が届く距離（タイル）
-    STEP_INTERVAL: 0.32  // 足音の間隔（秒）
+    STEP_INTERVAL: 0.32, // 足音の間隔（秒）
+
+    MAX_LIFE: 100,
+    HURT_INVULN: 0.25,   // 被弾したあと無敵になる時間（秒）
+    BOX_SPEED: 70,       // 段ボール箱をかぶったときの移動（px/秒）
+
+    // 麻酔銃
+    GUN_AMMO: 5,         // 拾ったときの弾数
+    AMMO_PACK: 3,        // 弾薬を拾ったときに増える数
+    FIRE_COOLDOWN: 0.5,  // 連射の間隔（秒）
+    DART_SPEED: 420,     // 弾の速さ（px/秒）
+    DART_RANGE: 9,       // 弾が届く距離（タイル）
+    DART_NOISE: 2.5,     // 外れて壁に当たったときの音が届く距離（タイル）
+
+    RATION_HEAL: 50      // 回復アイテムで戻るライフ
   },
 
   ENEMY: {
@@ -56,7 +70,16 @@ NH.CONFIG = {
     // 発見・警戒・捜索
     REACT_TIME: 0.5,       // 「！」を出してから走り出すまで
     ALERT_SPEED: 120,      // 追跡の速さ（プレイヤーは 132）
-    CATCH_DIST: 18,        // 追跡中にこの距離まで詰められると捕まる（px）※フェーズ5で攻撃とライフに置き換える
+    SLEEP_TIME: 20,        // 麻酔弾で眠っている時間（秒）
+
+    // 攻撃（警戒中、プレイヤーが見えていて射程内なら撃つ）
+    SHOOT_RANGE: 6,        // 射程（タイル）
+    SHOOT_KEEP: 3,         // 撃ちながら、この距離までは詰めてくる（タイル）
+    SHOOT_FIRST: 0.5,      // 見つけてから最初の1発まで（秒）
+    SHOOT_INTERVAL: 0.8,   // 発射の間隔（秒）
+    BULLET_SPEED: 360,     // 弾の速さ（px/秒）
+    BULLET_SPREAD: 0.07,   // 弾のばらつき（ラジアン）
+    BULLET_DAMAGE: 10,
     SEARCH_SPEED: 92,      // 捜索中の速さ
     SEARCH_LOOK_TIME: 1.6, // 捜索中、1か所で見回す時間
     SEARCH_RADIUS: 6       // 最後に見た地点から、この範囲を探す（タイル）

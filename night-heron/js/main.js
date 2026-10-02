@@ -13,10 +13,14 @@
     paused: false,
     debug: C.DEBUG,
     time: 0,
-    captureT: 0,   // 捕まった演出の残り時間
-    captures: 0,   // 捕まった回数
+    mode: 'play',  // play / over（ゲームオーバー） / clear（ステージクリア）
+    endT: 0,       // 終了画面を出してからの時間
+    tapped: false,
     enemies: [],
     rings: [],     // 物音の広がりを見せる輪
+    bullets: [],
+    items: [],
+    stats: { time: 0, alerts: 0, kos: 0, sleeps: 0 },
     fps: 60,
     view: { w: 640, h: 360, scale: 1 } // w, h は画面に映るワールドの大きさ
   };
@@ -73,22 +77,141 @@
   // ---------- update / draw ----------
   function update(dt) {
     Game.time += dt;
-    if (Game.captureT > 0) {
-      // 捕まった：少し止めてから、開始位置に戻す
-      Game.captureT -= dt;
-      if (Game.captureT <= 0) reset();
+    if (Game.mode !== 'play') {
+      // ゲームオーバー・クリア：少し待ってから、ボタンか画面タップでやり直し
+      Game.endT += dt;
+      const go = Input.pressed('action') || Input.pressed('weapon') || Game.tapped;
+      Game.tapped = false;
+      if (Game.endT > 1.2 && go) reset();
+      UI.update(dt, player, map);
       return;
     }
+    Game.stats.time += dt;
     player.update(dt);
     for (const e of Game.enemies) e.update(dt, player);
     separateEnemies();
+    map.updateDoors(dt, player, Game.enemies);
+    for (const d of map.doors) {
+      if (d.sound && Math.hypot(d.x - player.x, d.y - player.y) < 320) NH.Audio.play(d.sound);
+      d.sound = null;
+    }
+    updateBullets(dt);
+    pickUpItems();
     for (const r of Game.rings) r.t += dt;
     Game.rings = Game.rings.filter((r) => r.t < r.life);
     updateButtons();
     NH.Alert.update(dt);
     camera.update(dt, player, view, map);
     UI.update(dt, player, map);
+
+    if (player.life <= 0) {
+      Game.mode = 'over';
+      Game.endT = 0;
+      NH.Audio.play('gameover');
+    } else if (map.isGoal(player.x, player.y)) {
+      Game.mode = 'clear';
+      Game.endT = 0;
+      NH.Audio.play('clear');
+    }
   }
+
+  // ---------- 弾 ----------
+  // owner が 'player' なら麻酔弾、'enemy' なら敵の銃弾
+  Game.fire = function (owner, x, y, angle) {
+    const P = C.PLAYER, E = C.ENEMY;
+    const speed = owner === 'player' ? P.DART_SPEED : E.BULLET_SPEED;
+    const range = owner === 'player' ? P.DART_RANGE * T : E.SHOOT_RANGE * T * 1.6;
+    Game.bullets.push({ owner, x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, left: range });
+    NH.Audio.play(owner === 'player' ? 'dart' : 'shot');
+  };
+
+  function updateBullets(dt) {
+    for (const b of Game.bullets) {
+      // 速い弾が壁をすり抜けないよう、細かく区切って進める
+      const dist = Math.hypot(b.vx, b.vy) * dt;
+      const steps = Math.ceil(dist / 6);
+      for (let i = 0; i < steps && !b.dead; i++) {
+        b.x += b.vx * dt / steps;
+        b.y += b.vy * dt / steps;
+        b.left -= dist / steps;
+        if (b.left <= 0) { b.dead = true; break; }
+        if (map.isOpaque(Math.floor(b.x / T), Math.floor(b.y / T))) {
+          b.dead = true;
+          // 外れた麻酔弾は、当たった場所で小さな音を立てる
+          if (b.owner === 'player') Game.noise(b.x - b.vx * 0.01, b.y - b.vy * 0.01, C.PLAYER.DART_NOISE, 'ricochet');
+          break;
+        }
+        if (b.owner === 'player') {
+          for (const e of Game.enemies) {
+            if (e.state === 'stunned' || Math.hypot(e.x - b.x, e.y - b.y) > 13) continue;
+            e.stun(true);
+            Game.stats.sleeps++;
+            b.dead = true;
+            break;
+          }
+        } else if (Math.hypot(player.x - b.x, player.y - b.y) < 11) {
+          player.hurt(C.ENEMY.BULLET_DAMAGE);
+          b.dead = true;
+        }
+      }
+    }
+    Game.bullets = Game.bullets.filter((b) => !b.dead);
+  }
+
+  function drawBullets() {
+    for (const b of Game.bullets) {
+      const l = Math.hypot(b.vx, b.vy);
+      const tx = b.vx / l, ty = b.vy / l;
+      ctx.strokeStyle = b.owner === 'player' ? '#9fe8ff' : '#ffd36a';
+      ctx.lineWidth = b.owner === 'player' ? 1.5 : 2;
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y - 8);
+      ctx.lineTo(b.x - tx * 8, b.y - 8 - ty * 8);
+      ctx.stroke();
+    }
+  }
+
+  // ---------- 落ちているアイテム ----------
+  function pickUpItems() {
+    const P = C.PLAYER;
+    for (const it of Game.items) {
+      if (it.taken || Math.hypot(it.x - player.x, it.y - player.y) > 20) continue;
+      let msg = '';
+      if (it.type === 'box') { player.hasBox = true; msg = '段ボール箱を手に入れた'; }
+      else if (it.type === 'gun') { player.hasGun = true; player.ammo += P.GUN_AMMO; msg = '麻酔銃を手に入れた（弾 ' + P.GUN_AMMO + '）'; }
+      else if (it.type === 'ammo') { player.ammo += P.AMMO_PACK; msg = '麻酔弾 +' + P.AMMO_PACK; }
+      else if (it.type === 'key') { player.keyLevel = Math.max(player.keyLevel, it.level); msg = 'カードキー Lv' + it.level + ' を手に入れた'; }
+      else if (it.type === 'ration') {
+        if (player.life >= P.MAX_LIFE) continue; // 満タンなら置いておく
+        player.life = Math.min(P.MAX_LIFE, player.life + P.RATION_HEAL);
+        msg = 'ライフが回復した';
+      }
+      it.taken = true;
+      Game.toast(msg);
+      NH.Audio.play('pickup');
+    }
+  }
+
+  function drawItems() {
+    const S = NH.Sprites.SCALE, icons = NH.Sprites.icons;
+    for (const it of Game.items) {
+      if (it.taken) continue;
+      const img = icons[it.type === 'key' ? 'key' + it.level : it.type];
+      const bob = Math.round(Math.sin(Game.time * 3 + it.x) * 1.5);
+      const w = img.width * S, h = img.height * S;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(it.x - w / 2 + 2, it.y + 6, w - 4, 3);
+      // 目立つように、ゆっくり光らせる
+      ctx.fillStyle = 'rgba(255,240,170,' + (0.10 + 0.08 * Math.sin(Game.time * 4)) + ')';
+      ctx.fillRect(it.x - w / 2 - 3, it.y - h / 2 - 3 + bob, w + 6, h + 6);
+      ctx.drawImage(img, Math.round(it.x - w / 2), Math.round(it.y - h / 2 + bob), w, h);
+    }
+  }
+
+  Game.toast = function (text) { UI.toast(text); };
+
+  // 終了画面で、画面のどこを触ってもやり直せるように
+  window.addEventListener('pointerdown', () => { if (Game.mode !== 'play') Game.tapped = true; });
 
   // 敵どうしが1点に重ならないよう、近すぎる組を少し押し離す
   function separateEnemies() {
@@ -134,39 +257,47 @@
       });
     }
   }
+  const btnWeapon = document.getElementById('btnWeapon');
+  const btnItem = document.getElementById('btnItem');
   bindButton(btnAction, 'action');
   bindButton(btnCrawl, 'crawl');
+  bindButton(btnWeapon, 'weapon');
+  bindButton(btnItem, 'item');
 
-  // ボタンの表示を、いまできることに合わせる
-  const ACTION_LABEL = { ko: '気絶', knock: '叩く' };
-  let lastAction = '', lastCrawl = null;
+  // ボタンの表示を、いまできることや持ち物に合わせる（変わったときだけ書き換える）
+  const ACTION_LABEL = { ko: '気絶', knock: '叩く', door: '開ける', locked: 'ロック' };
+  let lastButtons = '';
   function updateButtons() {
-    const a = player.action ? player.action.type : '';
-    if (a !== lastAction) {
-      lastAction = a;
-      btnAction.textContent = ACTION_LABEL[a] || '';
-      btnAction.classList.toggle('ready', !!a);
-      btnAction.classList.toggle('ko', a === 'ko');
-    }
-    if (player.crawling !== lastCrawl) {
-      lastCrawl = player.crawling;
-      btnCrawl.textContent = lastCrawl ? '立つ' : 'ほふく';
-      btnCrawl.classList.toggle('on', lastCrawl);
-    }
+    let a = player.action ? player.action.type : '';
+    if (a === 'door' && !player.action.ok) a = 'locked';
+    const key = [a, player.crawling, player.boxed, player.hasBox, player.hasGun, player.ammo].join();
+    if (key === lastButtons) return;
+    lastButtons = key;
+    btnAction.textContent = ACTION_LABEL[a] || '';
+    btnAction.classList.toggle('ready', !!a);
+    btnAction.classList.toggle('ko', a === 'ko' || a === 'locked');
+    btnCrawl.textContent = player.crawling ? '立つ' : 'ほふく';
+    btnCrawl.classList.toggle('on', player.crawling);
+    btnCrawl.classList.toggle('off', player.boxed);
+    btnWeapon.hidden = !player.hasGun;
+    btnWeapon.innerHTML = '撃つ<small>' + player.ammo + '</small>';
+    btnWeapon.classList.toggle('off', player.ammo <= 0 || player.boxed);
+    btnItem.hidden = !player.hasBox;
+    btnItem.textContent = player.boxed ? '脱ぐ' : '箱';
+    btnItem.classList.toggle('on', player.boxed);
   }
 
-  // 仮の代償：追跡中の敵に追いつかれたら、開始位置からやり直し（フェーズ5でライフ制に置き換える）
-  Game.capture = function () {
-    if (Game.captureT > 0) return;
-    Game.captureT = 1.8;
-    Game.captures++;
-    NH.Audio.play('caught');
-  };
-
   function reset() {
-    Game.captureT = 0;
+    Game.mode = 'play';
+    Game.endT = 0;
+    Game.tapped = false;
     Game.rings = [];
+    Game.bullets = [];
+    Game.stats = { time: 0, alerts: 0, kos: 0, sleeps: 0 };
+    Game.items = map.itemDefs.map((d) => ({ type: d.type, level: d.level, x: (d.x + 0.5) * T, y: (d.y + 0.5) * T, taken: false }));
+    map.resetDoors();
     NH.Alert.reset();
+    UI.clearToast();
     player.init(map);
     Game.enemies = map.enemyDefs.map((def) => new NH.Enemy(def));
     for (const e of Game.enemies) e.update(0, player);
@@ -191,6 +322,8 @@
     if (sw > 0 && sh > 0) ctx.drawImage(map.canvas, sx, sy, sw, sh, sx, sy, sw, sh);
 
     map.drawDynamic(ctx, Game.time, { x: cx, y: cy }, view);
+    map.drawDoors(ctx, player.keyLevel);
+    drawItems();
 
     // 画面の近くにいる敵だけ描く
     const margin = C.ENEMY.VIEW_DIST * T + 48;
@@ -209,6 +342,7 @@
     // 手前のものが上に重なるよう、足元の位置の順に描く
     const actors = near.concat(player).sort((a, b) => a.y - b.y);
     for (const a of actors) a.draw(ctx, snap);
+    drawBullets();
     for (const e of near) e.drawMark(ctx, snap);
 
     if (Game.debug) drawDebugWorld(cx, cy);
@@ -303,7 +437,7 @@
       'pos ' + player.x.toFixed(1) + ', ' + player.y.toFixed(1) +
         '  tile ' + Math.floor(player.x / T) + ', ' + Math.floor(player.y / T),
       'face ' + player.face + '  dir ' + player.dir.x.toFixed(2) + ', ' + player.dir.y.toFixed(2),
-      'zone ' + (z ? z.name : '-') + '  captures ' + Game.captures,
+      'zone ' + (z ? z.name : '-') + '  life ' + player.life + '  key ' + player.keyLevel + '  ammo ' + player.ammo,
       'floor ' + NH.Alert.phase + ' ' + NH.Alert.timer.toFixed(1) +
         '  seeing ' + Game.enemies.filter((e) => e.sees).length,
       'view ' + view.w.toFixed(0) + 'x' + view.h.toFixed(0) + '  x' + view.scale +

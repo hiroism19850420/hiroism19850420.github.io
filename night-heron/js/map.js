@@ -9,26 +9,27 @@
   //   K ロッカー   V サーバーラック  S プレイヤーの開始位置
   //   m 金属床（走ると足音）  ~ 水たまり（走ると足音）
   //   = 低い通気口（匍匐でだけ通れる。敵は通れず、中は見えない）
+  //   1 2 ロック付きの扉（数字は必要なカードキーのレベル）  E エレベーター（ゴール）
   const FLOOR_1 = [
     '################################################',
-    '#KK,,,,,,,,,,,,,,,KK#...#......................#',
+    '#KK,,,,,,,,,,,,,,,KK#...#...................EE.#',
     '#,,,,,,,,,,,,,,,,,,,#...#..VV..VV..VV..........#',
-    '#,,TDD,,,TDD,,,TDD,,#......VV..VV..VV..........#',
-    '#,,,,,,,,,,,,,,,,,,,#..........................#',
-    '#,,,,,,,,,,,,,,,,,,,,...#......................#',
-    '#,,DDT,,,DDT,,,DDT,,,mmm#..VV..VV..VV....RR....#',
+    '#,,TDD,,,TDD,,,TDD,,#...2..VV..VV..VV..........#',
+    '#,,,,,,,,,,,,,,,,,,,#...2......................#',
+    '#,,,,,,,,,,,,,,,,,,,1...#......................#',
+    '#,,DDT,,,DDT,,,DDT,,1mmm#..VV..VV..VV....RR....#',
     '#,,,,,,,,,,,,,,,,,,,#mmm#..VV..VV..VV....RR....#',
     '#,,,,,,,,,,,,,,,,,,,#...#......................#',
     '#,,TDD,,,TDD,,,,,,,,#...#......................#',
     '#,,,,,,,,,,,,,,,,,,,#...#.............BB.......#',
     '#BB,,,,,,,,,,,,,,,KK#...#.............mmmmmm...#',
-    '########..###########...######=#########..######',
-    '########..###########...######=#########..######',
+    '########..###########...################..######',
+    '########11###########...################22######',
     '#............BB...........mmmm.................#',
     '#.........................mmmm.................#',
     '#.........................mmmm....CC...........#',
-    '#####..#######################..################',
-    '#####..#######################..################',
+    '#####..#############=#########..################',
+    '#####..#############=#########..################',
     '#....~~.......#................................#',
     '#.........BB..#..CCCC....RRRR........CCCC......#',
     '#.........BB..=..CCCC....RRRR........CCCC......#',
@@ -69,6 +70,18 @@
     { route: [[41, 9]], face: 90 }                          // サーバールーム：南の出口を見張る
   ];
 
+  // 落ちているアイテム（タイル座標）
+  //   box 段ボール箱  gun 麻酔銃  ammo 麻酔弾  key カードキー（level）  ration 回復
+  const ITEMS_1 = [
+    { type: 'box', x: 12, y: 30 },
+    { type: 'gun', x: 16, y: 30 },
+    { type: 'key', level: 1, x: 38, y: 23 },
+    { type: 'ration', x: 1, y: 14 },
+    { type: 'key', level: 2, x: 2, y: 2 },
+    { type: 'ration', x: 18, y: 2 },
+    { type: 'ammo', x: 22, y: 1 }
+  ];
+
   // 天井灯（タイル座標）。マップに焼き込む
   const LIGHTS_1 = [
     { x: 7, y: 24.5, r: 190 },
@@ -94,9 +107,14 @@
     'V': { name: 'rack', solid: true, opaque: true },
     'm': { name: 'metal', solid: false, opaque: false, noisy: 'metal' },
     '~': { name: 'puddle', solid: false, opaque: false, noisy: 'water' },
-    '=': { name: 'duct', solid: true, opaque: true, low: true }
+    '=': { name: 'duct', solid: true, opaque: true, low: true },
+    // 扉は開閉するので、通れるかどうかは扉の状態で決める（isSolid などを参照）
+    '1': { name: 'door', solid: false, opaque: false, door: 1 },
+    '2': { name: 'door', solid: false, opaque: false, door: 2 },
+    'E': { name: 'elevator', solid: false, opaque: false, goal: true }
   };
-  const FLOORS = '.,m~';
+  const FLOORS = '.,m~12E';
+  const DOOR_COLOR = { 1: '#3aa0ff', 2: '#ff7a3a' };
 
   // タイル座標から決まる乱数（毎回同じ見た目になる）
   function rnd(x, y, i) {
@@ -129,7 +147,75 @@
       this.pxH = this.h * T;
       this.zones = ZONES_1;
       this.enemyDefs = ENEMIES_1;
+      this.itemDefs = ITEMS_1;
+      this.buildDoors();
       this.prerender();
+    },
+
+    // 隣り合う扉タイルを1枚の扉にまとめる
+    buildDoors() {
+      this.doors = [];
+      this.doorGrid = new Array(this.w * this.h);
+      for (let ty = 0; ty < this.h; ty++) {
+        for (let tx = 0; tx < this.w; tx++) {
+          const level = TILES[this.rows[ty][tx]].door;
+          if (!level || this.doorGrid[tx + ty * this.w]) continue;
+          const horizontal = TILES[this.get(tx + 1, ty)].door === level;
+          const door = { level, horizontal, tiles: [], open: 0, hold: 0, x: 0, y: 0 };
+          let x = tx, y = ty;
+          while (TILES[this.get(x, y)].door === level) {
+            door.tiles.push({ tx: x, ty: y });
+            this.doorGrid[x + y * this.w] = door;
+            if (horizontal) x++; else y++;
+          }
+          const a = door.tiles[0], b = door.tiles[door.tiles.length - 1];
+          door.x = (a.tx + b.tx + 1) / 2 * T;
+          door.y = (a.ty + b.ty + 1) / 2 * T;
+          this.doors.push(door);
+        }
+      }
+    },
+
+    resetDoors() {
+      for (const d of this.doors) { d.open = 0; d.hold = 0; }
+    },
+
+    doorAt(tx, ty) {
+      if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) return null;
+      return this.doorGrid[tx + ty * this.w] || null;
+    },
+
+    // 扉の開閉。敵が近づくと自動で開く。プレイヤーは Game 側でカードキーを確かめてから openDoor を呼ぶ
+    updateDoors(dt, player, enemies) {
+      const R = 48;
+      for (const d of this.doors) {
+        let near = false;
+        for (const e of enemies) {
+          if (e.state !== 'stunned' && Math.hypot(e.x - d.x, e.y - d.y) < R) { near = true; break; }
+        }
+        // 開いている間は、プレイヤーがそばにいても閉まらない
+        if (!near && d.open > 0 && Math.hypot(player.x - d.x, player.y - d.y) < R) near = true;
+        if (near) d.hold = 1.2;
+        const was = d.open;
+        d.hold -= dt;
+        d.open = Math.max(0, Math.min(1, d.open + (d.hold > 0 ? dt : -dt) / 0.22));
+        if (was === 0 && d.open > 0) d.sound = 'doorOpen';
+        else if (was === 1 && d.open < 1) d.sound = 'doorClose';
+      }
+    },
+
+    openDoor(d) { d.hold = 1.8; },
+
+    // プレイヤーのそばにある閉じた扉
+    doorNear(x, y) {
+      for (const d of this.doors) {
+        if (d.open < 0.5 && Math.abs(x - d.x) < (d.horizontal ? T + 6 : 30) && Math.abs(y - d.y) < (d.horizontal ? 42 : T + 6)) return d;
+      }
+      return null;
+    },
+
+    isGoal(x, y) {
+      return !!TILES[this.get(Math.floor(x / T), Math.floor(y / T))].goal;
     },
 
     // マップ外は壁として扱う
@@ -137,8 +223,18 @@
       if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) return '#';
       return this.rows[ty][tx];
     },
-    isSolid(tx, ty) { return TILES[this.get(tx, ty)].solid; },
-    isOpaque(tx, ty) { return TILES[this.get(tx, ty)].opaque; },
+    isSolid(tx, ty) {
+      const t = TILES[this.get(tx, ty)];
+      if (t.door) return this.doorGrid[tx + ty * this.w].open < 0.9;
+      return t.solid;
+    },
+    isOpaque(tx, ty) {
+      const t = TILES[this.get(tx, ty)];
+      if (t.door) return this.doorGrid[tx + ty * this.w].open < 0.5;
+      return t.opaque;
+    },
+    // 敵の経路探索用。扉は開けて通れるので、ふさがっていない扱い
+    blocksEnemy(tx, ty) { return TILES[this.get(tx, ty)].solid; },
 
     // 矩形（ワールド座標）が通れないタイルに重なるか。crawl が true なら低い通気口は通れる
     rectSolid(x, y, w, h, crawl) {
@@ -147,6 +243,7 @@
       for (let ty = y0; ty <= y1; ty++) {
         for (let tx = x0; tx <= x1; tx++) {
           const t = TILES[this.get(tx, ty)];
+          if (t.door) { if (this.doorGrid[tx + ty * this.w].open < 0.9) return true; continue; }
           if (t.solid && !(crawl && t.low)) return true;
         }
       }
@@ -217,6 +314,8 @@
           else if (ch === 'D' || ch === 'T') drawDesk(g, tx, ty, ch);
           else if (ch === 'K') drawLocker(g, tx, ty);
           else if (ch === 'V') drawRack(g, tx, ty);
+          else if (ch === 'E') drawElevator(g, tx, ty);
+          else if (TILES[ch].door) drawDoorSill(g, tx, ty);
           else if (ch === '=') {
             drawDuct(g, tx, ty);
             this.ducts.push({
@@ -245,6 +344,51 @@
       for (let ty = 0; ty < this.h; ty++) {
         for (let tx = 0; tx < this.w; tx++) {
           if (this.get(tx, ty) === '#') drawWallTop(g, tx, ty);
+        }
+      }
+    },
+
+    // 扉の板。開くと左右（縦の扉は上下）の壁の中へ引き込まれる
+    drawDoors(ctx, keyLevel) {
+      for (const d of this.doors) {
+        const a = d.tiles[0];
+        const x = a.tx * T, y = a.ty * T;
+        const len = d.tiles.length * T / 2;       // 片側の板の長さ
+        const vis = Math.round(len * (1 - d.open)); // 見えている長さ
+        const color = DOOR_COLOR[d.level];
+        const lamp = keyLevel >= d.level ? '#4dff8a' : '#ff3b30';
+        if (vis > 0) {
+          if (d.horizontal) {
+            for (const [px, w] of [[x, vis], [x + len * 2 - vis, vis]]) {
+              ctx.fillStyle = '#1b2026'; ctx.fillRect(px, y + 4, w, 28);
+              ctx.fillStyle = '#6f7b87'; ctx.fillRect(px, y + 6, w, 22);
+              ctx.fillStyle = '#8f9ba7'; ctx.fillRect(px, y + 6, w, 2);
+              ctx.fillStyle = color; ctx.fillRect(px, y + 13, w, 4);
+              ctx.fillStyle = '#4b5560'; ctx.fillRect(px, y + 24, w, 4);
+            }
+            ctx.fillStyle = '#1b2026';
+            ctx.fillRect(x + vis - 1, y + 6, 1, 24);
+            ctx.fillRect(x + len * 2 - vis, y + 6, 1, 24);
+          } else {
+            for (const [py, h] of [[y, vis], [y + len * 2 - vis, vis]]) {
+              ctx.fillStyle = '#1b2026'; ctx.fillRect(x + 9, py, 14, h);
+              ctx.fillStyle = '#6f7b87'; ctx.fillRect(x + 11, py, 10, h);
+              ctx.fillStyle = color; ctx.fillRect(x + 14, py, 4, h);
+            }
+          }
+        }
+        // カード読み取り機のランプ（開けられるなら緑）
+        ctx.fillStyle = '#12161a';
+        if (d.horizontal) {
+          ctx.fillRect(x - 9, y + 14, 6, 8);
+          ctx.fillStyle = lamp; ctx.fillRect(x - 7, y + 16, 2, 2);
+          ctx.fillStyle = color; ctx.fillRect(x - 7, y + 19, 2, 1);
+        } else {
+          ctx.fillRect(x + 4, y - 9, 6, 8);
+          ctx.fillRect(x + T - 10, y - 9, 6, 8);
+          ctx.fillStyle = lamp;
+          ctx.fillRect(x + 6, y - 7, 2, 2);
+          ctx.fillRect(x + T - 8, y - 7, 2, 2);
         }
       }
     },
@@ -365,6 +509,49 @@
       g.fillRect(px + 8 + Math.floor(rnd(tx, ty, 90) * 6) * 2, py + 9, 8, 1);
       g.fillRect(px + 6 + Math.floor(rnd(tx, ty, 91) * 6) * 2, py + 18, 5, 1);
     }
+  }
+
+  // 扉の敷居（板そのものは毎フレーム描く）
+  function drawDoorSill(g, tx, ty) {
+    const px = tx * T, py = ty * T;
+    const level = TILES[M.get(tx, ty)].door;
+    g.fillStyle = '#1a1f24';
+    g.fillRect(px, py, T, T);
+    g.fillStyle = '#3d4852';
+    if (M.doorAt(tx, ty).horizontal) {
+      g.fillRect(px, py + 2, T, 2);
+      g.fillRect(px, py + T - 4, T, 2);
+      g.fillStyle = DOOR_COLOR[level];
+      for (let i = 2; i < T; i += 8) g.fillRect(px + i, py + T - 2, 4, 2);
+    } else {
+      g.fillRect(px + 6, py, 2, T);
+      g.fillRect(px + T - 8, py, 2, T);
+      g.fillStyle = DOOR_COLOR[level];
+      for (let i = 2; i < T; i += 8) { g.fillRect(px + 2, py + i, 2, 4); g.fillRect(px + T - 4, py + i, 2, 4); }
+    }
+  }
+
+  // エレベーター：乗り場の床と、北の壁にある扉
+  function drawElevator(g, tx, ty) {
+    const px = tx * T, py = ty * T;
+    g.fillStyle = '#39424b'; g.fillRect(px, py, T, T);
+    g.fillStyle = '#c9a227';
+    for (let i = 0; i < T; i += 8) { g.fillRect(px + i, py + T - 3, 4, 3); }
+    // 上向きの矢印
+    g.fillStyle = '#7de0b0';
+    g.fillRect(px + 15, py + 6, 2, 2);
+    g.fillRect(px + 13, py + 8, 6, 2);
+    g.fillRect(px + 11, py + 10, 10, 2);
+    g.fillRect(px + 14, py + 12, 4, 10);
+    // 壁側の扉
+    const wy = py - T;
+    g.fillStyle = '#15191d'; g.fillRect(px, wy + 6, T, 26);
+    g.fillStyle = '#7f8b97'; g.fillRect(px + 1, wy + 9, T - 2, 23);
+    g.fillStyle = '#a3afbb'; g.fillRect(px + 1, wy + 9, T - 2, 2);
+    g.fillStyle = '#15191d';
+    g.fillRect(M.get(tx - 1, ty) === 'E' ? px : px + T - 1, wy + 9, 1, 23);
+    g.fillStyle = '#4dff8a';
+    g.fillRect(px + 12, wy + 13, 8, 2);
   }
 
   // 低い通気口：壁をくり抜いた暗い通り道
