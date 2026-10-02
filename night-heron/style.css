@@ -86,6 +86,60 @@ body.touch #pad {
   border: 2px solid rgba(200, 255, 235, .75);
 }
 
+/* 右下のボタン群 */
+#buttons {
+  position: absolute;
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  width: 190px;
+  height: 120px;
+  pointer-events: none;
+}
+#buttons button {
+  position: absolute;
+  padding: 0;
+  border-radius: 50%;
+  font: inherit;
+  font-weight: bold;
+  color: rgba(220, 255, 240, .9);
+  border: 2px solid rgba(150, 220, 200, .45);
+  background: rgba(10, 30, 28, .45);
+  pointer-events: auto;
+  touch-action: none;
+}
+#buttons button.down { background: rgba(120, 220, 190, .45); }
+#btnAction {
+  right: 0;
+  bottom: 22px;
+  width: 84px;
+  height: 84px;
+  font-size: 18px;
+  opacity: .45;
+}
+#btnAction.ready {
+  opacity: 1;
+  border-color: rgba(255, 225, 120, .9);
+  color: #fff1b8;
+  background: rgba(70, 55, 10, .5);
+}
+#btnAction.ko {
+  border-color: rgba(255, 120, 100, .95);
+  color: #ffd0c8;
+  background: rgba(90, 20, 14, .55);
+}
+#btnCrawl {
+  right: 98px;
+  bottom: 0;
+  width: 66px;
+  height: 66px;
+  font-size: 14px;
+}
+#btnCrawl.on {
+  border-color: rgba(120, 200, 255, .9);
+  color: #cfeaff;
+  background: rgba(14, 50, 80, .55);
+}
+
 body.touch #btnPause {
   display: flex;
   position: absolute;

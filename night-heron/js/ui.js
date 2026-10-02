@@ -145,11 +145,26 @@
     },
 
     drawHint(ctx, view) {
-      if (this.hintAlpha <= 0) return;
       const touch = document.body.classList.contains('touch');
+      // キーボード操作のとき、アクションキーでいまできることを出す（タッチではボタンの表示が変わる）
+      const act = NH.Player.action;
+      if (!touch && act && this.hintAlpha <= 0) {
+        const label = act.type === 'ko' ? 'Z：気絶させる' : 'Z：壁を叩く';
+        ctx.save();
+        ctx.font = 'bold 10px ' + FONT;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const w = Math.ceil(ctx.measureText(label).width) + 16;
+        ctx.fillStyle = act.type === 'ko' ? 'rgba(90,20,14,0.75)' : 'rgba(0,10,8,0.65)';
+        ctx.fillRect(view.w / 2 - w / 2, view.h - 27, w, 18);
+        ctx.fillStyle = act.type === 'ko' ? '#ffd0c8' : '#fff1b8';
+        ctx.fillText(label, view.w / 2, view.h - 17.5);
+        ctx.restore();
+      }
+      if (this.hintAlpha <= 0) return;
       const text = touch
         ? '画面の左側をドラッグして移動'
-        : '矢印キー / WASD：移動　　Esc：ポーズ　　F1：デバッグ';
+        : '矢印 / WASD：移動　Shift：ほふく　Z：アクション　Esc：ポーズ';
       ctx.save();
       ctx.globalAlpha = this.hintAlpha;
       ctx.font = 'bold 10px ' + FONT;

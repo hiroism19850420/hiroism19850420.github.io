@@ -16,6 +16,7 @@
     captureT: 0,   // 捕まった演出の残り時間
     captures: 0,   // 捕まった回数
     enemies: [],
+    rings: [],     // 物音の広がりを見せる輪
     fps: 60,
     view: { w: 640, h: 360, scale: 1 } // w, h は画面に映るワールドの大きさ
   };
@@ -81,6 +82,9 @@
     player.update(dt);
     for (const e of Game.enemies) e.update(dt, player);
     separateEnemies();
+    for (const r of Game.rings) r.t += dt;
+    Game.rings = Game.rings.filter((r) => r.t < r.life);
+    updateButtons();
     NH.Alert.update(dt);
     camera.update(dt, player, view, map);
     UI.update(dt, player, map);
@@ -106,6 +110,51 @@
     }
   }
 
+  // 物音を立てる。radius はタイル数。音の広がりを輪で見せ、範囲内の敵を呼び寄せる
+  Game.noise = function (x, y, radius, sound) {
+    const r = radius * T;
+    NH.Alert.noise(x, y, r);
+    Game.rings.push({ x, y, r, t: 0, life: 0.45 });
+    NH.Audio.play(sound);
+  };
+
+  // ---------- 画面のボタン（タッチ用） ----------
+  const btnAction = document.getElementById('btnAction');
+  const btnCrawl = document.getElementById('btnCrawl');
+  function bindButton(el, action) {
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      Input.virtualPress(action);
+      el.classList.add('down');
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) {
+      el.addEventListener(ev, () => {
+        Input.virtualRelease(action);
+        el.classList.remove('down');
+      });
+    }
+  }
+  bindButton(btnAction, 'action');
+  bindButton(btnCrawl, 'crawl');
+
+  // ボタンの表示を、いまできることに合わせる
+  const ACTION_LABEL = { ko: '気絶', knock: '叩く' };
+  let lastAction = '', lastCrawl = null;
+  function updateButtons() {
+    const a = player.action ? player.action.type : '';
+    if (a !== lastAction) {
+      lastAction = a;
+      btnAction.textContent = ACTION_LABEL[a] || '';
+      btnAction.classList.toggle('ready', !!a);
+      btnAction.classList.toggle('ko', a === 'ko');
+    }
+    if (player.crawling !== lastCrawl) {
+      lastCrawl = player.crawling;
+      btnCrawl.textContent = lastCrawl ? '立つ' : 'ほふく';
+      btnCrawl.classList.toggle('on', lastCrawl);
+    }
+  }
+
   // 仮の代償：追跡中の敵に追いつかれたら、開始位置からやり直し（フェーズ5でライフ制に置き換える）
   Game.capture = function () {
     if (Game.captureT > 0) return;
@@ -116,6 +165,7 @@
 
   function reset() {
     Game.captureT = 0;
+    Game.rings = [];
     NH.Alert.reset();
     player.init(map);
     Game.enemies = map.enemyDefs.map((def) => new NH.Enemy(def));
@@ -148,6 +198,14 @@
       e.x > cx - margin && e.x < cx + view.w + margin &&
       e.y > cy - margin && e.y < cy + view.h + margin);
     for (const e of near) e.drawCone(ctx);
+    for (const r of Game.rings) {
+      const k = r.t / r.life;
+      ctx.strokeStyle = 'rgba(255,240,170,' + (0.55 * (1 - k)) + ')';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, 6 + (r.r - 6) * (1 - (1 - k) * (1 - k)), 0, Math.PI * 2);
+      ctx.stroke();
+    }
     // 手前のものが上に重なるよう、足元の位置の順に描く
     const actors = near.concat(player).sort((a, b) => a.y - b.y);
     for (const a of actors) a.draw(ctx, snap);

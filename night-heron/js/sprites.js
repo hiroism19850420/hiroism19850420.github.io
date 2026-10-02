@@ -158,6 +158,7 @@
     b: '#3c4334', // ヘルメットの縁
     m: '#22272b', // 覆面
     s: '#e2b48c',
+    S: '#22272b',
     e: '#161a1f',
     u: '#8a8d69', // 戦闘服
     U: '#62664c',
@@ -248,6 +249,111 @@
     '..kkk..'
   ];
 
+  // ---------- 伏せた姿（匍匐、気絶） ----------
+  // 各向き2コマ。右向きは頭が右、下向きは頭が下。
+  const PRONE_SIDE = [
+    [
+      '............kkkkk.',
+      '.kkkkkkkkkkkhhbssk',
+      'kwwkuuuuggukhhbsek',
+      'kwwkUUuuggukhhbssk',
+      '.kkkkuUukkkkhhbssk',
+      '.....ksskk..kkkkk.',
+      '.....kkkk.........'
+    ],
+    [
+      '............kkkkk.',
+      '.kkkkkkkkkkkhhbssk',
+      'kwwkuuuuggukhhbsek',
+      'kwwkUUuuggukhhbssk',
+      '.kkkkkkuUukkhhbssk',
+      '.......ksskkkkkkk.',
+      '.......kkkk.......'
+    ]
+  ];
+  const PRONE_DOWN = [
+    [
+      '..kkkkkk..',
+      '.kwwkkwwk.',
+      '.kwwkkwwk.',
+      '.kuukkuuk.',
+      '.kuUkkUuk.',
+      '.kuuuuuuk.',
+      'kkuggggukk',
+      'ksuggggusk',
+      'kkuuUUuukk',
+      '.kkuSSukk.',
+      '.khhhhhhk.',
+      '.kbbbbbbk.',
+      '.ksessesk.',
+      '.kssssssk.',
+      '..kkkkkk..'
+    ],
+    [
+      '..kkkkkk..',
+      '.kwwkkwwk.',
+      '.kwwkkwwk.',
+      '.kuukkuuk.',
+      '.kuUkkUuk.',
+      '.kuuuuuuk.',
+      'ksuggggukk',
+      'kkuggggusk',
+      'kkuuUUuukk',
+      '.kkuSSukk.',
+      '.khhhhhhk.',
+      '.kbbbbbbk.',
+      '.ksessesk.',
+      '.kssssssk.',
+      '..kkkkkk..'
+    ]
+  ];
+  const PRONE_UP = [
+    [
+      '..kkkkkk..',
+      '.khhhhhhk.',
+      '.khhhhhhk.',
+      '.kbbbbbbk.',
+      '.kkhbbhkk.',
+      'kkuubbuukk',
+      'ksuggggusk',
+      'kkuGGGGukk',
+      '.kugggguk.',
+      '.kuuuuuuk.',
+      '.kuUkkUuk.',
+      '.kuukkuuk.',
+      '.kwwkkwwk.',
+      '.kwwkkwwk.',
+      '..kkkkkk..'
+    ],
+    [
+      '..kkkkkk..',
+      '.khhhhhhk.',
+      '.khhhhhhk.',
+      '.kbbbbbbk.',
+      '.kkhbbhkk.',
+      'ksuubbuukk',
+      'kkuggggusk',
+      'kkuGGGGukk',
+      '.kugggguk.',
+      '.kuuuuuuk.',
+      '.kuUkkUuk.',
+      '.kuukkuuk.',
+      '.kwwkkwwk.',
+      '.kwwkkwwk.',
+      '..kkkkkk..'
+    ]
+  ];
+
+  function buildProne(pal) {
+    const right = PRONE_SIDE.map((r) => fromRows(r, pal));
+    return {
+      right,
+      left: right.map(flip),
+      down: PRONE_DOWN.map((r) => fromRows(r, pal)),
+      up: PRONE_UP.map((r) => fromRows(r, pal))
+    };
+  }
+
   function buildCharacter(pal, upper) {
     const up = {};
     for (const k in upper) up[k] = fromRows(upper[k], pal);
@@ -274,6 +380,8 @@
     buildCharacter,
     player: buildCharacter(PAL_PLAYER, UPPER),
     enemy: buildCharacter(PAL_ENEMY, UPPER_ENEMY),
+    playerProne: buildProne(PAL_PLAYER),
+    enemyProne: buildProne(PAL_ENEMY),
     markAlert: fromRows(MARK_ALERT, { k: '#1a0505', r: '#ff3b30', w: '#ffd0c8' }),
     markQuestion: fromRows(MARK_QUESTION, { k: '#1a1505', y: '#ffd23c' })
   };

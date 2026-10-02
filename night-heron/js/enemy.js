@@ -17,7 +17,7 @@
     this.wp = this.route.length > 1 ? 1 : 0;
 
     const n = this.route[this.wp];
-    this.homeAngle = (def.face || 90) * RAD;   // 立ち番が見張る向き
+    this.homeAngle = (def.face != null ? def.face : 90) * RAD;  // 立ち番が見張る向き
     this.angle = this.route.length > 1 ? Math.atan2(n.y - this.y, n.x - this.x) : this.homeAngle;
     this.wantAngle = this.angle;
     this.baseAngle = this.angle;
@@ -57,8 +57,35 @@
       this.path = null;
       const p = NH.Player;
       if (Math.hypot(p.x - this.x, p.y - this.y) < 420) NH.Audio.play('suspect');
+    } else if (this.phase === 'look') {
+      // 見回している最中に別の物音がしたら、そちらへ向かい直す
+      this.phase = 'go';
+      this.timer = 0;
+      this.path = null;
     }
     this.investigate = { x, y };
+  };
+
+  // 背後から倒されて気絶する
+  Enemy.prototype.stun = function () {
+    this.state = 'stunned';
+    this.timer = E.STUN_TIME;
+    this.gauge = 0;
+    this.sees = false;
+    this.moving = false;
+    this.mark = null;
+    this.path = null;
+    this.cone.length = 0;
+    NH.Audio.play('ko');
+  };
+
+  // 気絶から起き上がる。フロアが警戒・捜索中ならそれに加わり、そうでなければ疑念
+  Enemy.prototype.wake = function () {
+    this.state = 'patrol';
+    const phase = NH.Alert.phase;
+    if (phase === 'alert') this.enterSpotted(E.REACT_TIME);
+    else if (phase === 'search') this.enterSearch();
+    else this.suspect(this.x, this.y);
   };
 
   Enemy.prototype.enterSpotted = function (delay) {
@@ -89,6 +116,12 @@
 
   // ---------- 毎フレームの処理 ----------
   Enemy.prototype.update = function (dt, player) {
+    if (this.state === 'stunned') {
+      this.timer -= dt;
+      this.markT += dt;
+      if (this.timer <= 0) this.wake();
+      return;
+    }
     this.perceive(dt, player);
     this.moving = false;
 
@@ -119,7 +152,8 @@
 
   // 視界の判定と、気づきゲージの増減
   Enemy.prototype.perceive = function (dt, player) {
-    const range = E.VIEW_DIST * T;
+    // 匍匐中のプレイヤーは、遠くからは見つけにくい
+    const range = E.VIEW_DIST * T * (player.crawling ? E.CRAWL_VIEW_MULT : 1);
     const dist = Math.hypot(player.x - this.x, player.y - this.y);
     const touch = dist < E.TOUCH_DIST;
     this.sees = touch || AI.inCone(this.x, this.y, this.angle, player.x, player.y, range, E.FOV * RAD);
@@ -326,10 +360,32 @@
     ctx.strokeStyle = rgb + (0.22 * k) + ')';
     ctx.lineWidth = 0.75;
     ctx.stroke();
+    // 匍匐中は、実際に見つかる範囲（半分の距離）を線で示す
+    if (NH.Player.crawling) {
+      ctx.save();
+      ctx.clip();
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, E.VIEW_DIST * T * E.CRAWL_VIEW_MULT, 0, Math.PI * 2);
+      ctx.strokeStyle = rgb + '0.55)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.stroke();
+      ctx.restore();
+    }
   };
 
   Enemy.prototype.draw = function (ctx, snap) {
     const S = NH.Sprites.SCALE;
+    if (this.state === 'stunned') {
+      const side = this.face === 'left' ? 'left' : this.face === 'right' ? 'right' : this.face;
+      const img = NH.Sprites.enemyProne[side][0];
+      const w = img.width * S, h = img.height * S;
+      const x = snap(this.x), y = snap(this.y);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(x - w / 2 + 2, y - h / 2 + 3, w - 4, h - 2);
+      ctx.drawImage(img, x - w / 2, y - h / 2 - 2, w, h);
+      return;
+    }
     const fps = this.state === 'alert' ? E.ANIM_FPS * 1.8 : E.ANIM_FPS;
     const frame = this.moving ? WALK_SEQ[Math.floor(this.animT * fps) % WALK_SEQ.length] : 0;
     const img = NH.Sprites.enemy[this.face][frame];
@@ -345,6 +401,17 @@
 
   // 頭上の「！」「？」
   Enemy.prototype.drawMark = function (ctx, snap) {
+    if (this.state === 'stunned') {
+      // 気絶：頭の上を星が回る。起き上がる直前は点滅する
+      if (this.timer < 2 && Math.floor(this.timer * 8) % 2) return;
+      const x = snap(this.x), y = snap(this.y) - 16;
+      for (let i = 0; i < 3; i++) {
+        const a = this.markT * 4 + i * Math.PI * 2 / 3;
+        ctx.fillStyle = i ? '#ffe680' : '#ffffff';
+        ctx.fillRect(Math.round(x + Math.cos(a) * 9) - 1, Math.round(y + Math.sin(a) * 3) - 1, 3, 3);
+      }
+      return;
+    }
     if (!this.mark || this.markT > (this.mark === '!' ? 1.3 : 1.9)) return;
     const S = NH.Sprites.SCALE;
     const img = this.mark === '!' ? NH.Sprites.markAlert : NH.Sprites.markQuestion;

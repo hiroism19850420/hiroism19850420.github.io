@@ -21,11 +21,10 @@
       this.timer = C.ALERT.ALERT_TIME;
       this.lastKnown = { x: player.x, y: player.y };
       this.seen = true;
-      if (was === 'alert') return;
-      NH.Audio.play('alert');
+      if (was !== 'alert') NH.Audio.play('alert');
       const R = C.ENEMY.REACT_TIME;
       for (const e of NH.Game.enemies) {
-        if (e.state === 'alert' || e.state === 'spotted') continue;
+        if (e.state === 'alert' || e.state === 'spotted' || e.state === 'stunned') continue;
         e.enterSpotted(e === by ? R : R * 0.8 + Math.random() * 0.6);
       }
     },
@@ -52,14 +51,14 @@
         if (this.timer <= 0) {
           this.phase = 'search';
           this.timer = C.ALERT.SEARCH_TIME;
-          for (const e of NH.Game.enemies) e.enterSearch();
+          for (const e of NH.Game.enemies) if (e.state !== 'stunned') e.enterSearch();
         }
       } else if (this.phase === 'search') {
         this.timer -= dt;
         if (this.timer <= 0) {
           this.phase = 'none';
           this.timer = 0;
-          for (const e of NH.Game.enemies) e.toPatrol();
+          for (const e of NH.Game.enemies) if (e.state !== 'stunned') e.toPatrol();
         }
       }
       this.seen = false;

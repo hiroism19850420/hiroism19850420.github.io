@@ -7,6 +7,8 @@
   //   # 壁        . コンクリ床   , 事務室の床
   //   C R コンテナ  B 木箱       D 机   T 端末つきの机
   //   K ロッカー   V サーバーラック  S プレイヤーの開始位置
+  //   m 金属床（走ると足音）  ~ 水たまり（走ると足音）
+  //   = 低い通気口（匍匐でだけ通れる。敵は通れず、中は見えない）
   const FLOOR_1 = [
     '################################################',
     '#KK,,,,,,,,,,,,,,,KK#...#......................#',
@@ -14,27 +16,27 @@
     '#,,TDD,,,TDD,,,TDD,,#......VV..VV..VV..........#',
     '#,,,,,,,,,,,,,,,,,,,#..........................#',
     '#,,,,,,,,,,,,,,,,,,,,...#......................#',
-    '#,,DDT,,,DDT,,,DDT,,,...#..VV..VV..VV....RR....#',
-    '#,,,,,,,,,,,,,,,,,,,#...#..VV..VV..VV....RR....#',
+    '#,,DDT,,,DDT,,,DDT,,,mmm#..VV..VV..VV....RR....#',
+    '#,,,,,,,,,,,,,,,,,,,#mmm#..VV..VV..VV....RR....#',
     '#,,,,,,,,,,,,,,,,,,,#...#......................#',
     '#,,TDD,,,TDD,,,,,,,,#...#......................#',
     '#,,,,,,,,,,,,,,,,,,,#...#.............BB.......#',
-    '#BB,,,,,,,,,,,,,,,KK#...#......................#',
-    '########..###########...################..######',
-    '########..###########...################..######',
-    '#............BB................................#',
-    '#..............................................#',
-    '#.................................CC...........#',
+    '#BB,,,,,,,,,,,,,,,KK#...#.............mmmmmm...#',
+    '########..###########...######=#########..######',
+    '########..###########...######=#########..######',
+    '#............BB...........mmmm.................#',
+    '#.........................mmmm.................#',
+    '#.........................mmmm....CC...........#',
     '#####..#######################..################',
     '#####..#######################..################',
-    '#.............#................................#',
+    '#....~~.......#................................#',
     '#.........BB..#..CCCC....RRRR........CCCC......#',
-    '#.........BB..#..CCCC....RRRR........CCCC......#',
+    '#.........BB..=..CCCC....RRRR........CCCC......#',
     '#.............#................................#',
     '#..CCC........#................BB..............#',
     '#..CCC........#..RRRR..........BB....RRRR..BB..#',
     '#.............#..RRRR................RRRR......#',
-    '#..............................................#',
+    '#...................~~~........................#',
     '#.........................CCCC.................#',
     '#..S......RRR.#..CC......CCCC......CCCCCC......#',
     '#.........RRR.#..CC................CCCCCC......#',
@@ -89,8 +91,12 @@
     'D': { name: 'desk', solid: true, opaque: false },
     'T': { name: 'desk', solid: true, opaque: false },
     'K': { name: 'locker', solid: true, opaque: true },
-    'V': { name: 'rack', solid: true, opaque: true }
+    'V': { name: 'rack', solid: true, opaque: true },
+    'm': { name: 'metal', solid: false, opaque: false, noisy: 'metal' },
+    '~': { name: 'puddle', solid: false, opaque: false, noisy: 'water' },
+    '=': { name: 'duct', solid: true, opaque: true, low: true }
   };
+  const FLOORS = '.,m~';
 
   // タイル座標から決まる乱数（毎回同じ見た目になる）
   function rnd(x, y, i) {
@@ -134,16 +140,34 @@
     isSolid(tx, ty) { return TILES[this.get(tx, ty)].solid; },
     isOpaque(tx, ty) { return TILES[this.get(tx, ty)].opaque; },
 
-    // 矩形（ワールド座標）が通れないタイルに重なるか
-    rectSolid(x, y, w, h) {
+    // 矩形（ワールド座標）が通れないタイルに重なるか。crawl が true なら低い通気口は通れる
+    rectSolid(x, y, w, h, crawl) {
       const x0 = Math.floor(x / T), x1 = Math.floor((x + w - 0.001) / T);
       const y0 = Math.floor(y / T), y1 = Math.floor((y + h - 0.001) / T);
       for (let ty = y0; ty <= y1; ty++) {
         for (let tx = x0; tx <= x1; tx++) {
-          if (this.isSolid(tx, ty)) return true;
+          const t = TILES[this.get(tx, ty)];
+          if (t.solid && !(crawl && t.low)) return true;
         }
       }
       return false;
+    },
+
+    // 矩形が低い通気口に重なるか（中では立ち上がれない）
+    rectLow(x, y, w, h) {
+      const x0 = Math.floor(x / T), x1 = Math.floor((x + w - 0.001) / T);
+      const y0 = Math.floor(y / T), y1 = Math.floor((y + h - 0.001) / T);
+      for (let ty = y0; ty <= y1; ty++) {
+        for (let tx = x0; tx <= x1; tx++) {
+          if (TILES[this.get(tx, ty)].low) return true;
+        }
+      }
+      return false;
+    },
+
+    // その地点の床が音の出る種類なら 'metal' か 'water' を返す
+    noisyAt(x, y) {
+      return TILES[this.get(Math.floor(x / T), Math.floor(y / T))].noisy || null;
     },
 
     zoneAt(x, y) {
@@ -159,7 +183,8 @@
       const around = [[0, 1], [0, -1], [-1, 0], [1, 0], [0, 2], [-2, 0], [2, 0], [0, -2]];
       for (const [dx, dy] of around) {
         const ch = this.get(tx + dx, ty + dy);
-        if (ch === '.' || ch === ',') return ch;
+        if (ch === ',') return ch;
+        if (FLOORS.includes(ch)) return '.';
       }
       return '.';
     },
@@ -191,6 +216,7 @@
           else if (ch === 'D' || ch === 'T') drawDesk(g, tx, ty, ch);
           else if (ch === 'K') drawLocker(g, tx, ty);
           else if (ch === 'V') drawRack(g, tx, ty);
+          else if (ch === '=') drawDuct(g, tx, ty);
         }
       }
 
@@ -246,6 +272,28 @@
       g.fillRect(px, py + T - 1, T, 1);
       return;
     }
+    if (kind === 'm') {
+      // 金属床：縞鋼板
+      g.fillStyle = '#4a545e';
+      g.fillRect(px, py, T, T);
+      g.fillStyle = '#5c6772';
+      for (let y = 0; y < T; y += 8) {
+        for (let x = 0; x < T; x += 8) {
+          const odd = ((x + y) / 8) & 1;
+          if (odd) { g.fillRect(px + x + 1, py + y + 3, 6, 2); }
+          else { g.fillRect(px + x + 3, py + y + 1, 2, 6); }
+        }
+      }
+      g.fillStyle = '#353d45';
+      g.fillRect(px, py, T, 1);
+      g.fillRect(px, py, 1, T);
+      g.fillStyle = '#6d7985';
+      g.fillRect(px + 2, py + 2, 2, 2);
+      g.fillRect(px + T - 4, py + 2, 2, 2);
+      g.fillRect(px + 2, py + T - 4, 2, 2);
+      g.fillRect(px + T - 4, py + T - 4, 2, 2);
+      return;
+    }
     // コンクリート
     g.fillStyle = '#2c3138';
     g.fillRect(px, py, T, T);
@@ -279,6 +327,48 @@
     if (ty % 2 === 0) {
       g.fillStyle = '#20252a'; g.fillRect(px, py, T, 1);
       g.fillStyle = '#343a42'; g.fillRect(px, py + 1, T, 1);
+    }
+    if (kind === '~') {
+      // 水たまり：隣の水たまりとつながって見えるよう、端を少し欠く
+      const wet = (x, y) => M.get(x, y) === '~';
+      const l = wet(tx - 1, ty) ? 0 : 4, r = wet(tx + 1, ty) ? 0 : 4;
+      const u = wet(tx, ty - 1) ? 0 : 5, d = wet(tx, ty + 1) ? 0 : 5;
+      const il = l ? 3 : 0, ir = r ? 3 : 0;
+      g.fillStyle = '#1c3344';
+      g.fillRect(px + l, py + u + 2, T - l - r, T - u - d - 4);
+      g.fillRect(px + l + il, py + u, T - l - r - il - ir, T - u - d);
+      g.fillStyle = '#28495e';
+      g.fillRect(px + l + il, py + u + 3, T - l - r - il - ir, T - u - d - 7);
+      g.fillStyle = '#6fa3bd';
+      g.fillRect(px + 8 + Math.floor(rnd(tx, ty, 90) * 6) * 2, py + 9, 8, 1);
+      g.fillRect(px + 6 + Math.floor(rnd(tx, ty, 91) * 6) * 2, py + 18, 5, 1);
+    }
+  }
+
+  // 低い通気口：壁をくり抜いた暗い通り道
+  function drawDuct(g, tx, ty) {
+    const px = tx * T, py = ty * T;
+    g.fillStyle = '#090b0e';
+    g.fillRect(px, py, T, T);
+    const vertical = isWall(tx - 1, ty) || isWall(tx + 1, ty); // 上下に抜ける向き
+    g.fillStyle = '#171c21';
+    for (let i = 2; i < T; i += 4) {
+      if (vertical) g.fillRect(px + 3, py + i, T - 6, 1);
+      else g.fillRect(px + i, py + 3, 1, T - 6);
+    }
+    g.fillStyle = '#3d4852';
+    if (isWall(tx - 1, ty)) g.fillRect(px, py, 3, T);
+    if (isWall(tx + 1, ty)) g.fillRect(px + T - 3, py, 3, T);
+    if (isWall(tx, ty - 1)) g.fillRect(px, py, T, 3);
+    if (isWall(tx, ty + 1)) g.fillRect(px, py + T - 3, T, 3);
+    // 出入口の黄色い目印
+    g.fillStyle = '#c9a227';
+    const open = (x, y) => !M.isSolid(x, y);
+    for (let i = 4; i < T - 4; i += 8) {
+      if (open(tx, ty - 1)) g.fillRect(px + i, py, 4, 2);
+      if (open(tx, ty + 1)) g.fillRect(px + i, py + T - 2, 4, 2);
+      if (open(tx - 1, ty)) g.fillRect(px, py + i, 2, 4);
+      if (open(tx + 1, ty)) g.fillRect(px + T - 2, py + i, 2, 4);
     }
   }
 
