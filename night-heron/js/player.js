@@ -110,7 +110,10 @@
     findAction() {
       if (this.boxed) return null;
       const door = NH.Map.doorNear(this.x, this.y);
-      if (door && !this.crawling) return { type: 'door', door, ok: this.keyLevel >= door.level };
+      // 内側からなら、カードキーがなくても開けられる（閉じ込められないように）
+      if (door && !this.crawling) {
+        return { type: 'door', door, ok: this.keyLevel >= door.level || NH.Map.insideOf(door, this.x, this.y) };
+      }
       if (!this.crawling) {
         let best = null, bestD = P.KO_RANGE;
         for (const e of NH.Game.enemies) {

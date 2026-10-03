@@ -55,6 +55,9 @@
     { name: 'サーバールーム', x0: 25, y0: 1, x1: 46, y1: 11 }
   ];
 
+  // 鍵のかかった部屋。これらの区画の側からは、扉をカードキーなしで開けられる
+  const SECURE_ZONES = ['事務室', 'サーバールーム'];
+
   // 敵兵の巡回ルート（タイル座標）。隣り合う地点の間は、障害物のない直線にすること。
   // 地点が1つだけなら、その場に立って face（度。右が0、下が90）の方向を見張る。
   const ENEMIES_1 = [
@@ -180,6 +183,10 @@
           const a = door.tiles[0], b = door.tiles[door.tiles.length - 1];
           door.x = (a.tx + b.tx + 1) / 2 * T;
           door.y = (a.ty + b.ty + 1) / 2 * T;
+          // どちら側が鍵のかかった部屋の内側かを、区画から決める（内側からは鍵なしで開く）
+          const secure = (x, y) => { const z = this.zoneAt((x + 0.5) * T, (y + 0.5) * T); return !!z && SECURE_ZONES.includes(z.name); };
+          if (horizontal) door.inside = secure(a.tx, a.ty - 2) || secure(a.tx, a.ty - 1) ? { x: 0, y: -1 } : { x: 0, y: 1 };
+          else door.inside = secure(a.tx - 1, a.ty) ? { x: -1, y: 0 } : { x: 1, y: 0 };
           this.doors.push(door);
         }
       }
@@ -221,6 +228,11 @@
         if (d.open < 0.5 && Math.abs(x - d.x) < (d.horizontal ? T + 6 : 30) && Math.abs(y - d.y) < (d.horizontal ? 42 : T + 6)) return d;
       }
       return null;
+    },
+
+    // 扉に対して、鍵のかかった部屋の内側にいるか
+    insideOf(d, x, y) {
+      return (x - d.x) * d.inside.x + (y - d.y) * d.inside.y > 0;
     },
 
     isGoal(x, y) {
