@@ -111,10 +111,18 @@
       Game.endT = 0;
       NH.Audio.play('gameover');
     } else if (map.isGoal(player.x, player.y)) {
-      Game.mode = 'clear';
-      Game.endT = 0;
-      NH.Audio.play('clear');
+      const why = Game.goalBlocked();
+      if (!why) {
+        Game.mode = 'clear';
+        Game.endT = 0;
+        NH.Audio.play('clear');
+      } else if (Game.goalMsgT <= 0) {
+        Game.goalMsgT = 2.5;
+        Game.toast(why);
+        NH.Audio.play('locked');
+      }
     }
+    Game.goalMsgT = Math.max(0, Game.goalMsgT - dt);
   }
 
   // ---------- 弾 ----------
@@ -221,6 +229,14 @@
   }
 
   Game.toast = function (text) { UI.toast(text); };
+
+  // エレベーターを動かせない理由。動かせるなら空文字
+  Game.goalMsgT = 0;
+  Game.goalBlocked = function () {
+    if (player.keyLevel < C.GOAL.KEY_LEVEL) return 'エレベーターにはカードキー Lv' + C.GOAL.KEY_LEVEL + ' が必要だ';
+    if (C.GOAL.LOCK_ON_ALERT && NH.Alert.phase !== 'none') return '警戒中はエレベーターが動かない';
+    return '';
+  };
 
   // 倒した敵が持ち物を落とす
   Game.dropItem = function (carry, x, y) {
@@ -342,6 +358,7 @@
 
     map.drawDynamic(ctx, Game.time, { x: cx, y: cy }, view);
     map.drawDoors(ctx, player.keyLevel);
+    map.drawGoalLamps(ctx, !Game.goalBlocked(), Game.time);
     drawItems();
 
     // 画面の近くにいる敵だけ描く

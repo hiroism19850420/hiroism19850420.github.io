@@ -1,16 +1,16 @@
 [
 {"slug":"night-heron","title":"NIGHT HERON","desc":"見下ろし型のステルスアクション(制作中・フェーズ5:アイテム・カードキー・麻酔銃・エレベーターでクリア。スマホ横持ち対応)","updated":"2026-10-04"},
 {"slug":"donarugo-quest","title":"ドナルゴクエスト そして絶叫へ","desc":"声で呪文をとなえて戦う音声認識バトル。大きく長く叫ぶほど強い!(マイクを使います)","updated":"2026-10-02"},
+{"slug":"chikoku-gate","title":"ちこくだ！チャイムだ！門ジャンプ！","desc":"食パンをくわえた女子高生が、連打ダッシュで門・タワー・富士山・宇宙まで跳び越える連打アクション","updated":"2026-10-01"},
 {"slug":"boldaring","title":"つかめ！ホールド！てっぺんだ！","desc":"ボルダリングのホールドをつかんで頂上を目指すゲーム","updated":"2026-10-01"},
+{"slug":"gladiola","title":"GLADIOLA","desc":"ネオンの花園を進む横スクロールシューティング(スマホ横画面対応)","updated":"2026-10-01"},
 {"slug":"donka-dojo","title":"ドンカ道場","desc":"好きな曲で叩く和太鼓リズムゲーム","updated":"2026-10-01"},
 {"slug":"purumochi","title":"ぷるもち☆バトル","desc":"かわいいぷるもちを4つつなげて連鎖!CPUと対戦する落ち物パズル(スマホ横画面対応)","updated":"2026-10-01"},
-{"slug":"gladiola","title":"GLADIOLA","desc":"ネオンの花園を進む横スクロールシューティング(スマホ横画面対応)","updated":"2026-10-01"},
-{"slug":"chikoku-gate","title":"ちこくだ！チャイムだ！門ジャンプ！","desc":"食パンをくわえた女子高生が、連打ダッシュで門・タワー・富士山・宇宙まで跳び越える連打アクション","updated":"2026-10-01"},
+{"slug":"pop-beat-stage","title":"POP BEAT STAGE","desc":"9ボタンのリズムゲーム。手持ちのmp3を追加して遊べます","updated":"2026-09-30"},
+{"slug":"make-load","title":"おばけのみち","desc":"おばけのいる道を進むゲーム","updated":"2026-09-30"},
 {"slug":"hikari","title":"ヒカリノタネ","desc":"光をあつめて進む、小さなタネのアクションゲーム","updated":"2026-09-30"},
+{"slug":"menseki","title":"面積パズル","desc":"線の長さを1本ずつ答えて、?の面積を求めよう(全100問)","updated":"2026-09-30"},
 {"slug":"nasubinta","title":"ピーマン!トマトに!ナスビンタ!","desc":"ボタンで正しくえらんで、子どもに食べさせよう","updated":"2026-09-30"},
 {"slug":"tsumiki-nekooroshi","title":"つみき!ぬいて!ネコおろし!","desc":"いちばん下のつみきと同じ色のボタンを叩こう","updated":"2026-09-30"},
-{"slug":"seesaw","title":"てこシーソー","desc":"てこのつりあいで遊ぶシーソーゲーム","updated":"2026-09-30"},
-{"slug":"menseki","title":"面積パズル","desc":"線の長さを1本ずつ答えて、?の面積を求めよう(全100問)","updated":"2026-09-30"},
-{"slug":"pop-beat-stage","title":"POP BEAT STAGE","desc":"9ボタンのリズムゲーム。手持ちのmp3を追加して遊べます","updated":"2026-09-30"},
-{"slug":"make-load","title":"おばけのみち","desc":"おばけのいる道を進むゲーム","updated":"2026-09-30"}
+{"slug":"seesaw","title":"てこシーソー","desc":"てこのつりあいで遊ぶシーソーゲーム","updated":"2026-09-30"}
 ]

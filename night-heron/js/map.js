@@ -202,9 +202,9 @@
         for (const e of enemies) {
           if (e.state !== 'stunned' && Math.hypot(e.x - d.x, e.y - d.y) < R) { near = true; break; }
         }
-        // 開いている間は、プレイヤーがそばにいても閉まらない
+        // 開いている間は、プレイヤーがそばにいても閉まらない（敵が開けた扉に便乗できる）
         if (!near && d.open > 0 && Math.hypot(player.x - d.x, player.y - d.y) < R) near = true;
-        if (near) d.hold = 1.2;
+        if (near) d.hold = Math.max(d.hold, 1.2);
         const was = d.open;
         d.hold -= dt;
         d.open = Math.max(0, Math.min(1, d.open + (d.hold > 0 ? dt : -dt) / 0.22));
@@ -398,6 +398,17 @@
           ctx.fillStyle = lamp;
           ctx.fillRect(x + 6, y - 7, 2, 2);
           ctx.fillRect(x + T - 8, y - 7, 2, 2);
+        }
+      }
+    },
+
+    // エレベーターのランプ。動かせるなら緑、動かせないなら赤
+    drawGoalLamps(ctx, usable, time) {
+      for (let ty = 0; ty < this.h; ty++) {
+        for (let tx = 0; tx < this.w; tx++) {
+          if (!TILES[this.rows[ty][tx]].goal) continue;
+          ctx.fillStyle = usable ? '#4dff8a' : (Math.sin(time * 6) > 0 ? '#ff3b30' : '#7a1610');
+          ctx.fillRect(tx * T + 12, (ty - 1) * T + 13, 8, 2);
         }
       }
     },
