@@ -33,6 +33,12 @@
     this.searchPt = null;    // 捜索で向かう地点
     this.mark = null;        // 頭上の記号 '!' か '?'
     this.markT = 99;
+    this.carry = def.carry ? Object.assign({}, def.carry) : null; // 持っているアイテム（倒すと落とす）
+    this.glanceT = E.GLANCE_MIN + Math.random() * (E.GLANCE_MAX - E.GLANCE_MIN);
+    this.shootT = 0;
+    this.aimT = 0;           // 狙いをつけている残り時間
+    this.aimAngle = 0;
+    this.meleeT = 0;
 
     this.path = null;        // A* の経路
     this.pathI = 0;
@@ -71,6 +77,12 @@
   Enemy.prototype.stun = function (sleep) {
     this.state = 'stunned';
     this.asleep = !!sleep;
+    this.aimT = 0;
+    // 持っていたものを落とす
+    if (this.carry) {
+      NH.Game.dropItem(this.carry, this.x, this.y);
+      this.carry = null;
+    }
     this.discovered = false;
     this.wakeTarget = null;
     this.timer = sleep ? E.SLEEP_TIME : E.STUN_TIME;
@@ -112,6 +124,8 @@
     this.state = 'spotted';
     this.timer = delay;
     this.shootT = E.SHOOT_FIRST;
+    this.aimT = 0;
+    this.meleeT = 0;
     this.wakeTarget = null;
     this.gauge = 1;
     this.mark = '!';
@@ -223,7 +237,22 @@
         this.phase = 'look';
         this.timer = 0;
         this.baseAngle = this.route.length > 1 ? this.wantAngle : this.homeAngle;
+        return;
       }
+      // ときどき立ち止まって後ろを振り返る（間隔は毎回ばらつく）
+      if (this.route.length > 1 && this.moving) {
+        this.glanceT -= dt;
+        if (this.glanceT <= 0) {
+          this.glanceT = E.GLANCE_MIN + Math.random() * (E.GLANCE_MAX - E.GLANCE_MIN);
+          this.phase = 'glance';
+          this.timer = 0;
+          this.baseAngle = this.angle + Math.PI;
+        }
+      }
+    } else if (this.phase === 'glance') {
+      this.timer += dt;
+      this.wantAngle = this.baseAngle;
+      if (this.timer >= E.GLANCE_TIME) this.phase = 'walk';
     } else {
       this.timer += dt;
       this.wantAngle = this.baseAngle +
@@ -259,25 +288,45 @@
     }
   };
 
-  // 警戒：見えていて射程内なら撃つ。見えなければ最後に見た地点へ走る
+  // 警戒：見えていて射程内なら、狙いをつけてから撃つ。見えなければ最後に見た地点へ走る
   Enemy.prototype.chase = function (dt, player) {
     const d = Math.hypot(player.x - this.x, player.y - this.y);
+    this.shootT -= dt;
+    this.meleeT -= dt;
+
+    // 目の前まで詰めたら殴る
+    if (d < E.MELEE_DIST && this.meleeT <= 0) {
+      this.meleeT = E.MELEE_INTERVAL;
+      player.hurt(E.MELEE_DAMAGE);
+    }
+
+    // 狙いをつけている最中：足を止め、決めた方向へ撃つ（プレイヤーが動けば外れる）
+    if (this.aimT > 0) {
+      this.wantAngle = this.aimAngle;
+      this.aimT -= dt;
+      if (this.aimT <= 0) {
+        this.shootT = E.SHOOT_INTERVAL;
+        NH.Game.fire('enemy', this.x, this.y, this.aimAngle + (Math.random() * 2 - 1) * E.BULLET_SPREAD);
+      }
+      return;
+    }
+
     if (this.sees && d < E.SHOOT_RANGE * T) {
       const aim = Math.atan2(player.y - this.y, player.x - this.x);
-      this.wantAngle = aim;
-      // ある程度までは詰めてくる
-      if (d > E.SHOOT_KEEP * T) this.goTo(player.x, player.y, E.ALERT_SPEED * 0.55, dt);
-      this.wantAngle = aim;
-      this.shootT -= dt;
-      if (this.shootT <= 0 && Math.abs(AI.angleDiff(aim, this.angle)) < 0.3) {
-        this.shootT = E.SHOOT_INTERVAL;
-        NH.Game.fire('enemy', this.x, this.y, aim + (Math.random() * 2 - 1) * E.BULLET_SPREAD);
+      if (this.shootT <= 0 && d > E.MELEE_DIST) {
+        this.aimT = E.AIM_TIME;
+        this.aimAngle = aim;
+        this.wantAngle = aim;
+        return;
       }
+      // 撃つ合間に、ある程度までは詰めてくる
+      if (d > E.SHOOT_KEEP * T) this.goTo(player.x, player.y, E.ALERT_SPEED * 0.7, dt);
+      else if (d < E.MELEE_DIST * 2) this.goTo(player.x, player.y, E.ALERT_SPEED, dt);
+      this.wantAngle = aim;
       this.timer = 0;
       this.baseAngle = this.angle;
       return;
     }
-    this.shootT = Math.max(this.shootT, 0.3);
     const t = this.sees ? player : NH.Alert.lastKnown;
     if (this.goTo(t.x, t.y, E.ALERT_SPEED, dt) !== false) {
       // 着いたのに見当たらない：その場で見回す
@@ -452,6 +501,19 @@
     ctx.drawImage(img, x - w / 2, feet - h, w, h);
   };
 
+  // 狙いをつけている間の赤い線。この方向へ弾が飛ぶ
+  Enemy.prototype.drawAim = function (ctx) {
+    if (this.state !== 'alert' || this.aimT <= 0) return;
+    const k = 1 - this.aimT / E.AIM_TIME;
+    const len = AI.castRay(this.x, this.y, this.aimAngle, E.SHOOT_RANGE * T * 1.6);
+    ctx.strokeStyle = 'rgba(255,60,50,' + (0.25 + 0.6 * k) + ')';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.y - 8);
+    ctx.lineTo(this.x + Math.cos(this.aimAngle) * len, this.y - 8 + Math.sin(this.aimAngle) * len);
+    ctx.stroke();
+  };
+
   // 頭上の「！」「？」
   Enemy.prototype.drawMark = function (ctx, snap) {
     if (this.state === 'stunned') {
@@ -476,7 +538,15 @@
       }
       return;
     }
-    if (!this.mark || this.markT > (this.mark === '!' ? 1.3 : 1.9)) return;
+    if (!this.mark || this.markT > (this.mark === '!' ? 1.3 : 1.9)) {
+      // 記号が出ていないとき、持っているアイテムを頭上に小さく見せる
+      if (this.carry) {
+        const img = NH.Sprites.icons[this.carry.type === 'key' ? 'key' + this.carry.level : this.carry.type];
+        const bob = Math.round(Math.sin(NH.Game.time * 3) * 1.5);
+        ctx.drawImage(img, snap(this.x) - img.width, snap(this.y) - 54 + bob, img.width * 2, img.height * 2);
+      }
+      return;
+    }
     const S = NH.Sprites.SCALE;
     const img = this.mark === '!' ? NH.Sprites.markAlert : NH.Sprites.markQuestion;
     const pop = Math.sin(Math.min(1, this.markT / 0.22) * Math.PI) * 7;

@@ -17,6 +17,7 @@
     endT: 0,       // 終了画面を出してからの時間
     tapped: false,
     enemies: [],
+    sentries: [],  // 監視カメラ
     rings: [],     // 物音の広がりを見せる輪
     bullets: [],
     items: [],
@@ -89,6 +90,7 @@
     Game.stats.time += dt;
     player.update(dt);
     for (const e of Game.enemies) e.update(dt, player);
+    for (const c of Game.sentries) c.update(dt, player);
     separateEnemies();
     map.updateDoors(dt, player, Game.enemies);
     for (const d of map.doors) {
@@ -142,6 +144,15 @@
           break;
         }
         if (b.owner === 'player') {
+          // 監視カメラに当てると、しばらく止まる
+          for (const c of Game.sentries) {
+            if (c.offT > 0 || Math.hypot(c.x - b.x, c.y - b.y) > 12) continue;
+            c.disable();
+            NH.Audio.play('ricochet');
+            b.dead = true;
+            break;
+          }
+          if (b.dead) break;
           for (const e of Game.enemies) {
             if (e.state === 'stunned' || Math.hypot(e.x - b.x, e.y - b.y) > 13) continue;
             e.stun(true);
@@ -175,6 +186,7 @@
   function pickUpItems() {
     const P = C.PLAYER;
     for (const it of Game.items) {
+      if (it.dropT > 0) { it.dropT -= 1 / C.FPS; continue; } // 落とした直後は拾えない（倒した瞬間に拾ってしまわないように）
       if (it.taken || Math.hypot(it.x - player.x, it.y - player.y) > 20) continue;
       let msg = '';
       if (it.type === 'box') { player.hasBox = true; msg = '段ボール箱を手に入れた'; }
@@ -209,6 +221,12 @@
   }
 
   Game.toast = function (text) { UI.toast(text); };
+
+  // 倒した敵が持ち物を落とす
+  Game.dropItem = function (carry, x, y) {
+    Game.items.push({ type: carry.type, level: carry.level, x, y: y + 4, taken: false, dropT: 0.6 });
+    Game.toast(carry.type === 'key' ? '敵がカードキー Lv' + carry.level + ' を落とした' : '敵が何か落とした');
+  };
 
   // 終了画面で、画面のどこを触ってもやり直せるように
   window.addEventListener('pointerdown', () => { if (Game.mode !== 'play') Game.tapped = true; });
@@ -300,6 +318,7 @@
     UI.clearToast();
     player.init(map);
     Game.enemies = map.enemyDefs.map((def) => new NH.Enemy(def));
+    Game.sentries = map.sentryDefs.map((def) => new NH.Sentry(def));
     for (const e of Game.enemies) e.update(0, player);
     camera.snap(player, view, map);
     UI.zone = null;
@@ -330,7 +349,9 @@
     const near = Game.enemies.filter((e) =>
       e.x > cx - margin && e.x < cx + view.w + margin &&
       e.y > cy - margin && e.y < cy + view.h + margin);
+    for (const c of Game.sentries) c.drawCone(ctx);
     for (const e of near) e.drawCone(ctx);
+    for (const c of Game.sentries) c.draw(ctx, Game.time);
     for (const r of Game.rings) {
       const k = r.t / r.life;
       ctx.strokeStyle = 'rgba(255,240,170,' + (0.55 * (1 - k)) + ')';
@@ -342,6 +363,7 @@
     // 手前のものが上に重なるよう、足元の位置の順に描く
     const actors = near.concat(player).sort((a, b) => a.y - b.y);
     for (const a of actors) a.draw(ctx, snap);
+    for (const e of near) e.drawAim(ctx);
     drawBullets();
     for (const e of near) e.drawMark(ctx, snap);
 

@@ -63,7 +63,7 @@
     { route: [[45, 19], [45, 30], [30, 30], [30, 19]] },    // 第1倉庫：東側を周回（北の出口の前を通る）
     { route: [[2, 15], [22, 15]] },                         // 中央通路：西半分を往復
     { route: [[45, 15], [24, 15]] },                        // 中央通路：東半分を往復
-    { route: [[7, 4], [18, 4], [18, 8], [7, 8]] },          // 事務室：机の間を周回
+    { route: [[7, 4], [18, 4], [18, 8], [7, 8]], carry: { type: 'key', level: 2 } }, // 事務室：机の間を周回。カードキー Lv2 を持っている
     { route: [[19, 10], [3, 10]] },                         // 事務室：南の出口の前を往復
     { route: [[22, 2], [22, 10]] },                         // 連絡通路を往復
     { route: [[26, 4], [45, 4], [45, 8], [26, 8]] },        // サーバールームを周回
@@ -77,9 +77,17 @@
     { type: 'gun', x: 16, y: 30 },
     { type: 'key', level: 1, x: 38, y: 23 },
     { type: 'ration', x: 1, y: 14 },
-    { type: 'key', level: 2, x: 2, y: 2 },
-    { type: 'ration', x: 18, y: 2 },
-    { type: 'ammo', x: 22, y: 1 }
+    { type: 'ration', x: 2, y: 2 },
+    { type: 'ammo', x: 18, y: 2 },
+    { type: 'ammo', x: 22, y: 1 },
+    { type: 'ration', x: 26, y: 10 }
+  ];
+
+  // 監視カメラ（タイル座標。そのタイルの上端に付く）。face は首振りの中心（度）、swing は左右に振る角度
+  const SENTRIES_1 = [
+    { x: 22, y: 19, face: 90, swing: 60 },   // 第1倉庫：北の壁から通路を見下ろす
+    { x: 37, y: 14, face: 90, swing: 55 },   // 中央通路：サーバールーム南の扉の手前
+    { x: 12, y: 1, face: 90, swing: 60 }     // 事務室：北の壁
   ];
 
   // 天井灯（タイル座標）。マップに焼き込む
@@ -148,6 +156,7 @@
       this.zones = ZONES_1;
       this.enemyDefs = ENEMIES_1;
       this.itemDefs = ITEMS_1;
+      this.sentryDefs = SENTRIES_1;
       this.buildDoors();
       this.prerender();
     },
