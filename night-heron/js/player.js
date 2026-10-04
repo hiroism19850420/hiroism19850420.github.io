@@ -195,8 +195,14 @@
           this.stepT = P.STEP_INTERVAL;
           G.noise(this.x, this.y, P.STEP_RADIUS, noisy === 'water' ? 'stepWater' : 'stepMetal');
         }
+      } else if (this.moving && !this.crawling) {
+        // ふつうの床：敵には聞こえない小さな足音だけ鳴らす
+        this.walkT = (this.walkT || 0) - dt;
+        if (this.walkT <= 0) { this.walkT = 0.3; NH.Audio.play('step'); }
+        this.stepT = 0;
       } else {
         this.stepT = 0;
+        this.walkT = 0.15;
       }
 
       // アクション

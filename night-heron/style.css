@@ -37,7 +37,25 @@ html, body {
 }
 
 /* ---------- タッチ操作 ---------- */
-#pad, #btnPause { display: none; }
+#pad, #btnPause, #btnRadio { display: none; }
+
+body.touch #btnRadio {
+  display: block;
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  right: calc(56px + env(safe-area-inset-right));
+  width: 48px;
+  height: 40px;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: bold;
+  color: rgba(200, 255, 235, .9);
+  border-radius: 6px;
+  border: 1px solid rgba(150, 220, 200, .45);
+  background: rgba(8, 18, 18, .55);
+  touch-action: none;
+}
 
 body.touch #pad {
   display: block;

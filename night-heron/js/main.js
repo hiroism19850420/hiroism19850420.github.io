@@ -42,6 +42,9 @@
     view.scale = s;
     view.w = bw / s;
     view.h = bh / s;
+    // 右上のボタン（無線、ポーズ）に隠れないよう、レーダーを左へ寄せる幅を測る
+    const br = document.getElementById('btnRadio').getBoundingClientRect();
+    view.rightInset = br.width > 0 ? (r.right - br.left) * dpr / s + 6 : 8;
     camera.update(0, player, view, map);
   }
 
@@ -78,6 +81,14 @@
   // ---------- update / draw ----------
   function update(dt) {
     Game.time += dt;
+    if (Game.mode === 'radio') {
+      // 無線中はゲームを止め、決定キーかタップで文字を送る
+      const adv = Input.pressed('action') || Input.pressed('radio') || Game.tapped;
+      Game.tapped = false;
+      NH.Radio.update(dt, adv);
+      if (!NH.Radio.active) Game.mode = 'play';
+      return;
+    }
     if (Game.mode !== 'play') {
       // ゲームオーバー・クリア：少し待ってから、ボタンか画面タップでやり直し
       Game.endT += dt;
@@ -106,6 +117,8 @@
     camera.update(dt, player, view, map);
     UI.update(dt, player, map);
 
+    checkRadio();
+
     if (player.life <= 0) {
       Game.mode = 'over';
       Game.endT = 0;
@@ -123,6 +136,36 @@
       }
     }
     Game.goalMsgT = Math.max(0, Game.goalMsgT - dt);
+  }
+
+  // ---------- 無線 ----------
+  // 決まった場所に来たとき（タイル座標の矩形、両端を含む）に自動で入る無線
+  const RADIO_SPOTS = [
+    { id: 'puddle', x0: 4, y0: 20, x1: 7, y1: 22 },
+    { id: 'duct', x0: 11, y0: 20, x1: 13, y1: 22 }
+  ];
+  const RADIO_ZONES = { '第1倉庫': 'warehouse', '中央通路': 'corridor', '事務室': 'office', 'サーバールーム': 'server' };
+  let wasAlerted = false;
+
+  function openRadio() {
+    Game.mode = 'radio';
+    Game.tapped = false;
+  }
+
+  function checkRadio() {
+    const R = NH.Radio, A = NH.Alert;
+    if (A.phase !== 'none') { wasAlerted = true; if (Input.pressed('radio')) { R.call(); openRadio(); } return; }
+    // 自分からかける
+    if (Input.pressed('radio')) { R.call(); openRadio(); return; }
+    // 警戒が解けた直後
+    if (wasAlerted) { wasAlerted = false; if (R.play('escaped')) { openRadio(); return; } }
+    if (!R.seen.intro) { R.play('intro'); openRadio(); return; }
+    const tx = Math.floor(player.x / T), ty = Math.floor(player.y / T);
+    for (const s of RADIO_SPOTS) {
+      if (tx >= s.x0 && tx <= s.x1 && ty >= s.y0 && ty <= s.y1 && R.play(s.id)) { openRadio(); return; }
+    }
+    const z = map.zoneAt(player.x, player.y);
+    if (z && RADIO_ZONES[z.name] && R.play(RADIO_ZONES[z.name])) openRadio();
   }
 
   // ---------- 弾 ----------
@@ -297,6 +340,7 @@
   bindButton(btnCrawl, 'crawl');
   bindButton(btnWeapon, 'weapon');
   bindButton(btnItem, 'item');
+  bindButton(document.getElementById('btnRadio'), 'radio');
 
   // ボタンの表示を、いまできることや持ち物に合わせる（変わったときだけ書き換える）
   const ACTION_LABEL = { ko: '気絶', knock: '叩く', door: '開ける', locked: 'ロック' };
@@ -526,6 +570,7 @@
   reset();
   setDebug(Game.debug);
   window.addEventListener('resize', resize);
+  window.addEventListener('touchstart', () => setTimeout(resize, 0), { once: true, passive: true });
   window.addEventListener('orientationchange', resize);
   if (window.ResizeObserver) new ResizeObserver(resize).observe(stage);
   requestAnimationFrame((t) => { last = t; requestAnimationFrame(frame); });

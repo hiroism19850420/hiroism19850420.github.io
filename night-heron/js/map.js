@@ -361,6 +361,7 @@
         g.fillRect(x - l.r, y - l.r, l.r * 2, l.r * 2);
       }
       g.globalCompositeOperation = 'source-over';
+      this.buildMini();
       // 壁の上面は光が届かないので描き直す
       for (let ty = 0; ty < this.h; ty++) {
         for (let tx = 0; tx < this.w; tx++) {
@@ -410,6 +411,26 @@
           ctx.fillStyle = lamp;
           ctx.fillRect(x + 6, y - 7, 2, 2);
           ctx.fillRect(x + T - 8, y - 7, 2, 2);
+        }
+      }
+    },
+
+    // レーダー用の縮小地図（1タイル = MINI px）
+    MINI: 4,
+    buildMini() {
+      const k = this.MINI;
+      const cv = this.mini = NH.Sprites.makeCanvas(this.w * k, this.h * k);
+      const g = cv.getContext('2d');
+      for (let ty = 0; ty < this.h; ty++) {
+        for (let tx = 0; tx < this.w; tx++) {
+          const ch = this.rows[ty][tx], t = TILES[ch];
+          let col = null;
+          if (ch === '#') col = '#2f6b58';
+          else if (t.low) col = '#b89a2a';
+          else if (t.goal) col = '#7dffc4';
+          else if (t.solid) col = t.opaque ? '#3f8a70' : '#28574a';
+          else if (t.noisy) col = '#123a30';
+          if (col) { g.fillStyle = col; g.fillRect(tx * k, ty * k, k, k); }
         }
       }
     },

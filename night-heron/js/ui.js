@@ -32,11 +32,13 @@
       this.drawHurt(ctx, view);
       this.drawAlert(ctx, view);
       this.drawLife(ctx);
-      this.drawEquip(ctx, view);
+      this.drawEquip(ctx);
+      this.drawRadar(ctx, view);
       this.drawBanner(ctx, map);
       this.drawHint(ctx, view);
       this.drawToast(ctx, view);
       this.drawEnd(ctx, view);
+      NH.Radio.draw(ctx, view);
     },
 
     // 被弾したときの赤い明滅
@@ -69,18 +71,16 @@
       ctx.restore();
     },
 
-    // 持ち物（右上）：麻酔銃の弾数、段ボール箱、カードキー
-    drawEquip(ctx, view) {
+    // 持ち物（ライフの下）：麻酔銃の弾数、段ボール箱、カードキー
+    drawEquip(ctx) {
       const p = NH.Player;
       const S = NH.Sprites.SCALE, icons = NH.Sprites.icons;
-      const touch = document.body.classList.contains('touch');
-      let x = view.w - (touch ? 56 : 10);
-      const y = 8;
+      let x = 8;
+      const y = 24;
       const slot = (img, label, on) => {
         ctx.font = 'bold 9px monospace';
         const tw = label ? Math.ceil(ctx.measureText(label).width) + 4 : 0;
         const w = img.width * S / 2 + 10 + tw;
-        x -= w;
         ctx.fillStyle = on ? 'rgba(90,70,20,0.75)' : 'rgba(0,10,8,0.6)';
         ctx.fillRect(x, y - 2, w, 16);
         ctx.drawImage(img, x + 4, y + 6 - img.height * S / 4, img.width * S / 2, img.height * S / 2);
@@ -89,13 +89,91 @@
           ctx.textBaseline = 'middle';
           ctx.fillText(label, x + 8 + img.width * S / 2, y + 6.5);
         }
-        x -= 4;
+        x += w + 4;
       };
       ctx.save();
-      if (p.keyLevel > 0) slot(icons['key' + p.keyLevel], 'Lv' + p.keyLevel, false);
-      if (p.hasBox) slot(icons.box, '', p.boxed);
       if (p.hasGun) slot(icons.gun, String(p.ammo), false);
+      if (p.hasBox) slot(icons.box, '', p.boxed);
+      if (p.keyLevel > 0) slot(icons['key' + p.keyLevel], 'Lv' + p.keyLevel, false);
       ctx.restore();
+    },
+
+    // レーダー（右上）：周囲の地形、敵の位置と視界。警戒・捜索中はノイズで使えない
+    drawRadar(ctx, view) {
+      const G = NH.Game, map = NH.Map, p = NH.Player;
+      const T = NH.CONFIG.TILE, k = map.MINI / T;
+      const W = 88, H = 60;
+      const x0 = Math.round(view.w - (view.rightInset || 8) - W), y0 = 8;
+      const cx = x0 + W / 2, cy = y0 + H / 2;
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,16,12,0.78)';
+      ctx.fillRect(x0, y0, W, H);
+      ctx.beginPath();
+      ctx.rect(x0, y0, W, H);
+      ctx.clip();
+
+      if (NH.Alert.phase !== 'none') {
+        // 妨害：砂嵐と流れる帯
+        for (let i = 0; i < 70; i++) {
+          const g = 60 + Math.floor(Math.random() * 150);
+          ctx.fillStyle = 'rgba(' + g + ',' + (g + 30) + ',' + g + ',' + (0.25 + Math.random() * 0.5) + ')';
+          ctx.fillRect(x0 + Math.random() * W, y0 + Math.random() * H, 2 + Math.random() * 14, 1);
+        }
+        ctx.fillStyle = 'rgba(200,255,220,0.18)';
+        ctx.fillRect(x0, y0 + (G.time * 40) % H, W, 5);
+        ctx.font = 'bold 9px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = Math.sin(G.time * 8) > 0 ? '#ff6a5a' : '#a02a20';
+        ctx.fillText('JAMMING', cx, cy);
+      } else {
+        const ox = cx - p.x * k, oy = cy - p.y * k; // ワールド座標をレーダー上に写す
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(map.mini, Math.round(ox), Math.round(oy));
+        // 扉（閉まっているものだけ）
+        for (const d of map.doors) {
+          if (d.open > 0.5) continue;
+          ctx.fillStyle = d.level === 1 ? '#3aa0ff' : '#ff7a3a';
+          for (const t of d.tiles) ctx.fillRect(Math.round(ox + t.tx * map.MINI), Math.round(oy + t.ty * map.MINI), map.MINI, map.MINI);
+        }
+        // 落ちているアイテム
+        ctx.fillStyle = '#ffe680';
+        for (const it of G.items) if (!it.taken) ctx.fillRect(Math.round(ox + it.x * k) - 1, Math.round(oy + it.y * k) - 1, 2, 2);
+        // 監視カメラと敵の視界
+        const cone = (c, color) => {
+          const q = c.cone;
+          if (!q || q.length < 6) return;
+          ctx.beginPath();
+          ctx.moveTo(ox + c.x * k, oy + c.y * k);
+          for (let i = 0; i < q.length; i += 3) ctx.lineTo(ox + q[i] * k, oy + q[i + 1] * k);
+          ctx.closePath();
+          ctx.fillStyle = color;
+          ctx.fill();
+        };
+        for (const c of G.sentries) {
+          if (c.offT > 0) continue;
+          cone(c, 'rgba(110,190,255,0.4)');
+          ctx.fillStyle = '#7fd0ff';
+          ctx.fillRect(Math.round(ox + c.x * k) - 1, Math.round(oy + c.y * k) - 1, 2, 2);
+        }
+        for (const e of G.enemies) {
+          if (e.state === 'stunned') {
+            ctx.fillStyle = '#6a7a74';
+          } else {
+            cone(e, e.state === 'patrol' ? 'rgba(120,235,195,0.35)' : 'rgba(255,205,70,0.45)');
+            ctx.fillStyle = '#ff5a4a';
+          }
+          ctx.fillRect(Math.round(ox + e.x * k) - 1, Math.round(oy + e.y * k) - 1, 3, 3);
+        }
+        // 自分
+        ctx.fillStyle = Math.sin(G.time * 8) > -0.4 ? '#ffffff' : '#9fffd6';
+        ctx.fillRect(Math.round(cx) - 1, Math.round(cy) - 1, 3, 3);
+      }
+      ctx.restore();
+      ctx.strokeStyle = NH.Alert.phase !== 'none' ? '#a02a20' : '#3d7a6a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x0 + 0.5, y0 + 0.5, W - 1, H - 1);
     },
 
     // アイテムを拾ったときなどの短いお知らせ
@@ -189,7 +267,8 @@
       // 残り時間
       const label = alert ? '警戒' : '捜索';
       const num = Math.max(0, A.timer).toFixed(2).padStart(5, '0');
-      const w = 104, h = 22, x = Math.round(view.w / 2 - w / 2), y = 8;
+      // 画面が狭いとき（縦持ち）は、レーダーと重ならないよう一段下げる
+      const w = 104, h = 22, x = Math.round(view.w / 2 - w / 2), y = view.w < 430 ? 74 : 8;
       const blink = alert && Math.sin(t * 9) > 0;
       ctx.save();
       ctx.fillStyle = alert ? (blink ? '#d3231a' : '#8e120d') : '#8a6a08';
@@ -229,7 +308,7 @@
       if (!this.zone || t > HOLD + FADE) return;
       const inK = Math.min(1, t / 0.25);
       const alpha = t < HOLD ? inK : 1 - (t - HOLD) / FADE;
-      const x = 10 - (1 - inK) * 12, y = 24;
+      const x = 8 - (1 - inK) * 12, y = 42;
 
       ctx.save();
       ctx.globalAlpha = alpha;
@@ -274,7 +353,7 @@
       if (this.hintAlpha <= 0) return;
       const text = touch
         ? '画面の左側をドラッグして移動'
-        : '移動：矢印/WASD　Shift：ほふく　Z：アクション　X：撃つ　C：箱　Esc：ポーズ';
+        : '移動：矢印/WASD　Shift：ほふく　Z：アクション　X：撃つ　C：箱　Space：無線';
       ctx.save();
       ctx.globalAlpha = this.hintAlpha;
       ctx.font = 'bold 10px ' + FONT;
