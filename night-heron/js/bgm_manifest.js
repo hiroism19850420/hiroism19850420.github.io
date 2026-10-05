@@ -1,0 +1,1 @@
+﻿window.NH_BGM_MANIFEST = {"sneak": {"loopStart": 41.73913, "loopEnd": 83.47826, "mean": -16.5}, "suspect": {"loopStart": 17.77778, "loopEnd": 35.55556, "mean": -17.7}, "alert": {"loopStart": 24.61538, "loopEnd": 49.23077, "mean": -20.1}};

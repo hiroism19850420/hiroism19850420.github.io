@@ -28,6 +28,7 @@
     clearToast() { this.toastT = 99; },
 
     draw(ctx, view, map) {
+      ctx.textAlign = 'left'; // 敵の頭上の Zzz が中央寄せのまま残り、ライフなどの文字がずれるのを防ぐ
       this.drawVignette(ctx, view);
       this.drawHurt(ctx, view);
       this.drawAlert(ctx, view);

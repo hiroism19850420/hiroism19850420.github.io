@@ -11,8 +11,103 @@
       master = ctx.createGain();
       master.gain.value = 0.3;
       master.connect(ctx.destination);
+      bgmBus = ctx.createGain();
+      bgmBus.gain.value = BGM_GAIN;
+      bgmBus.connect(ctx.destination);
+      for (const name in BGM_VOL) loadBgm(name);
     }
     if (ctx.state === 'suspended') ctx.resume();
+  }
+
+  // ---------- BGM（通常 sneak / 疑念 suspect / 警戒 alert） ----------
+  // 曲は tools/music.py で作る。ループの位置は js/bgm_manifest.js にある
+  const MAN = window.NH_BGM_MANIFEST || {};
+  const BGM_GAIN = 0.3;                                       // BGM 全体の音量
+  const BGM_VOL = { sneak: 0.8, suspect: 0.9, alert: 1 };     // 曲ごとの音量
+  let bgmBus = null, bgmOn = true, duckV = 1;
+  let want = null;   // 鳴らしたい曲
+  let cur = null;    // 鳴っている曲 { name, src, gain } か { name, el }
+  const bufs = {}, loading = {};
+  try { bgmOn = localStorage.getItem('nh_bgm') !== 'off'; } catch (e) { /* 保存できない環境では毎回 ON */ }
+
+  function loadBgm(name) {
+    if (loading[name]) return loading[name];
+    const url = 'assets/bgm/' + name + '.mp3';
+    loading[name] = fetch(url).then((r) => r.arrayBuffer())
+      .then((ab) => new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej)))
+      .then((b) => { bufs[name] = b; })
+      // file:// で開いたときは fetch できないので、audio 要素で鳴らす（つなぎ目に少し間が空く）
+      .catch(() => { const el = new Audio(url); el.loop = true; bufs[name] = el; })
+      .then(() => { if (want === name && !cur) startBgm(name); });
+    return loading[name];
+  }
+
+  function stopBgm(fade) {
+    const c = cur;
+    cur = null;
+    if (!c) return;
+    if (c.el) { c.el.pause(); return; }
+    const t = ctx.currentTime;
+    c.gain.gain.cancelScheduledValues(t);
+    c.gain.gain.setValueAtTime(c.gain.gain.value, t);
+    c.gain.gain.linearRampToValueAtTime(0, t + fade);
+    c.src.stop(t + fade + 0.05);
+  }
+
+  function startBgm(name) {
+    const b = bufs[name];
+    if (!b || !bgmOn) return;
+    const vol = BGM_VOL[name];
+    if (b instanceof HTMLAudioElement) {
+      b.currentTime = 0;
+      b.volume = Math.min(1, vol * BGM_GAIN * duckV);
+      b.play().catch(() => {});
+      cur = { name, el: b };
+      return;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = b;
+    const m = MAN[name];
+    if (m && m.loopEnd) {
+      src.loop = true;
+      src.loopStart = m.loopStart;
+      src.loopEnd = Math.min(m.loopEnd, b.duration - 0.05);
+    }
+    const g = ctx.createGain();
+    const t = ctx.currentTime;
+    // 警戒の曲は、発見の瞬間にすぐ立ち上げる
+    const rise = name === 'alert' ? 0.06 : 0.6;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + rise);
+    src.connect(g);
+    g.connect(bgmBus);
+    src.start();
+    cur = { name, src, gain: g };
+  }
+
+  // 鳴らす曲を選ぶ。null で止める。毎フレーム呼んでよい
+  function bgm(name) {
+    want = name;
+    if (!ctx || (cur && cur.name === name) || (!cur && !name)) return;
+    stopBgm(name === 'alert' ? 0.15 : 0.8);
+    if (name) startBgm(name);
+  }
+
+  // 無線やポーズの間、BGM を小さくする（1 で元の音量）
+  function duck(v) {
+    if (v === duckV) return;
+    duckV = v;
+    if (!ctx) return;
+    bgmBus.gain.setTargetAtTime(BGM_GAIN * v, ctx.currentTime, 0.12);
+    if (cur && cur.el) cur.el.volume = Math.min(1, BGM_VOL[cur.name] * BGM_GAIN * v);
+  }
+
+  function setBgmOn(v) {
+    bgmOn = v;
+    try { localStorage.setItem('nh_bgm', v ? 'on' : 'off'); } catch (e) { /* 保存できなくても動かす */ }
+    if (!ctx) return;
+    if (!v) stopBgm(0.2);
+    else if (want && !cur) startBgm(want);
   }
   for (const ev of ['pointerdown', 'pointerup', 'touchend', 'keydown']) {
     window.addEventListener(ev, unlock, { passive: true });
@@ -152,6 +247,11 @@
 
   NH.Audio = {
     unlock,
+    bgm,
+    duck,
+    setBgmOn,
+    get bgmOn() { return bgmOn; },
+    get bgmName() { return cur ? cur.name : null; }, // いま鳴っている曲（確認用）
     play(name) {
       if (!ctx || ctx.state !== 'running' || !SOUNDS[name]) return;
       SOUNDS[name]();

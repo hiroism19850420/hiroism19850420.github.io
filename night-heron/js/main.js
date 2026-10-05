@@ -55,9 +55,26 @@
   const btnDebug = document.getElementById('btnDebug');
   const btnFull = document.getElementById('btnFull');
 
+  const btnBgm = document.getElementById('btnBgm');
+
   function setPaused(v) {
     Game.paused = v;
     pauseEl.hidden = !v;
+    NH.Audio.duck(v ? 0.3 : 1);
+  }
+  function showBgm() { btnBgm.textContent = 'BGM：' + (NH.Audio.bgmOn ? 'ON' : 'OFF'); }
+  btnBgm.addEventListener('click', () => { NH.Audio.setBgmOn(!NH.Audio.bgmOn); showBgm(); });
+  showBgm();
+
+  // ---------- BGM ----------
+  // 通常・疑念・警戒の3曲を、フロアの状態に合わせて切り替える
+  let tenseT = 0; // 疑念の曲を保つ残り時間（「？」が一瞬で消えても、曲がばたばた変わらないように）
+  function bgmFor(dt) {
+    const A = NH.Alert;
+    if (A.phase === 'alert') { tenseT = 2; return 'alert'; }
+    if (A.phase === 'search' || Game.enemies.some((e) => e.state === 'suspicious')) tenseT = 2;
+    else tenseT = Math.max(0, tenseT - dt);
+    return tenseT > 0 ? 'suspect' : 'sneak';
   }
   function setDebug(v) {
     Game.debug = v;
@@ -81,6 +98,7 @@
   // ---------- update / draw ----------
   function update(dt) {
     Game.time += dt;
+    NH.Audio.duck(Game.mode === 'radio' ? 0.35 : 1);
     if (Game.mode === 'radio') {
       // 無線中はゲームを止め、決定キーかタップで文字を送る
       const adv = Input.pressed('action') || Input.pressed('radio') || Game.tapped;
@@ -91,6 +109,7 @@
     }
     if (Game.mode !== 'play') {
       // ゲームオーバー・クリア：少し待ってから、ボタンか画面タップでやり直し
+      NH.Audio.bgm(null);
       Game.endT += dt;
       const go = Input.pressed('action') || Input.pressed('weapon') || Game.tapped;
       Game.tapped = false;
@@ -114,6 +133,7 @@
     Game.rings = Game.rings.filter((r) => r.t < r.life);
     updateButtons();
     NH.Alert.update(dt);
+    NH.Audio.bgm(bgmFor(dt));
     camera.update(dt, player, view, map);
     UI.update(dt, player, map);
 
