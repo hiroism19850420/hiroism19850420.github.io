@@ -298,7 +298,7 @@
       if (l.gap) { await sleep(l.gap); continue; }
       setCap(l.text, l.quote);
       G.narr = true;
-      await say(l.text, { kind: 'story', rate: 1.0, pitch: l.quote ? 1.28 : 0.98, label });
+      await say(l.text, { kind: l.quote ? 'quote' : 'story', rate: 1.0, pitch: l.quote ? 1.28 : 0.98, label });
       G.narr = false;
       const c = takeCmd();
       if (!c) continue;
