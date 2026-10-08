@@ -11,7 +11,7 @@
   .panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;box-sizing:border-box;background:rgba(20,28,70,.82);text-align:center}
   .panel.hide{display:none}
   h1{margin:0;font-size:clamp(26px,6vw,48px);line-height:1.25;color:#ffe35a;text-shadow:0 3px 0 #b3541e}
-  .how{display:grid;gap:6px;font-size:clamp(14px,3.4vw,19px);text-align:left;background:rgba(255,255,255,.1);border-radius:14px;padding:14px 18px;max-width:520px}
+  .how{display:grid;gap:8px;font-size:clamp(14px,3.4vw,19px);text-align:left;background:rgba(255,255,255,.1);border-radius:14px;padding:14px 18px;max-width:520px}
   .how b{color:#8ff0ff}
   button{font:inherit;font-weight:700;font-size:clamp(16px,4vw,22px);color:#23306b;background:#ffe35a;border:0;border-radius:999px;padding:14px 28px;box-shadow:0 5px 0 #b98a12;cursor:pointer}
   button:active{transform:translateY(3px);box-shadow:0 2px 0 #b98a12}
@@ -19,9 +19,9 @@
   #msg{min-height:1.5em;font-size:clamp(13px,3.2vw,17px);color:#ffd0d0;max-width:520px}
   .note{font-size:clamp(11px,2.8vw,14px);opacity:.8;max-width:520px}
   #score2{font-size:clamp(22px,6vw,40px);font-weight:700}
-  #pad{position:absolute;left:0;right:0;bottom:64px;display:none;justify-content:center;flex-wrap:wrap;gap:8px;padding:0 10px}
+  #pad{position:absolute;left:0;right:0;bottom:44px;display:none;justify-content:center;gap:10px;padding:0 10px}
   #pad.show{display:flex}
-  #pad button{font-size:clamp(13px,3.4vw,17px);padding:11px 14px;background:#fff;box-shadow:0 4px 0 #8a93b8}
+  #pad button{font-size:clamp(13px,3.4vw,17px);padding:12px 16px;background:#fff;box-shadow:0 4px 0 #8a93b8}
   #pad button.on{background:#8ff0ff}
 </style>
 <script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
@@ -30,27 +30,21 @@
 <canvas id="cv"></canvas>
 
 <div id="pad">
-  <button id="pMagic">かまえ（おしっぱなし）</button>
-  <button data-spell="thunder">⚡</button>
-  <button data-spell="fire">🔥</button>
-  <button data-spell="ice">❄️</button>
-  <button data-spell="heal">💚</button>
   <button id="pGuard">ガード（おしっぱなし）</button>
 </div>
 
 <div id="title" class="panel">
   <h1>ふれ！さけべ！<br>からだで勇者！</h1>
   <div class="how">
-    <div>⚔️ <b>うでを すばやく ふる</b> … 剣で きる</div>
-    <div>👊 <b>うでを カメラに むかって つきだす</b> … パンチ（剣より つよい）</div>
-    <div>✨ <b>りょう手を 頭より上に 上げて、名前を さけぶ</b> … まほう<br>　⚡サンダー（ぜんぶに 大ダメージ）　🔥ファイヤー（ほのおの かべ）<br>　❄️フリーザー（こおらせる・点が2ばい）　💚リカバー（ハート かいふく）</div>
+    <div>👊 <b>てきに むかって うでを つきだす</b> … パンチ</div>
+    <div>💥 <b>はやく れんぞくで うつ</b> … うった分だけ ぜんぶ 当たる。コンボで 点が ふえる</div>
+    <div>👹 <b>ときどき ボスが 出る</b> … なんども なぐって たおす</div>
     <div>🛡️ <b>むねの前で うでを クロス</b> … ガード</div>
-    <div>💥 <b>ラッシュが たまったら パンチを 3れんぞく</b> … れんぞくパンチ！ さけぶと もっと はやい</div>
   </div>
   <button id="bCam">カメラで あそぶ</button>
   <button id="bNoCam" class="sub">カメラなしで ためす（マウス・ゆび）</button>
   <div id="msg"></div>
-  <div class="note">カメラと マイクは この たんまつの中だけで つかいます。えいぞうや 声は どこにも おくりません。<br>上半身が うつるように、すこし はなれて 立ってください。</div>
+  <div class="note">カメラは この たんまつの中だけで つかいます。えいぞうは どこにも おくりません。<br>上半身が うつるように、すこし はなれて 立ってください。</div>
 </div>
 
 <div id="over" class="panel hide">
@@ -66,20 +60,16 @@ const MP_VER = '0.10.14';
 const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
-// 調整用の数値（単位は「肩はば何個ぶん／秒」）
-const SLASH_START = 5.0;   // これより速く動いたら「切り」開始
-const SLASH_KEEP  = 3.0;   // これを下回ったら「切り」終了
-const BLADE_LEN   = 0.7;   // ひじ→手首の長さに対する剣の長さ
-const CHARGE_TIME = 0.5;   // まほうの構えが完成するまでの秒数
-const SHOUT_MIN   = 0.06;  // 声の大きさの最低ライン（0〜1）
-const PUNCH_SPEED = 3.5;   // 手首がカメラのほうへ これより速く出たら「パンチ」
-const PUNCH_FWD   = 0.4;   // パンチとみなす、手首が肩より前に出ている量
-const PUNCH_REACH = 0.5;   // こぶしの当たりはんい
-const NAME_WAIT   = 0.9;   // 声が出てから まほうの名前の聞きとりを待つ秒数
-const RUSH_TIME   = 5;     // ラッシュの長さ（秒）
-const RUSH_NEED   = 3;     // ラッシュ開始に必要な れんぞくパンチの回数
-const RUSH_WINDOW = 1.5;   // その回数を この秒数のうちに出す
+// 調整用の数値（速さの単位は「肩はば何個ぶん／秒」）
+const PUNCH_SPEED = 3.5;   // こぶしが これより速く動いたら「パンチ」
+const PUNCH_REARM = 1.8;   // これより おそくなるか、向きが反対になったら 次のパンチを受けつける
+const PUNCH_GAP   = 0.07;  // 同じ手の パンチとパンチの 最短の間（秒）
+const PUNCH_REACH = 0.6;   // こぶしの当たりはんい（肩はば単位）
+const FIST_LEN    = 0.3;   // ひじ→手首の長さに対して、手首の先の どこを こぶしとするか
+const COMBO_TIME  = 1.2;   // コンボが つづく秒数
 const MAX_HEART   = 5;
+const BOSS_FIRST  = 20;    // 最初のボスが出る時間（秒）
+const BOSS_EVERY  = 25;    // ボスを たおしてから 次のボスまで（秒）
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const video = document.getElementById('cam');
@@ -94,21 +84,17 @@ function resize(){
 addEventListener('resize', resize); resize();
 
 const S = {
-  mode: null, running: false, now: 0, elapsed: 0, score: 0, hearts: 3,
-  enemies: [], fx: [], spawnT: 0, strokeId: 0,
-  body: false, poseMagic: false, poseGuard: false,
-  charge: 0, hold: 0, magicCD: 0, hurt: 0,
-  vol: 0, noise: 0.02, noMic: false, shoutUntil: 0,
-  padMagic: false, padGuard: false,
-  spellIdx: 0, heard: null, shoutT: 0, listenUntil: 0, ready: false, recoverCD: 0, burn: 0, burnT: 0,
-  rush: 0, rushT: 0, rushHits: 0, rushAcc: 0, rushReady: false, rushSfxT: 0, punches: []
+  mode: null, running: false, now: 0, elapsed: 0, score: 0, hearts: MAX_HEART,
+  enemies: [], fx: [], spawnT: 0, bossT: BOSS_FIRST, bossN: 0,
+  body: false, poseGuard: false, padGuard: false, hurt: 0,
+  combo: 0, comboT: 0, best: 0
 };
 const anchor = { x: 0, y: 0, unit: 100, tx: 0, ty: 0, tunit: 100 };
-const hands = [0, 1].map(() => ({ x: 0, y: 0, vis: false, slashing: false, stroke: 0, base: null, trail: [], fwd: null, punchAt: -9, rushAt: -9 }));
+const hands = [0, 1].map(() => ({ x: 0, y: 0, fwd: 0, vis: false, armed: true, dir: [0, 0, 0], punchAt: -9 }));
 window.__game = { S, hands, anchor };
 
 // ---------- 音 ----------
-let ac = null, analyser = null, volBuf = null, master = null, noiseBuf = null;
+let ac = null, master = null, noiseBuf = null;
 function tone(freq, dur, type = 'sine', vol = 0.12, slide = 0, at = 0){
   if (!ac) return;
   const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + at;
@@ -117,7 +103,7 @@ function tone(freq, dur, type = 'sine', vol = 0.12, slide = 0, at = 0){
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
   o.connect(g).connect(master); o.start(t); o.stop(t + dur);
 }
-// ザーッという音をフィルターに通して鳴らす（風切り・打撃・かみなり・ほのお）
+// ザーッという音をフィルターに通して鳴らす（風切り・打撃）
 function noise(dur, vol, type = 'bandpass', f1 = 1000, f2 = 0, q = 1, at = 0){
   if (!ac) return;
   const n = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(), t = ac.currentTime + at;
@@ -129,67 +115,20 @@ function noise(dur, vol, type = 'bandpass', f1 = 1000, f2 = 0, q = 1, at = 0){
 }
 const arp = (fs, step, dur, type, vol) => fs.forEach((f, i) => tone(f, dur, type, vol, 0, i * step));
 const sfx = {
-  swing: () => noise(0.16, 0.22, 'bandpass', 800, 3200, 2),
-  hit:   () => { tone(700, 0.10, 'square', 0.07, 500); noise(0.06, 0.18, 'highpass', 2500); },
+  miss:  () => noise(0.1, 0.16, 'bandpass', 700, 2600, 2),
+  // コンボが のびるほど 音が高くなる
+  hit:   () => { const k = Math.min(S.combo, 24); tone(110 + k * 5, 0.12, 'sine', 0.34, -60); noise(0.07, 0.3, 'lowpass', 1500 + k * 80, 300); tone(500 + k * 35, 0.05, 'square', 0.04); },
   pop:   () => { tone(500, 0.08, 'square', 0.07, 600); tone(900, 0.12, 'sine', 0.08, 300, 0.06); noise(0.1, 0.15, 'bandpass', 1800, 600); },
-  shatter: () => { noise(0.25, 0.25, 'highpass', 5000); arp([2637, 3136, 2093, 3520], 0.035, 0.12, 'sine', 0.06); },
-  miss:  () => tone(260, 0.10, 'sine', 0.05, -80),
   guard: () => { tone(180, 0.18, 'square', 0.08, 120); tone(1400, 0.2, 'triangle', 0.06, -300); noise(0.05, 0.2, 'highpass', 3000); },
   hurt:  () => { tone(220, 0.30, 'sawtooth', 0.07, -120); tone(90, 0.25, 'sine', 0.3, -40); },
-  punch: () => { tone(170, 0.12, 'sine', 0.22, -110); noise(0.08, 0.2, 'lowpass', 900); },
-  punchHit: () => { tone(120, 0.2, 'sine', 0.38, -75); noise(0.1, 0.35, 'lowpass', 1800, 300); tone(900, 0.05, 'square', 0.05); },
-  ready: () => { tone(880, 0.1, 'sine', 0.07); tone(1320, 0.18, 'sine', 0.07, 0, 0.08); },
-  denied: () => tone(200, 0.15, 'square', 0.06, -60),
-  thunder: () => { noise(0.08, 0.5, 'highpass', 3000); tone(1800, 0.15, 'sawtooth', 0.1, -1600); noise(0.9, 0.5, 'lowpass', 4000, 150); tone(60, 0.7, 'sine', 0.3, -20, 0.05); },
-  fire:  () => { noise(0.8, 0.35, 'bandpass', 300, 1800, 0.8); tone(120, 0.6, 'sawtooth', 0.06, 200); },
-  burn:  () => noise(0.12, 0.1, 'bandpass', 1200 + Math.random() * 1200, 0, 3),
-  ice:   () => { arp([2093, 1760, 2637, 1568, 3136], 0.06, 0.3, 'sine', 0.06); noise(0.5, 0.1, 'highpass', 6000); },
-  heal:  () => arp([523, 659, 784, 1047, 1319], 0.09, 0.3, 'sine', 0.08),
   spawn: () => tone(300, 0.08, 'sine', 0.03, 200),
   warn:  () => { tone(990, 0.07, 'square', 0.04); tone(990, 0.07, 'square', 0.04, 0, 0.12); },
-  rushReady: () => arp([392, 523, 659, 784], 0.07, 0.15, 'square', 0.05),
-  rushStart: () => { tone(200, 0.5, 'sawtooth', 0.1, 1400); noise(0.5, 0.25, 'bandpass', 400, 4000, 1.5); },
-  rushHit: () => { tone(90 + Math.random() * 90, 0.07, 'sine', 0.3, -40); noise(0.04, 0.22, 'lowpass', 1200 + Math.random() * 1500); },
-  boom:  () => { tone(80, 0.8, 'sine', 0.5, -50); noise(1.0, 0.5, 'lowpass', 2500, 100); },
+  boss:  () => { arp([196, 185, 175, 165], 0.16, 0.3, 'sawtooth', 0.09); tone(55, 1.0, 'sine', 0.3); },
+  bossHit: () => { tone(80, 0.16, 'sine', 0.4, -30); noise(0.09, 0.3, 'lowpass', 900); },
+  boom:  () => { tone(80, 0.8, 'sine', 0.5, -50); noise(1.0, 0.5, 'lowpass', 2500, 100); arp([523, 659, 784, 1047], 0.08, 0.25, 'square', 0.05); },
   start: () => arp([523, 659, 784, 1047], 0.09, 0.2, 'square', 0.05),
   over:  () => arp([523, 440, 349, 262], 0.16, 0.35, 'triangle', 0.08)
 };
-
-// ---------- まほうの名前の聞きとり ----------
-const SPELLS = {
-  thunder: { name: 'サンダー',   icon: '⚡', col: '#ffe35a', al: ['サンダ', 'thunder', 'カミナリ', '雷'] },
-  fire:    { name: 'ファイヤー', icon: '🔥', col: '#ff9a3c', al: ['ファイヤ', 'ファイア', 'フアイヤ', 'ハイヤ', 'fire'] },
-  ice:     { name: 'フリーザー', icon: '❄️', col: '#8ff0ff', al: ['フリザ', 'フリイザ', 'プリザ', 'ブリザ', 'フリズ', 'freez', 'frieza'] },
-  heal:    { name: 'リカバー',   icon: '💚', col: '#b6ffb0', al: ['リカバ', 'recover', 'カイフク', '回復'] }
-};
-const ORDER = ['thunder', 'fire', 'ice', 'heal'];
-const norm = s => s.toLowerCase().replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60)).replace(/[ー\s・！!。、]/g, '');
-function hear(str){
-  const n = norm(str); let id = null, at = -1;
-  for (const k of ORDER) for (const a of SPELLS[k].al){ const i = n.lastIndexOf(a); if (i > at){ at = i; id = k; } }
-  if (id) S.heard = { id, t: S.now };
-  return id;
-}
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-const ANDROID = /Android/i.test(navigator.userAgent);
-let rec = null, recOn = false, recDead = !SR, recAt = -9;
-function listen(on){
-  if (recDead) return;
-  if (!on){ if (recOn){ try { rec.abort(); } catch (e) {} } return; }
-  if (recOn || S.now - recAt < 0.6) return;
-  if (!rec){
-    rec = new SR(); rec.lang = 'ja-JP'; rec.continuous = !ANDROID; rec.interimResults = true; rec.maxAlternatives = 3;
-    rec.onresult = ev => {
-      let s = '';
-      for (let i = ev.resultIndex; i < ev.results.length; i++) for (let j = 0; j < ev.results[i].length; j++) s += ev.results[i][j].transcript + ' ';
-      hear(s);
-    };
-    rec.onend = () => { recOn = false; };
-    rec.onerror = ev => { if (['not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported'].includes(ev.error)) recDead = true; };
-  }
-  recAt = S.now;
-  try { rec.start(); recOn = true; } catch (e) {}
-}
 
 // ---------- カメラ・姿勢 ----------
 let pose = null, lastVT = -1, lastPoseT = 0;
@@ -201,72 +140,67 @@ function vidRect(){
 function onPose(lm, dt){
   const r = vidRect();
   const P = i => ({ x: r.x + (1 - lm[i].x) * r.w, y: r.y + lm[i].y * r.h, v: lm[i].visibility ?? 1 });
-  const ls = P(11), rs = P(12), nose = P(0);
+  const ls = P(11), rs = P(12);
   S.body = ls.v > 0.5 && rs.v > 0.5;
   if (!S.body){ clearPose(); return; }
   const unit = Math.max(40, Math.hypot(ls.x - rs.x, ls.y - rs.y));
   anchor.tx = (ls.x + rs.x) / 2; anchor.ty = (ls.y + rs.y) / 2; anchor.tunit = unit;
   const lw = P(15), rw = P(16);
   [[lw, P(13), 11, 15], [rw, P(14), 12, 16]].forEach(([w, e, si, wi], i) => {
-    if (w.v < 0.4){ feedHand(i, 0, 0, dt, false); return; }
-    feedHand(i, w.x + (w.x - e.x) * BLADE_LEN, w.y + (w.y - e.y) * BLADE_LEN, dt, true, w);
+    if (w.v < 0.4){ feedHand(i, 0, 0, 0, dt, false); return; }
     // z は小さいほどカメラに近い。肩より どれだけ前に出ているかを 肩はば単位にする
-    feedPunch(i, w.x, w.y, ((lm[si].z || 0) - (lm[wi].z || 0)) * r.w / unit, dt);
+    feedHand(i, w.x + (w.x - e.x) * FIST_LEN, w.y + (w.y - e.y) * FIST_LEN, ((lm[si].z || 0) - (lm[wi].z || 0)) * r.w / unit, dt, true);
   });
-  const both = lw.v > 0.4 && rw.v > 0.4;
-  S.poseMagic = both && lw.y < nose.y && rw.y < nose.y;
   // 手首の左右が肩の左右と入れかわっていたら「クロス」
+  const both = lw.v > 0.4 && rw.v > 0.4;
   const cross = (lw.x - rw.x) * Math.sign(ls.x - rs.x);
   const top = Math.min(ls.y, rs.y) - unit * 0.3, bot = Math.max(ls.y, rs.y) + unit * 1.3;
   S.poseGuard = both && cross < -unit * 0.15 && lw.y > top && lw.y < bot && rw.y > top && rw.y < bot;
 }
 function clearPose(){
-  S.body = false; S.poseMagic = false; S.poseGuard = false;
-  hands.forEach(h => { h.vis = false; h.slashing = false; h.fwd = null; });
+  S.body = false; S.poseGuard = false;
+  hands.forEach(h => { h.vis = false; });
 }
-function feedHand(i, x, y, dt, vis, base = null){
+// こぶしの動きを見て、速く動いた しゅんかんを 1発のパンチにする。
+// 1発うったあとは、おそくなるか 向きが反対になる（＝引きもどす）まで 次を数えない。
+// これで 行って もどっての くり返しが、うった回数ぶん そのまま パンチになる。
+function feedHand(i, x, y, fwd, dt, vis){
   const h = hands[i];
-  if (!vis){ h.vis = false; h.slashing = false; h.fwd = null; return; }
-  if (!h.vis){ h.x = x; h.y = y; h.vis = true; h.base = base; return; }
-  const nx = h.x + (x - h.x) * 0.55, ny = h.y + (y - h.y) * 0.55;
-  const sp = Math.hypot(nx - h.x, ny - h.y) / Math.max(dt, 0.001) / anchor.unit;
-  if (sp > (h.slashing ? SLASH_KEEP : SLASH_START)){
-    if (!h.slashing){ h.slashing = true; h.stroke = ++S.strokeId; sfx.swing(); }
-    h.trail.push({ x1: h.x, y1: h.y, x2: nx, y2: ny, t: S.now });
-    if (S.running) slashSegment(h.x, h.y, nx, ny, h.stroke);
-  } else h.slashing = false;
-  if (S.rushT > 0 && sp > 2) rushMove(i);
-  h.x = nx; h.y = ny; h.base = base;
-}
-function feedPunch(i, x, y, fwd, dt){
-  const h = hands[i];
-  if (h.fwd == null){ h.fwd = fwd; return; }
-  const nf = h.fwd + (fwd - h.fwd) * 0.6, v = (nf - h.fwd) / Math.max(dt, 0.001);
-  h.fwd = nf;
-  if (S.rushT > 0){ if (Math.abs(v) > PUNCH_SPEED * 0.4) rushMove(i); return; }
-  if (v > PUNCH_SPEED && nf > PUNCH_FWD && S.now - h.punchAt > 0.3){ h.punchAt = S.now; punch(x, y); }
+  if (!vis){ h.vis = false; return; }
+  if (!h.vis){ Object.assign(h, { x, y, fwd, vis: true, armed: true }); return; }
+  const d = Math.max(dt, 0.001), u = anchor.unit;
+  const nx = h.x + (x - h.x) * 0.7, ny = h.y + (y - h.y) * 0.7, nf = h.fwd + (fwd - h.fwd) * 0.5;
+  const v = [(nx - h.x) / d / u, (ny - h.y) / d / u, (nf - h.fwd) / d];
+  const sp = Math.hypot(v[0], v[1], v[2]);
+  h.x = nx; h.y = ny; h.fwd = nf;
+  if (!h.armed && (sp < PUNCH_REARM || v[0] * h.dir[0] + v[1] * h.dir[1] + v[2] * h.dir[2] < 0)) h.armed = true;
+  // 手を引きもどす動き（カメラから はなれる）は パンチにしない
+  if (h.armed && sp > PUNCH_SPEED && v[2] > -PUNCH_SPEED * 0.5 && S.now - h.punchAt > PUNCH_GAP){
+    h.armed = false; h.dir = v; h.punchAt = S.now;
+    punch(nx, ny);
+  }
 }
 
 // ---------- 敵 ----------
 const TYPES = {
-  mochi: { hp: 1, time: 5.0, score: 10, size: 0.55 },
+  mochi: { hp: 1, time: 5.5, score: 10, size: 0.55 },
   iwa:   { hp: 2, time: 7.0, score: 30, size: 0.62 },
-  kumo:  { hp: 1, time: 9.0, score: 50, size: 0.66, magicOnly: true },
-  dai:   { hp: 9999, time: 1, score: 0, size: 1.3, rushOnly: true }   // ラッシュのあいだだけ出る、なぐられ役
+  kumo:  { hp: 1, time: 3.6, score: 40, size: 0.5 },    // はやい
+  boss:  { hp: 10, time: 16, score: 300, size: 1.2, boss: true }
 };
-function spawn(){
-  const r = Math.random(), t = S.elapsed;
-  let type = 'mochi';
-  if (t > 30) type = r < 0.5 ? 'mochi' : r < 0.75 ? 'iwa' : 'kumo';
-  else if (t > 12) type = r < 0.7 ? 'mochi' : 'iwa';
-  if (t > 20 && !S.kumoShown){ type = 'kumo'; S.kumoShown = true; }
-  const T = TYPES[type];
+function spawn(type){
+  const T = TYPES[type], t = S.elapsed, n = S.bossN;
+  const hp = T.boss ? T.hp + n * 5 : T.hp;
   S.enemies.push({
-    type, hp: T.hp, z: 1, speed: 1 / (T.time * Math.max(0.6, 1 - t * 0.004)),
-    ux: (Math.random() * 2 - 1) * 2.2, uy: -1.0 + Math.random() * 1.6,
-    lastStroke: 0, flash: 0, frozen: 0, wob: Math.random() * 6.28, x: 0, y: 0, r: 0
+    type, hp, maxHp: hp, z: 1, speed: 1 / (T.time * Math.max(0.55, 1 - t * 0.004)),
+    ux: (Math.random() * 2 - 1) * (T.boss ? 0.8 : 1.9), uy: T.boss ? -0.3 : -1.0 + Math.random() * 1.6,
+    flash: 0, wob: Math.random() * 6.28, x: 0, y: 0, r: 0
   });
-  sfx.spawn();
+  if (T.boss){ S.bossN++; sfx.boss(); text(W / 2, H * 0.35, 'ボスだ！', '#ff7a7a', 48, 1.4); } else sfx.spawn();
+}
+function spawnSmall(){
+  const r = Math.random(), t = S.elapsed;
+  spawn(t > 30 ? (r < 0.45 ? 'mochi' : r < 0.75 ? 'iwa' : 'kumo') : t > 10 ? (r < 0.65 ? 'mochi' : r < 0.9 ? 'iwa' : 'kumo') : 'mochi');
 }
 function place(e){
   const s = 0.3 + 0.7 * Math.pow(1 - e.z, 1.5);
@@ -274,31 +208,33 @@ function place(e){
   e.x = Math.min(W - e.r, Math.max(e.r, anchor.x + e.ux * anchor.unit));
   e.y = Math.min(H - e.r - 50, Math.max(e.r + 60, anchor.y + e.uy * anchor.unit + Math.sin(S.now * 3 + e.wob) * e.r * 0.08));
 }
-function segDist(px, py, x1, y1, x2, y2){
-  const dx = x2 - x1, dy = y2 - y1, l2 = dx * dx + dy * dy;
-  const t = l2 ? Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / l2)) : 0;
-  return Math.hypot(px - (x1 + dx * t), py - (y1 + dy * t));
-}
-function slashSegment(x1, y1, x2, y2, stroke){
+function punch(x, y){
+  if (!S.running) return;
+  S.fx.push({ kind: 'fist', x, y, rot: (Math.random() - 0.5) * 0.8, size: anchor.unit * 0.8, t: 0, life: 0.18 });
+  let hit = false;
   for (const e of S.enemies){
-    if (e.dead || e.lastStroke === stroke || TYPES[e.type].rushOnly) continue;
-    if (segDist(e.x, e.y, x1, y1, x2, y2) > e.r * 1.1) continue;
-    e.lastStroke = stroke;
-    if (TYPES[e.type].magicOnly && !(e.frozen > 0)){ text(e.x, e.y - e.r, 'まほうで！', '#8ff0ff'); sfx.miss(); continue; }
-    damage(e, 1, 'sword');
+    if (e.dead || Math.hypot(e.x - x, e.y - y) > e.r + anchor.unit * PUNCH_REACH) continue;
+    if (!hit){ hit = true; S.combo++; S.comboT = COMBO_TIME; }
+    damage(e);
   }
+  if (!hit) sfx.miss();
 }
-function damage(e, n, how){
-  if (e.dead) return;
-  e.hp -= n; e.flash = 0.15;
-  if (S.rushT <= 0 && (how === 'sword' || how === 'punch')) S.rush = Math.min(1, S.rush + (how === 'punch' ? 0.18 : 0.1));
-  if (e.hp > 0){ if (how !== 'rush') sfx.hit(); return; }
+function damage(e){
+  const T = TYPES[e.type];
+  e.hp--; e.flash = 0.12;
+  e.z = Math.min(1, e.z + (T.boss ? 0.02 : 0.1));   // なぐると すこし おしもどす
+  S.fx.push({ kind: 'burst', x: e.x, y: e.y, r: e.r, t: 0, life: 0.18 });
+  if (e.hp > 0){ T.boss ? sfx.bossHit() : sfx.hit(); return; }
   e.dead = true;
-  const ice = e.frozen > 0, pts = TYPES[e.type].score * (ice ? 2 : 1);
-  ice ? sfx.shatter() : sfx.pop();
+  const pts = T.score + (T.boss ? (S.bossN - 1) * 100 : 0) + Math.min(S.combo, 50);
   S.score += pts;
-  text(e.x, e.y - e.r, '+' + pts, ice ? '#8ff0ff' : '#ffe35a');
-  dots(e.x, e.y, 10, ice ? '#d6f6ff' : e.type === 'mochi' ? '#ffb3d1' : e.type === 'iwa' ? '#c9ccd6' : '#ffffff');
+  text(e.x, e.y - e.r, '+' + pts, '#ffe35a', T.boss ? 40 : 24, T.boss ? 1.4 : 0.8);
+  dots(e.x, e.y, T.boss ? 40 : 10, T.boss ? '#ff7a7a' : e.type === 'mochi' ? '#ffb3d1' : e.type === 'iwa' ? '#c9ccd6' : '#ffffff', T.boss ? 2 : 1);
+  if (T.boss){
+    sfx.boom(); S.bossT = BOSS_EVERY;
+    S.fx.push({ kind: 'ring', x: e.x, y: e.y, t: 0, life: 0.6 });
+    text(W / 2, H * 0.35, 'ボスを たおした！', '#ffe35a', 40, 1.5);
+  } else sfx.pop();
 }
 function dots(x, y, n, col, pow = 1){
   for (let i = 0; i < n; i++){
@@ -308,223 +244,100 @@ function dots(x, y, n, col, pow = 1){
 }
 function text(x, y, str, col, size = 24, life = 0.8){ S.fx.push({ kind: 'text', x, y, str, col, size, t: 0, life }); }
 
-// ---------- パンチ・ラッシュ ----------
-function punch(x, y){
-  if (!S.running) return;
-  if (S.rushT > 0){ rushHit(); return; }
-  S.fx.push({ kind: 'fist', x, y, rot: (Math.random() - 0.5) * 0.6, size: anchor.unit * 0.9, t: 0, life: 0.22 });
-  S.punches = S.punches.filter(t => S.now - t < RUSH_WINDOW); S.punches.push(S.now);
-  if (S.rush >= 1 && S.punches.length >= RUSH_NEED){ startRush(); return; }
-  let hit = false;
-  for (const e of S.enemies){
-    if (e.dead || Math.hypot(e.x - x, e.y - y) > e.r + anchor.unit * PUNCH_REACH) continue;
-    if (TYPES[e.type].magicOnly && !(e.frozen > 0)){ text(e.x, e.y - e.r, 'まほうで！', '#8ff0ff'); continue; }
-    hit = true; e.z = Math.min(1, e.z + 0.12);
-    S.fx.push({ kind: 'burst', x: e.x, y: e.y, r: e.r, t: 0, life: 0.2 });
-    damage(e, 2, 'punch');
-  }
-  hit ? sfx.punchHit() : sfx.punch();
-}
-function startRush(){
-  Object.assign(S, { rushT: RUSH_TIME, rush: 0, rushHits: 0, rushAcc: 0, rushReady: false, punches: [], charge: 0, spawnT: 0 });
-  S.enemies.push({ type: 'dai', hp: 9999, z: 0.2, speed: 0, ux: 0, uy: -0.1, lastStroke: 0, flash: 0, frozen: 0, wob: 0, x: 0, y: 0, r: 0 });
-  sfx.rushStart();
-  text(W / 2, H * 0.4, 'ラッシュ！', '#ffb347', 54, 1.2);
-}
-function rushMove(i){
-  const h = hands[i];
-  if (S.now - h.rushAt > 0.07){ h.rushAt = S.now; rushHit(); }
-}
-function rushHit(){
-  let tg = null;
-  for (const e of S.enemies) if (!e.dead && !TYPES[e.type].rushOnly && e.z < 0.35 && (!tg || e.z < tg.z)) tg = e;
-  if (!tg) tg = S.enemies.find(e => !e.dead && TYPES[e.type].rushOnly) || null;
-  const u = anchor.unit, j = () => Math.random() - 0.5;
-  const x = tg ? tg.x + j() * tg.r * 1.6 : anchor.x + j() * u * 4, y = tg ? tg.y + j() * tg.r * 1.6 : anchor.y + j() * u * 2.4;
-  S.fx.push({ kind: 'fist', x, y, rot: j() * 1.2, size: u * 0.7, t: 0, life: 0.16 });
-  if (S.now - S.rushSfxT > 0.05){ S.rushSfxT = S.now; sfx.rushHit(); }
-  if (!tg) return;
-  S.rushHits++;
-  if (S.rushHits % 6 === 0) text(x, y - u * 0.4, 'ウリャ！', '#ffb347', 30, 0.5);
-  if (TYPES[tg.type].rushOnly){ tg.flash = 0.06; tg.wob = j() * 0.5; return; }
-  tg.z = Math.min(1, tg.z + 0.04);
-  damage(tg, 1, 'rush');
-}
-function endRush(){
-  S.rushT = 0;
-  const bonus = S.rushHits * 2;
-  S.score += bonus; sfx.boom();
-  S.fx.push({ kind: 'ring', x: anchor.x, y: anchor.y, col: '255,179,71', t: 0, life: 0.6 });
-  text(W / 2, H * 0.4, `${S.rushHits} HIT！ +${bonus}`, '#ffe35a', 40, 1.5);
-  S.enemies.forEach(e => {
-    if (TYPES[e.type].rushOnly){ e.dead = true; dots(e.x, e.y, 30, '#c9a6ff', 1.8); S.fx.push({ kind: 'burst', x: e.x, y: e.y, r: e.r, t: 0, life: 0.35 }); }
-    else damage(e, 3, 'rush');
-  });
-  S.spawnT = 1.5;
-}
-
-// ---------- まほう ----------
-function canHeal(){ return S.hearts < MAX_HEART && S.recoverCD <= 0; }
-function nextSpell(){
-  for (let i = 0; i < 4; i++){ const id = ORDER[(S.spellIdx + i) % 4]; if (id !== 'heal' || canHeal()) return id; }
-}
-function cast(id){
-  S.heard = null; S.shoutT = 0;
-  const u = anchor.unit, top = anchor.y - u * 1.6;
-  if (id === 'heal' && !canHeal()){
-    text(anchor.x, top, S.hearts >= MAX_HEART ? 'ハートは まんたん' : `リカバーは あと ${Math.ceil(S.recoverCD)}びょう`, '#ffd0d0');
-    sfx.denied(); S.charge = 0; S.magicCD = 0.8; return;
-  }
-  S.charge = 0; S.hold = 0; S.magicCD = 2.5; S.listenUntil = 0;
-  S.spellIdx = (ORDER.indexOf(id) + 1) % 4;
-  const sp = SPELLS[id];
-  text(anchor.x, top, sp.icon + sp.name + '！', sp.col, 32, 1.0);
-  if (id === 'thunder'){
-    sfx.thunder();
-    S.fx.push({ kind: 'flash', col: '255,255,220', t: 0, life: 0.25 });
-    S.enemies.forEach(e => {
-      if (e.dead) return;
-      const pts = []; const x = e.x + (Math.random() - 0.5) * u;
-      for (let i = 0; i <= 6; i++) pts.push([i === 6 ? e.x : x + (Math.random() - 0.5) * u * 0.6, e.y * i / 6]);
-      S.fx.push({ kind: 'bolt', pts, t: 0, life: 0.35 });
-      damage(e, 3, 'magic');
-    });
-  } else if (id === 'fire'){
-    sfx.fire(); S.burn = 6; S.burnT = 0.4;
-    S.fx.push({ kind: 'ring', x: anchor.x, y: anchor.y, col: '255,154,60', t: 0, life: 0.6 });
-    S.enemies.forEach(e => { if (!e.dead){ dots(e.x, e.y, 5, '#ff9a3c', 0.6); damage(e, 1, 'magic'); } });
-  } else if (id === 'ice'){
-    sfx.ice();
-    S.fx.push({ kind: 'flash', col: '170,235,255', t: 0, life: 0.4 });
-    S.enemies.forEach(e => { if (!e.dead){ e.frozen = 5; dots(e.x, e.y, 6, '#d6f6ff', 0.5); } });
-  } else {
-    sfx.heal(); S.hearts++; S.recoverCD = 20;
-    S.fx.push({ kind: 'ring', x: anchor.x, y: anchor.y, col: '182,255,176', t: 0, life: 0.6 });
-    dots(anchor.x, anchor.y - u, 14, '#b6ffb0');
-    text(anchor.x, anchor.y - u * 0.9, '❤️+1', '#ffd0d0');
-  }
-}
-
 // ---------- 進行 ----------
-function shouting(){
-  if (S.mode === 'cam' && S.noMic) return S.hold > 1.0;       // マイクなし：構えを1秒つづける
-  if (S.mode === 'cam') return S.vol > Math.max(SHOUT_MIN, S.noise * 4);
-  return S.now < S.shoutUntil;
-}
 function update(dt){
   const k = Math.min(1, dt * 8);
   if (S.mode !== 'cam' || !S.body){ anchor.tx = W / 2; anchor.ty = H * 0.5; anchor.tunit = Math.min(W, H) * 0.16; }
   anchor.x += (anchor.tx - anchor.x) * k; anchor.y += (anchor.ty - anchor.y) * k; anchor.unit += (anchor.tunit - anchor.unit) * k;
-  if (S.mode === 'nocam'){ S.poseMagic = S.padMagic; S.poseGuard = S.padGuard; }
-  if (analyser){
-    analyser.getFloatTimeDomainData(volBuf);
-    let s = 0; for (let i = 0; i < volBuf.length; i++) s += volBuf[i] * volBuf[i];
-    S.vol = Math.sqrt(s / volBuf.length);
-    if (S.vol < S.noise * 2) S.noise += (S.vol - S.noise) * 0.02;
-  }
-  S.magicCD -= dt; S.recoverCD -= dt; S.hurt = Math.max(0, S.hurt - dt);
-  S.charge = S.poseMagic && S.magicCD <= 0 && S.rushT <= 0 ? Math.min(1, S.charge + dt / CHARGE_TIME) : Math.max(0, S.charge - dt * 2.5);
-  for (const h of hands) h.trail = h.trail.filter(t => S.now - t.t < 0.25);
+  if (S.mode === 'nocam') S.poseGuard = S.padGuard;
+  S.hurt = Math.max(0, S.hurt - dt);
   for (const f of S.fx){ f.t += dt; if (f.kind === 'dot'){ f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 400 * dt; } }
   S.fx = S.fx.filter(f => f.t < f.life);
   if (!S.running) return;
 
   S.elapsed += dt;
-  // まほう：名前が聞こえたら その まほう。声だけなら 少し待って「おまかせ」
-  if (S.mode === 'cam' && !S.noMic && S.poseMagic && S.magicCD <= 0.4 && S.rushT <= 0) S.listenUntil = S.now + 0.8;
-  listen(S.now < S.listenUntil);
-  if (S.charge >= 1){
-    if (!S.ready){ S.ready = true; sfx.ready(); }
-    S.hold += dt;
-    if (S.heard && S.now - S.heard.t < 1.5) cast(S.heard.id);
-    else {
-      if (!S.shoutT && shouting()) S.shoutT = S.now;
-      if (S.shoutT && (!recOn || S.now - S.shoutT > NAME_WAIT)) cast(nextSpell());
-    }
-  } else { S.hold = 0; S.shoutT = 0; S.ready = false; }
-  // ほのおの かべ：近づいた敵を やく
-  if (S.burn > 0){
-    S.burn -= dt; S.burnT -= dt;
-    if (S.burnT <= 0){
-      S.burnT = 0.4; let any = false;
-      for (const e of S.enemies) if (!e.dead && e.z < 0.5){ any = true; dots(e.x, e.y, 4, '#ff9a3c', 0.6); damage(e, 1, 'magic'); }
-      if (any) sfx.burn();
-    }
-  }
-  const rush = S.rushT > 0;
-  if (rush){
-    S.rushT -= dt;
-    const loud = S.mode === 'cam' && !S.noMic && S.vol > Math.max(SHOUT_MIN, S.noise * 4);
-    S.rushAcc += dt * (loud ? 11 : 4);
-    while (S.rushAcc >= 1){ S.rushAcc--; rushHit(); }
-    if (S.rushT <= 0) endRush();
-  } else {
-    S.rush = Math.min(1, S.rush + dt / 30);
-    if (S.rush >= 1 && !S.rushReady){ S.rushReady = true; sfx.rushReady(); }
-  }
+  S.comboT -= dt;
+  if (S.comboT <= 0){ S.best = Math.max(S.best, S.combo); S.combo = 0; }
+  // 時間がたつほど、出るのが早くなり、同時に出る数も ふえる
+  const boss = S.enemies.some(e => TYPES[e.type].boss);
+  if (!boss){ S.bossT -= dt; if (S.bossT <= 0) spawn('boss'); }
   S.spawnT -= dt;
-  if (!rush && S.spawnT <= 0 && S.enemies.length < 4){ spawn(); S.spawnT = Math.max(1.1, 2.6 - S.elapsed * 0.02); }
+  const maxN = Math.min(12, 4 + Math.floor(S.elapsed / 8));
+  if (S.spawnT <= 0 && S.enemies.length < maxN){ spawnSmall(); S.spawnT = Math.max(0.5, 1.6 - S.elapsed * 0.02) * (boss ? 1.4 : 1); }
   for (const e of S.enemies){
-    if (e.frozen > 0) e.frozen -= dt; else e.z -= e.speed * dt * (rush ? 0.5 : 1);
-    if (e.type === 'dai') e.wob *= 0.8;
-    e.flash = Math.max(0, e.flash - dt); place(e);
-    if (!e.warned && e.z < 0.3){ e.warned = true; if (!rush) sfx.warn(); }
+    e.z -= e.speed * dt; e.flash = Math.max(0, e.flash - dt); place(e);
+    if (!e.warned && e.z < 0.3){ e.warned = true; sfx.warn(); }
     if (e.z > 0 || e.dead) continue;
-    if (S.rushT > 0) e.z = 0.5;
-    else if (S.poseGuard){ e.z = 0.6; e.warned = false; sfx.guard(); text(e.x, e.y - e.r, 'ガード！', '#b6ffb0'); }
-    else { e.dead = true; S.hearts--; S.hurt = 0.4; sfx.hurt(); if (S.hearts <= 0) gameOver(); }
+    const big = TYPES[e.type].boss;
+    if (S.poseGuard){ e.z = big ? 0.4 : 0.6; e.warned = false; sfx.guard(); text(e.x, e.y - e.r, 'ガード！', '#b6ffb0'); }
+    else {
+      // ボスは たおすまで いなくならない
+      if (big){ e.z = 0.5; e.warned = false; } else e.dead = true;
+      S.hearts -= big ? 2 : 1; S.hurt = 0.4; S.combo = 0; sfx.hurt();
+      if (S.hearts <= 0) gameOver();
+    }
   }
   S.enemies = S.enemies.filter(e => !e.dead);
 }
 function begin(){
-  Object.assign(S, { running: true, elapsed: 0, score: 0, hearts: 3, enemies: [], fx: [], spawnT: 1.2, charge: 0, hold: 0, magicCD: 0, hurt: 0, kumoShown: false,
-    spellIdx: 0, heard: null, shoutT: 0, listenUntil: 0, ready: false, recoverCD: 0, burn: 0, burnT: 0,
-    rush: 0.6, rushT: 0, rushHits: 0, rushAcc: 0, rushReady: false, punches: [] });
-  sfx.start();
+  Object.assign(S, { running: true, elapsed: 0, score: 0, hearts: MAX_HEART, enemies: [], fx: [], spawnT: 1.0, bossT: BOSS_FIRST, bossN: 0, hurt: 0, combo: 0, comboT: 0, best: 0 });
   $('title').classList.add('hide'); $('over').classList.add('hide');
   $('pad').classList.toggle('show', S.mode === 'nocam');
+  sfx.start();
 }
 function gameOver(){
-  S.running = false; S.enemies = []; S.rushT = 0; S.burn = 0; listen(false); sfx.over();
+  S.running = false; S.enemies = []; sfx.over();
   let best = S.score;
   try { best = Math.max(S.score, +localStorage.getItem('karadaYushaBest') || 0); localStorage.setItem('karadaYushaBest', best); } catch (e) {}
   $('score2').textContent = 'スコア ' + S.score;
-  $('best').textContent = 'さいこう ' + best;
+  $('best').textContent = `さいこう ${best}　／　さいだいコンボ ${Math.max(S.best, S.combo)}`;
   $('pad').classList.remove('show'); $('over').classList.remove('hide');
 }
 
 // ---------- 描画 ----------
 function drawEnemy(e){
-  const { x, y, r } = e, dai = e.type === 'dai', near = e.z < 0.3 && !dai;
+  const { x, y, r } = e, big = TYPES[e.type].boss, near = e.z < 0.3;
   ctx.save();
   ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.beginPath(); ctx.ellipse(x, y + r * 1.05, r * 0.8, r * 0.18, 0, 0, 6.28); ctx.fill();
   // せまってくる合図の輪
   ctx.strokeStyle = near ? '#ff9a3c' : 'rgba(255,255,255,.5)'; ctx.lineWidth = near ? 5 : 3;
-  if (!dai){ ctx.beginPath(); ctx.arc(x, y, r * (1.15 + e.z * 0.9), 0, 6.28); ctx.stroke(); }
-  const sq = e.frozen > 0 ? 1 : 1 + Math.sin(S.now * 5 + e.wob) * 0.05;
-  ctx.translate(x, y); ctx.scale(1 / sq, sq);
-  if (dai) ctx.rotate(e.wob);
-  if (e.type === 'mochi' || dai){
-    ctx.fillStyle = dai ? '#b48cff' : '#ffb3d1'; ctx.beginPath(); ctx.ellipse(0, r * 0.1, r, r * 0.85, 0, 0, 6.28); ctx.fill();
+  ctx.beginPath(); ctx.arc(x, y, r * (1.15 + e.z * 0.9), 0, 6.28); ctx.stroke();
+  if (big){
+    const bw = r * 1.6, by = y - r * 1.35;
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(x - bw / 2, by, bw, 10);
+    ctx.fillStyle = '#ff5a5a'; ctx.fillRect(x - bw / 2, by, bw * e.hp / e.maxHp, 10);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(x - bw / 2, by, bw, 10);
+  }
+  const sq = 1 + Math.sin(S.now * 5 + e.wob) * 0.05;
+  ctx.translate(x + (e.flash > 0 ? (Math.random() - 0.5) * r * 0.15 : 0), y); ctx.scale(1 / sq, sq);
+  if (e.type === 'mochi'){
+    ctx.fillStyle = '#ffb3d1'; ctx.beginPath(); ctx.ellipse(0, r * 0.1, r, r * 0.85, 0, 0, 6.28); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.ellipse(-r * 0.4, -r * 0.35, r * 0.22, r * 0.12, -0.5, 0, 6.28); ctx.fill();
   } else if (e.type === 'iwa'){
     ctx.fillStyle = '#a9adba'; ctx.beginPath();
     for (let i = 0; i < 8; i++){ const a = i / 8 * 6.28, rr = r * (0.9 + (i % 2) * 0.12); ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
     ctx.closePath(); ctx.fill();
     if (e.hp < 2){ ctx.strokeStyle = '#5c6070'; ctx.lineWidth = r * 0.06; ctx.beginPath(); ctx.moveTo(-r * 0.1, -r * 0.9); ctx.lineTo(r * 0.15, -r * 0.5); ctx.lineTo(-r * 0.05, -r * 0.3); ctx.stroke(); }
-  } else {
+  } else if (e.type === 'kumo'){
     ctx.fillStyle = '#fff';
     [[-0.55, 0.1, 0.5], [0, -0.2, 0.65], [0.55, 0.1, 0.5], [0, 0.25, 0.6]].forEach(([cx, cy, cr]) => { ctx.beginPath(); ctx.arc(cx * r, cy * r, cr * r, 0, 6.28); ctx.fill(); });
+  } else {
+    // ボス：とげとげの体に つの
+    ctx.fillStyle = '#8b3fb8'; ctx.beginPath();
+    for (let i = 0; i < 20; i++){ const a = i / 20 * 6.28, rr = r * (i % 2 ? 0.88 : 1.02); ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffe35a';
+    [-1, 1].forEach(s => { ctx.beginPath(); ctx.moveTo(s * r * 0.3, -r * 0.8); ctx.lineTo(s * r * 0.55, -r * 1.3); ctx.lineTo(s * r * 0.65, -r * 0.65); ctx.fill(); });
+    ctx.strokeStyle = '#2a1238'; ctx.lineWidth = r * 0.08; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-r * 0.5, -r * 0.3); ctx.lineTo(-r * 0.15, -r * 0.15); ctx.moveTo(r * 0.5, -r * 0.3); ctx.lineTo(r * 0.15, -r * 0.15); ctx.stroke();
   }
-  // 顔
+  // 顔（ボスは への字の口）
   ctx.fillStyle = '#3a2f4a';
   ctx.beginPath(); ctx.arc(-r * 0.28, 0, r * 0.09, 0, 6.28); ctx.arc(r * 0.28, 0, r * 0.09, 0, 6.28); ctx.fill();
   ctx.strokeStyle = '#3a2f4a'; ctx.lineWidth = Math.max(2, r * 0.06); ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.arc(0, r * 0.12, r * 0.16, 0.2, Math.PI - 0.2); ctx.stroke();
-  if (e.frozen > 0){
-    ctx.globalAlpha = e.frozen < 1 && Math.sin(S.now * 30) > 0 ? 0.25 : 0.55; ctx.fillStyle = '#9fe6ff'; ctx.beginPath(); ctx.arc(0, 0, r * 1.1, 0, 6.28); ctx.fill();
-    ctx.globalAlpha = 1; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, r * 1.1, 0, 6.28); ctx.stroke();
-  }
+  ctx.beginPath();
+  if (big) ctx.arc(0, r * 0.42, r * 0.2, Math.PI + 0.3, -0.3); else ctx.arc(0, r * 0.12, r * 0.16, 0.2, Math.PI - 0.2);
+  ctx.stroke();
   if (e.flash > 0){ ctx.globalAlpha = 0.7; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, r * 1.05, 0, 6.28); ctx.fill(); }
   ctx.restore();
 }
@@ -537,112 +350,58 @@ function draw(){
     const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2b3a8c'); g.addColorStop(1, '#6a4fa3');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   }
-  const u = anchor.unit;
-  if (S.rushT > 0){
-    // ラッシュ中の集中線
-    const R = Math.hypot(W, H), fr = Math.floor(S.now * 20);
-    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 3;
-    ctx.beginPath();
-    for (let i = 0; i < 28; i++){
-      const a = i / 28 * 6.28 + Math.sin(i * 12.9 + fr) * 0.1, r1 = u * (2.6 + Math.abs(Math.sin(i * 7.3 + fr * 1.7)) * 1.6);
-      ctx.moveTo(anchor.x + Math.cos(a) * r1, anchor.y + Math.sin(a) * r1); ctx.lineTo(anchor.x + Math.cos(a) * R, anchor.y + Math.sin(a) * R);
-    }
-    ctx.stroke();
-  }
-  if (S.burn > 0){
-    // ほのおの かべ
-    const al = Math.min(1, S.burn);
-    for (let i = 0; i < 26; i++){
-      const a = i / 26 * 6.28, fx0 = anchor.x + Math.cos(a) * u * 2.1, fy0 = anchor.y + u * 0.4 + Math.sin(a) * u * 1.3;
-      const h = u * (0.55 + 0.25 * Math.sin(S.now * 11 + i * 2.3)), w = u * 0.24;
-      ctx.fillStyle = `rgba(255,${120 + (i % 3) * 40},40,${0.75 * al})`;
-      ctx.beginPath(); ctx.moveTo(fx0 - w, fy0); ctx.quadraticCurveTo(fx0 + Math.sin(S.now * 7 + i) * w, fy0 - h * 0.6, fx0, fy0 - h); ctx.quadraticCurveTo(fx0 + w * 0.6, fy0 - h * 0.4, fx0 + w, fy0); ctx.fill();
-    }
-  }
   [...S.enemies].sort((a, b) => b.z - a.z).forEach(drawEnemy);
 
-  // 剣と切りあと
-  ctx.lineCap = 'round';
-  for (const h of hands){
-    for (const t of h.trail){
-      const a = 1 - (S.now - t.t) / 0.25;
-      ctx.strokeStyle = `rgba(190,245,255,${a})`; ctx.lineWidth = 14 * a + 2;
-      ctx.beginPath(); ctx.moveTo(t.x1, t.y1); ctx.lineTo(t.x2, t.y2); ctx.stroke();
-    }
-    if (h.vis && h.base){
-      ctx.strokeStyle = h.slashing ? '#ffffff' : 'rgba(200,235,255,.85)'; ctx.lineWidth = h.slashing ? 9 : 6;
-      ctx.beginPath(); ctx.moveTo(h.base.x, h.base.y); ctx.lineTo(h.x, h.y); ctx.stroke();
-    }
+  const u = anchor.unit;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+  // こぶし
+  if (S.mode === 'cam') for (const h of hands){
+    if (!h.vis) continue;
+    ctx.globalAlpha = 0.85; ctx.font = `${Math.round(u * 0.5)}px sans-serif`; ctx.fillText('👊', h.x, h.y); ctx.globalAlpha = 1;
   }
-  // ガードとまほうの見た目
   if (S.poseGuard){
     ctx.strokeStyle = 'rgba(182,255,176,.9)'; ctx.lineWidth = 8;
-    ctx.beginPath(); ctx.arc(anchor.x, anchor.y + anchor.unit * 0.4, anchor.unit * 1.3, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
-  }
-  if (S.charge > 0){
-    ctx.strokeStyle = `rgba(143,240,255,${0.4 + S.charge * 0.6})`; ctx.lineWidth = 6;
-    ctx.beginPath(); ctx.arc(anchor.x, anchor.y - anchor.unit * 1.5, anchor.unit * 0.5 * S.charge, 0, 6.28); ctx.stroke();
-    if (S.charge >= 1){ ctx.font = `${Math.round(u * 0.5)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText(SPELLS[nextSpell()].icon, anchor.x, anchor.y - u * 1.5); }
+    ctx.beginPath(); ctx.arc(anchor.x, anchor.y + u * 0.4, u * 1.3, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
   }
   for (const f of S.fx){
     const a = 1 - f.t / f.life;
     if (f.kind === 'dot'){ ctx.fillStyle = f.col; ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(f.x, f.y, 6, 0, 6.28); ctx.fill(); ctx.globalAlpha = 1; }
-    else if (f.kind === 'flash'){ ctx.fillStyle = `rgba(${f.col},${a * 0.6})`; ctx.fillRect(0, 0, W, H); }
-    else if (f.kind === 'bolt'){
-      ctx.lineJoin = 'round';
-      [['255,227,90', 12], ['255,255,255', 4]].forEach(([c, w]) => { ctx.strokeStyle = `rgba(${c},${a})`; ctx.lineWidth = w; ctx.beginPath(); f.pts.forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)); ctx.stroke(); });
-    }
     else if (f.kind === 'fist'){
       const k = 0.7 + 0.6 * f.t / f.life;
       ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.globalAlpha = Math.min(1, a * 2);
-      ctx.font = `${Math.round(f.size * k)}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff'; ctx.fillText('👊', 0, 0); ctx.restore();
+      ctx.font = `${Math.round(f.size * k)}px sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText('👊', 0, 0); ctx.restore();
     }
     else if (f.kind === 'burst'){
       ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 5; ctx.beginPath();
       for (let i = 0; i < 8; i++){ const an = i / 8 * 6.28, r1 = f.r * (0.6 + f.t / f.life), r2 = r1 + f.r * 0.5; ctx.moveTo(f.x + Math.cos(an) * r1, f.y + Math.sin(an) * r1); ctx.lineTo(f.x + Math.cos(an) * r2, f.y + Math.sin(an) * r2); }
       ctx.stroke();
     }
-    else if (f.kind === 'ring'){ ctx.strokeStyle = `rgba(${f.col || '143,240,255'},${a})`; ctx.lineWidth = 16 * a + 2; ctx.beginPath(); ctx.arc(f.x, f.y, (f.t / f.life) * Math.hypot(W, H), 0, 6.28); ctx.stroke(); }
-    else { ctx.font = `700 ${f.size}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.globalAlpha = a; ctx.lineWidth = 4; ctx.strokeStyle = '#23306b'; ctx.strokeText(f.str, f.x, f.y - f.t * 40); ctx.fillStyle = f.col; ctx.fillText(f.str, f.x, f.y - f.t * 40); ctx.globalAlpha = 1; }
+    else if (f.kind === 'ring'){ ctx.strokeStyle = `rgba(255,227,90,${a})`; ctx.lineWidth = 16 * a + 2; ctx.beginPath(); ctx.arc(f.x, f.y, (f.t / f.life) * Math.hypot(W, H), 0, 6.28); ctx.stroke(); }
+    else { ctx.font = `700 ${f.size}px sans-serif`; ctx.globalAlpha = a; ctx.lineWidth = 4; ctx.strokeStyle = '#23306b'; ctx.strokeText(f.str, f.x, f.y - f.t * 40); ctx.fillStyle = f.col; ctx.fillText(f.str, f.x, f.y - f.t * 40); ctx.globalAlpha = 1; }
   }
   if (S.hurt > 0){ ctx.fillStyle = `rgba(255,150,150,${S.hurt})`; ctx.fillRect(0, 0, W, H); }
   if (!S.mode) return;
 
   // 画面上の表示
-  ctx.textBaseline = 'middle'; ctx.font = '700 22px sans-serif';
-  ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.fillText('❤️'.repeat(Math.max(0, S.hearts)), 14, 28);
+  ctx.font = '700 22px sans-serif'; ctx.fillStyle = '#fff';
+  ctx.textAlign = 'left'; ctx.fillText('❤️'.repeat(Math.max(0, S.hearts)), 14, 28);
   ctx.textAlign = 'right'; ctx.fillText('スコア ' + S.score, W - 14, 28);
-  const bw = Math.min(260, W * 0.5), bx = (W - bw) / 2;
-  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(bx, 50, bw, 12);
-  ctx.fillStyle = S.charge >= 1 ? '#ffe35a' : '#8ff0ff'; ctx.fillRect(bx, 50, bw * S.charge, 12);
-  // ラッシュのたまりぐあい
-  const full = S.rush >= 1, rv = S.rushT > 0 ? S.rushT / RUSH_TIME : S.rush;
-  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(bx, 78, bw, 14);
-  ctx.fillStyle = S.rushT > 0 || (full && Math.sin(S.now * 12) > 0) ? '#ffe35a' : '#ff9a3c'; ctx.fillRect(bx, 78, bw * rv, 14);
-  ctx.textAlign = 'center'; ctx.font = '700 11px sans-serif'; ctx.fillStyle = '#fff';
-  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,28,70,.8)'; ctx.strokeText('ラッシュ', W / 2, 85); ctx.fillText('ラッシュ', W / 2, 85);
-  if (S.rushT > 0){
-    ctx.font = '700 44px sans-serif'; ctx.lineWidth = 6; ctx.strokeStyle = '#b3541e'; ctx.fillStyle = '#ffe35a';
-    ctx.strokeText(S.rushHits + ' HIT', W / 2, 130); ctx.fillText(S.rushHits + ' HIT', W / 2, 130);
+  ctx.textAlign = 'center';
+  if (S.combo >= 3){
+    // コンボ数。当たった しゅんかんに 少し大きくなる
+    const pop = 1 + Math.max(0, S.comboT - (COMBO_TIME - 0.12)) * 3;
+    ctx.font = `700 ${Math.round(44 * pop)}px sans-serif`; ctx.lineWidth = 6; ctx.strokeStyle = '#b3541e'; ctx.fillStyle = '#ffe35a';
+    ctx.strokeText(S.combo + ' HIT', W / 2, 84); ctx.fillText(S.combo + ' HIT', W / 2, 84);
   }
   const cam = S.mode === 'cam';
   const tips = cam
-    ? ['うでを ふる → 剣で きる', 'うでを 前に つきだす → パンチ', 'りょう手を 上げて まほうの 名前を さけぶ', 'むねの前で うでを クロス → ガード']
-    : ['なぞる → きる', 'タップ → パンチ', 'かまえ＋まほうボタン → まほう', 'ガードを おしっぱなし → ガード'];
-  let hint = [tips[Math.floor(S.now / 3.5) % tips.length]];
-  if (cam && !S.body) hint = ['からだが うつっていません。すこし はなれてください'];
-  else if (S.rushT > 0) hint = [cam ? (S.noMic ? 'ラッシュ！ パンチ！ パンチ！ パンチ！' : 'ラッシュ！ パンチしながら さけべ！') : 'ラッシュ！ れんだ！ れんだ！'];
-  else if (S.charge >= 1) hint = !cam ? ['まほうの ボタンを おして！'] : S.noMic ? ['そのまま キープ！'] : ['いまだ！ まほうの 名前を さけべ！', 'サンダー / ファイヤー / フリーザー / リカバー'];
-  else if (full) hint = [cam ? 'ラッシュ OK！ パンチを 3れんぞく！' : 'ラッシュ OK！ 3かい すばやく タップ！'];
-  else if (S.magicCD > 0) hint = ['まほうは じゅんび中…'];
+    ? ['てきに むかって うでを つきだす → パンチ', 'はやく れんぞくで うつと コンボ！', 'むねの前で うでを クロス → ガード']
+    : ['タップ → パンチ', 'はやく れんだすると コンボ！', 'ガードを おしっぱなし → ガード'];
+  let hint = tips[Math.floor(S.now / 3.5) % tips.length];
+  if (cam && !S.body) hint = 'からだが うつっていません。すこし はなれてください';
+  else if (S.enemies.some(e => TYPES[e.type].boss)) hint = 'ボスだ！ れんぞくパンチ！';
   ctx.font = '700 18px sans-serif'; ctx.fillStyle = '#fff'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(20,28,70,.8)';
-  hint.forEach((str, i) => { const y = H - 22 - (hint.length - 1 - i) * 24; ctx.strokeText(str, W / 2, y, W - 20); ctx.fillText(str, W / 2, y, W - 20); });
-  if (S.mode === 'cam' && analyser && S.charge > 0){
-    const th = Math.max(SHOUT_MIN, S.noise * 4);
-    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(bx, 66, bw, 6);
-    ctx.fillStyle = '#b6ffb0'; ctx.fillRect(bx, 66, bw * Math.min(1, S.vol / (th * 1.5)), 6);
-    ctx.fillStyle = '#fff'; ctx.fillRect(bx + bw / 1.5, 64, 2, 10);
-  }
+  ctx.strokeText(hint, W / 2, H - 22, W - 20); ctx.fillText(hint, W / 2, H - 22, W - 20);
 }
 
 function frame(ts){
@@ -657,7 +416,7 @@ function frame(ts){
   }
   update(dt); draw();
 }
-Object.assign(window.__game, { tick: frame, onPose, punch, cast, hear, startRush, sfx });   // テスト用：手動で1コマ進める／関節データを直接わたす
+Object.assign(window.__game, { tick: frame, onPose, punch, spawn, sfx });   // テスト用：手動で1コマ進める／関節データを直接わたす
 const loop = ts => { frame(ts); requestAnimationFrame(loop); };
 requestAnimationFrame(loop);
 
@@ -679,20 +438,11 @@ async function startCam(){
   if (pose){ S.mode = 'cam'; begin(); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ msg.textContent = 'この ひらきかたでは カメラを つかえません。https か localhost で ひらいてください。'; return; }
   msg.textContent = 'カメラを じゅんび中…';
-  const vopt = { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } };
   let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ video: vopt, audio: { echoCancellation: true, noiseSuppression: true } }); }
-  catch (e){
-    try { stream = await navigator.mediaDevices.getUserMedia({ video: vopt }); S.noMic = true; }
-    catch (e2){ msg.textContent = 'カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'; return; }
-  }
-  video.srcObject = new MediaStream(stream.getVideoTracks());
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } } }); }
+  catch (e){ msg.textContent = 'カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'; return; }
+  video.srcObject = stream;
   await video.play();
-  const at = stream.getAudioTracks();
-  if (at.length && ac){
-    analyser = ac.createAnalyser(); analyser.fftSize = 1024; volBuf = new Float32Array(analyser.fftSize);
-    ac.createMediaStreamSource(new MediaStream(at)).connect(analyser);
-  } else S.noMic = true;
   msg.textContent = 'うごきを 見る じゅんび中…（はじめは すこし かかります）';
   try {
     const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
@@ -709,35 +459,12 @@ $('bRetry').onclick = begin;
 $('bBack').onclick = () => { $('over').classList.add('hide'); $('title').classList.remove('hide'); };
 
 // ---------- カメラなしの操作 ----------
-let ptT = 0, ptDown = null;
-cv.addEventListener('pointerdown', e => {
-  if (S.mode !== 'nocam') return;
-  hands[0].vis = false; feedHand(0, e.clientX, e.clientY, 0.016, true); ptT = e.timeStamp;
-  ptDown = { x: e.clientX, y: e.clientY, t: e.timeStamp, moved: 0 };
-});
-cv.addEventListener('pointermove', e => {
-  if (S.mode !== 'nocam' || !hands[0].vis) return;
-  if (ptDown) ptDown.moved += Math.hypot(e.clientX - ptDown.lx || 0, e.clientY - ptDown.ly || 0);
-  if (ptDown){ ptDown.lx = e.clientX; ptDown.ly = e.clientY; }
-  feedHand(0, e.clientX, e.clientY, Math.max(0.004, (e.timeStamp - ptT) / 1000), true); ptT = e.timeStamp;
-});
-const ptEnd = e => {
-  if (S.mode !== 'nocam') return;
-  feedHand(0, 0, 0, 0, false);
-  // ほとんど動かさずに すぐ はなしたら パンチ
-  if (e.type === 'pointerup' && ptDown && ptDown.moved < 14 && e.timeStamp - ptDown.t < 300) punch(ptDown.x, ptDown.y);
-  ptDown = null;
-};
-cv.addEventListener('pointerup', ptEnd); cv.addEventListener('pointercancel', ptEnd);
-function holdBtn(id, key){
-  const b = $(id), set = v => { S[key] = v; b.classList.toggle('on', v); };
-  b.addEventListener('pointerdown', e => { e.preventDefault(); set(true); });
-  ['pointerup', 'pointerleave', 'pointercancel'].forEach(n => b.addEventListener(n, () => set(false)));
-}
-holdBtn('pMagic', 'padMagic'); holdBtn('pGuard', 'padGuard');
-document.querySelectorAll('#pad [data-spell]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); S.heard = { id: b.dataset.spell, t: S.now }; }));
-addEventListener('keydown', e => { if (S.mode !== 'nocam') return; if (e.code === 'KeyM') S.padMagic = true; if (e.code === 'KeyG') S.padGuard = true; if (e.code === 'Space') S.shoutUntil = S.now + 0.25; const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code); if (k >= 0) S.heard = { id: ORDER[k], t: S.now }; });
-addEventListener('keyup', e => { if (e.code === 'KeyM') S.padMagic = false; if (e.code === 'KeyG') S.padGuard = false; });
+cv.addEventListener('pointerdown', e => { if (S.mode === 'nocam') punch(e.clientX, e.clientY); });
+const guardBtn = $('pGuard'), setGuard = v => { S.padGuard = v; guardBtn.classList.toggle('on', v); };
+guardBtn.addEventListener('pointerdown', e => { e.preventDefault(); setGuard(true); });
+['pointerup', 'pointerleave', 'pointercancel'].forEach(n => guardBtn.addEventListener(n, () => setGuard(false)));
+addEventListener('keydown', e => { if (S.mode === 'nocam' && e.code === 'KeyG') S.padGuard = true; });
+addEventListener('keyup', e => { if (e.code === 'KeyG') S.padGuard = false; });
 </script>
 </body>
 </html>
