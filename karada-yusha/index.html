@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>ふれ！さけべ！からだで勇者！</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#1b2550;font-family:"Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif;color:#fff;-webkit-user-select:none;user-select:none;touch-action:none}
+  #cam{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  #cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;box-sizing:border-box;background:rgba(20,28,70,.82);text-align:center}
+  .panel.hide{display:none}
+  h1{margin:0;font-size:clamp(26px,6vw,48px);line-height:1.25;color:#ffe35a;text-shadow:0 3px 0 #b3541e}
+  .how{display:grid;gap:8px;font-size:clamp(14px,3.4vw,19px);text-align:left;background:rgba(255,255,255,.1);border-radius:14px;padding:14px 18px;max-width:520px}
+  .how b{color:#8ff0ff}
+  button{font:inherit;font-weight:700;font-size:clamp(16px,4vw,22px);color:#23306b;background:#ffe35a;border:0;border-radius:999px;padding:14px 28px;box-shadow:0 5px 0 #b98a12;cursor:pointer}
+  button:active{transform:translateY(3px);box-shadow:0 2px 0 #b98a12}
+  button.sub{background:#cfe0ff;box-shadow:0 5px 0 #7a8fc4;font-size:clamp(13px,3.2vw,17px);padding:10px 20px}
+  #msg{min-height:1.5em;font-size:clamp(13px,3.2vw,17px);color:#ffd0d0;max-width:520px}
+  .note{font-size:clamp(11px,2.8vw,14px);opacity:.8;max-width:520px}
+  #score2{font-size:clamp(22px,6vw,40px);font-weight:700}
+  #pad{position:absolute;left:0;right:0;bottom:44px;display:none;justify-content:center;gap:10px;padding:0 10px}
+  #pad.show{display:flex}
+  #pad button{font-size:clamp(13px,3.4vw,17px);padding:12px 16px;background:#fff;box-shadow:0 4px 0 #8a93b8}
+  #pad button.on{background:#8ff0ff}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<video id="cam" playsinline muted></video>
+<canvas id="cv"></canvas>
+
+<div id="pad">
+  <button id="pMagic">かまえ（おしっぱなし）</button>
+  <button id="pShout">さけぶ！</button>
+  <button id="pGuard">ガード（おしっぱなし）</button>
+</div>
+
+<div id="title" class="panel">
+  <h1>ふれ！さけべ！<br>からだで勇者！</h1>
+  <div class="how">
+    <div>⚔️ <b>うでを すばやく ふる</b> … 剣で きる</div>
+    <div>✨ <b>りょう手を 頭より上に 上げて、声を出す</b> … まほう（ぜんぶに きく）</div>
+    <div>🛡️ <b>むねの前で うでを クロス</b> … ガード</div>
+  </div>
+  <button id="bCam">カメラで あそぶ</button>
+  <button id="bNoCam" class="sub">カメラなしで ためす（マウス・ゆび）</button>
+  <div id="msg"></div>
+  <div class="note">カメラと マイクは この たんまつの中だけで つかいます。えいぞうや 声は どこにも おくりません。<br>上半身が うつるように、すこし はなれて 立ってください。</div>
+</div>
+
+<div id="over" class="panel hide">
+  <h1>おつかれさま！</h1>
+  <div id="score2"></div>
+  <div id="best"></div>
+  <button id="bRetry">もういちど</button>
+  <button id="bBack" class="sub">タイトルへ</button>
+</div>
+
+<script type="module">
+const MP_VER = '0.10.14';
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
+const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+
+// 調整用の数値（単位は「肩はば何個ぶん／秒」）
+const SLASH_START = 5.0;   // これより速く動いたら「切り」開始
+const SLASH_KEEP  = 3.0;   // これを下回ったら「切り」終了
+const BLADE_LEN   = 0.7;   // ひじ→手首の長さに対する剣の長さ
+const CHARGE_TIME = 0.5;   // まほうの構えが完成するまでの秒数
+const SHOUT_MIN   = 0.06;  // 声の大きさの最低ライン（0〜1）
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const video = document.getElementById('cam');
+const $ = id => document.getElementById(id);
+let W = 0, H = 0;
+function resize(){
+  const d = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * d; cv.height = H * d;
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+}
+addEventListener('resize', resize); resize();
+
+const S = {
+  mode: null, running: false, now: 0, elapsed: 0, score: 0, hearts: 3,
+  enemies: [], fx: [], spawnT: 0, strokeId: 0,
+  body: false, poseMagic: false, poseGuard: false,
+  charge: 0, hold: 0, magicCD: 0, hurt: 0,
+  vol: 0, noise: 0.02, noMic: false, shoutUntil: 0,
+  padMagic: false, padGuard: false
+};
+const anchor = { x: 0, y: 0, unit: 100, tx: 0, ty: 0, tunit: 100 };
+const hands = [0, 1].map(() => ({ x: 0, y: 0, vis: false, slashing: false, stroke: 0, base: null, trail: [] }));
+window.__game = { S, hands, anchor };
+
+// ---------- 音 ----------
+let ac = null, analyser = null, volBuf = null;
+function tone(freq, dur, type = 'sine', vol = 0.12, slide = 0){
+  if (!ac) return;
+  const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur);
+}
+const sfx = {
+  swing: () => tone(520, 0.12, 'triangle', 0.05, -300),
+  hit:   () => tone(700, 0.10, 'square', 0.07, 500),
+  pop:   () => { tone(500, 0.08, 'square', 0.07, 600); setTimeout(() => tone(900, 0.12, 'sine', 0.08, 300), 60); },
+  miss:  () => tone(260, 0.10, 'sine', 0.05, -80),
+  guard: () => tone(180, 0.18, 'square', 0.08, 120),
+  hurt:  () => tone(220, 0.30, 'sawtooth', 0.07, -120),
+  magic: () => { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.25, 'triangle', 0.08), i * 60)); }
+};
+
+// ---------- カメラ・姿勢 ----------
+let pose = null, lastVT = -1, lastPoseT = 0;
+function vidRect(){
+  const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
+  const sc = Math.max(W / vw, H / vh), w = vw * sc, h = vh * sc;
+  return { x: (W - w) / 2, y: (H - h) / 2, w, h };
+}
+function onPose(lm, dt){
+  const r = vidRect();
+  const P = i => ({ x: r.x + (1 - lm[i].x) * r.w, y: r.y + lm[i].y * r.h, v: lm[i].visibility ?? 1 });
+  const ls = P(11), rs = P(12), nose = P(0);
+  S.body = ls.v > 0.5 && rs.v > 0.5;
+  if (!S.body){ clearPose(); return; }
+  const unit = Math.max(40, Math.hypot(ls.x - rs.x, ls.y - rs.y));
+  anchor.tx = (ls.x + rs.x) / 2; anchor.ty = (ls.y + rs.y) / 2; anchor.tunit = unit;
+  const lw = P(15), rw = P(16);
+  [[lw, P(13)], [rw, P(14)]].forEach(([w, e], i) => {
+    if (w.v < 0.4){ feedHand(i, 0, 0, dt, false); return; }
+    feedHand(i, w.x + (w.x - e.x) * BLADE_LEN, w.y + (w.y - e.y) * BLADE_LEN, dt, true, w);
+  });
+  const both = lw.v > 0.4 && rw.v > 0.4;
+  S.poseMagic = both && lw.y < nose.y && rw.y < nose.y;
+  // 手首の左右が肩の左右と入れかわっていたら「クロス」
+  const cross = (lw.x - rw.x) * Math.sign(ls.x - rs.x);
+  const top = Math.min(ls.y, rs.y) - unit * 0.3, bot = Math.max(ls.y, rs.y) + unit * 1.3;
+  S.poseGuard = both && cross < -unit * 0.15 && lw.y > top && lw.y < bot && rw.y > top && rw.y < bot;
+}
+function clearPose(){
+  S.body = false; S.poseMagic = false; S.poseGuard = false;
+  hands.forEach(h => { h.vis = false; h.slashing = false; });
+}
+function feedHand(i, x, y, dt, vis, base = null){
+  const h = hands[i];
+  if (!vis){ h.vis = false; h.slashing = false; return; }
+  if (!h.vis){ h.x = x; h.y = y; h.vis = true; h.base = base; return; }
+  const nx = h.x + (x - h.x) * 0.55, ny = h.y + (y - h.y) * 0.55;
+  const sp = Math.hypot(nx - h.x, ny - h.y) / Math.max(dt, 0.001) / anchor.unit;
+  if (sp > (h.slashing ? SLASH_KEEP : SLASH_START)){
+    if (!h.slashing){ h.slashing = true; h.stroke = ++S.strokeId; sfx.swing(); }
+    h.trail.push({ x1: h.x, y1: h.y, x2: nx, y2: ny, t: S.now });
+    if (S.running) slashSegment(h.x, h.y, nx, ny, h.stroke);
+  } else h.slashing = false;
+  h.x = nx; h.y = ny; h.base = base;
+}
+
+// ---------- 敵 ----------
+const TYPES = {
+  mochi: { hp: 1, time: 5.0, score: 10, size: 0.55 },
+  iwa:   { hp: 2, time: 7.0, score: 30, size: 0.62 },
+  kumo:  { hp: 1, time: 9.0, score: 50, size: 0.66, magicOnly: true }
+};
+function spawn(){
+  const r = Math.random(), t = S.elapsed;
+  let type = 'mochi';
+  if (t > 30) type = r < 0.5 ? 'mochi' : r < 0.75 ? 'iwa' : 'kumo';
+  else if (t > 12) type = r < 0.7 ? 'mochi' : 'iwa';
+  if (t > 20 && !S.kumoShown){ type = 'kumo'; S.kumoShown = true; }
+  const T = TYPES[type];
+  S.enemies.push({
+    type, hp: T.hp, z: 1, speed: 1 / (T.time * Math.max(0.6, 1 - t * 0.004)),
+    ux: (Math.random() * 2 - 1) * 2.2, uy: -1.0 + Math.random() * 1.6,
+    lastStroke: 0, flash: 0, wob: Math.random() * 6.28, x: 0, y: 0, r: 0
+  });
+}
+function place(e){
+  const s = 0.3 + 0.7 * Math.pow(1 - e.z, 1.5);
+  e.r = anchor.unit * TYPES[e.type].size * s;
+  e.x = Math.min(W - e.r, Math.max(e.r, anchor.x + e.ux * anchor.unit));
+  e.y = Math.min(H - e.r - 50, Math.max(e.r + 60, anchor.y + e.uy * anchor.unit + Math.sin(S.now * 3 + e.wob) * e.r * 0.08));
+}
+function segDist(px, py, x1, y1, x2, y2){
+  const dx = x2 - x1, dy = y2 - y1, l2 = dx * dx + dy * dy;
+  const t = l2 ? Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / l2)) : 0;
+  return Math.hypot(px - (x1 + dx * t), py - (y1 + dy * t));
+}
+function slashSegment(x1, y1, x2, y2, stroke){
+  for (const e of S.enemies){
+    if (e.dead || e.lastStroke === stroke) continue;
+    if (segDist(e.x, e.y, x1, y1, x2, y2) > e.r * 1.1) continue;
+    e.lastStroke = stroke;
+    if (TYPES[e.type].magicOnly){ text(e.x, e.y - e.r, 'まほうで！', '#8ff0ff'); sfx.miss(); continue; }
+    damage(e, 1);
+  }
+}
+function damage(e, n){
+  e.hp -= n; e.flash = 0.15;
+  if (e.hp > 0){ sfx.hit(); return; }
+  e.dead = true; sfx.pop();
+  S.score += TYPES[e.type].score;
+  text(e.x, e.y - e.r, '+' + TYPES[e.type].score, '#ffe35a');
+  for (let i = 0; i < 10; i++){
+    const a = Math.random() * 6.28, v = 80 + Math.random() * 160;
+    S.fx.push({ kind: 'dot', x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: 0.5, col: e.type === 'mochi' ? '#ffb3d1' : e.type === 'iwa' ? '#c9ccd6' : '#ffffff' });
+  }
+}
+function text(x, y, str, col){ S.fx.push({ kind: 'text', x, y, str, col, t: 0, life: 0.8 }); }
+function cast(){
+  S.charge = 0; S.hold = 0; S.magicCD = 2.5; sfx.magic();
+  S.fx.push({ kind: 'ring', x: anchor.x, y: anchor.y, t: 0, life: 0.6 });
+  text(anchor.x, anchor.y - anchor.unit * 1.6, 'まほう！', '#8ff0ff');
+  S.enemies.forEach(e => { if (!e.dead) damage(e, 3); });
+}
+
+// ---------- 進行 ----------
+function shouting(){
+  if (S.mode === 'cam' && S.noMic) return S.hold > 1.0;       // マイクなし：構えを1秒つづける
+  if (S.mode === 'cam') return S.vol > Math.max(SHOUT_MIN, S.noise * 4);
+  return S.now < S.shoutUntil;
+}
+function update(dt){
+  const k = Math.min(1, dt * 8);
+  if (S.mode !== 'cam' || !S.body){ anchor.tx = W / 2; anchor.ty = H * 0.5; anchor.tunit = Math.min(W, H) * 0.16; }
+  anchor.x += (anchor.tx - anchor.x) * k; anchor.y += (anchor.ty - anchor.y) * k; anchor.unit += (anchor.tunit - anchor.unit) * k;
+  if (S.mode === 'nocam'){ S.poseMagic = S.padMagic; S.poseGuard = S.padGuard; }
+  if (analyser){
+    analyser.getFloatTimeDomainData(volBuf);
+    let s = 0; for (let i = 0; i < volBuf.length; i++) s += volBuf[i] * volBuf[i];
+    S.vol = Math.sqrt(s / volBuf.length);
+    if (S.vol < S.noise * 2) S.noise += (S.vol - S.noise) * 0.02;
+  }
+  S.magicCD -= dt; S.hurt = Math.max(0, S.hurt - dt);
+  S.charge = S.poseMagic && S.magicCD <= 0 ? Math.min(1, S.charge + dt / CHARGE_TIME) : Math.max(0, S.charge - dt * 2.5);
+  for (const h of hands) h.trail = h.trail.filter(t => S.now - t.t < 0.25);
+  for (const f of S.fx){ f.t += dt; if (f.kind === 'dot'){ f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 400 * dt; } }
+  S.fx = S.fx.filter(f => f.t < f.life);
+  if (!S.running) return;
+
+  S.elapsed += dt;
+  if (S.charge >= 1){ S.hold += dt; if (shouting()) cast(); } else S.hold = 0;
+  S.spawnT -= dt;
+  if (S.spawnT <= 0 && S.enemies.length < 4){ spawn(); S.spawnT = Math.max(1.1, 2.6 - S.elapsed * 0.02); }
+  for (const e of S.enemies){
+    e.z -= e.speed * dt; e.flash = Math.max(0, e.flash - dt); place(e);
+    if (e.z > 0 || e.dead) continue;
+    if (S.poseGuard){ e.z = 0.6; sfx.guard(); text(e.x, e.y - e.r, 'ガード！', '#b6ffb0'); }
+    else { e.dead = true; S.hearts--; S.hurt = 0.4; sfx.hurt(); if (S.hearts <= 0) gameOver(); }
+  }
+  S.enemies = S.enemies.filter(e => !e.dead);
+}
+function begin(){
+  Object.assign(S, { running: true, elapsed: 0, score: 0, hearts: 3, enemies: [], fx: [], spawnT: 1.2, charge: 0, hold: 0, magicCD: 0, hurt: 0, kumoShown: false });
+  $('title').classList.add('hide'); $('over').classList.add('hide');
+  $('pad').classList.toggle('show', S.mode === 'nocam');
+}
+function gameOver(){
+  S.running = false; S.enemies = [];
+  let best = S.score;
+  try { best = Math.max(S.score, +localStorage.getItem('karadaYushaBest') || 0); localStorage.setItem('karadaYushaBest', best); } catch (e) {}
+  $('score2').textContent = 'スコア ' + S.score;
+  $('best').textContent = 'さいこう ' + best;
+  $('pad').classList.remove('show'); $('over').classList.remove('hide');
+}
+
+// ---------- 描画 ----------
+function drawEnemy(e){
+  const { x, y, r } = e, near = e.z < 0.3;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.beginPath(); ctx.ellipse(x, y + r * 1.05, r * 0.8, r * 0.18, 0, 0, 6.28); ctx.fill();
+  // せまってくる合図の輪
+  ctx.strokeStyle = near ? '#ff9a3c' : 'rgba(255,255,255,.5)'; ctx.lineWidth = near ? 5 : 3;
+  ctx.beginPath(); ctx.arc(x, y, r * (1.15 + e.z * 0.9), 0, 6.28); ctx.stroke();
+  const sq = 1 + Math.sin(S.now * 5 + e.wob) * 0.05;
+  ctx.translate(x, y); ctx.scale(1 / sq, sq);
+  if (e.type === 'mochi'){
+    ctx.fillStyle = '#ffb3d1'; ctx.beginPath(); ctx.ellipse(0, r * 0.1, r, r * 0.85, 0, 0, 6.28); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.beginPath(); ctx.ellipse(-r * 0.4, -r * 0.35, r * 0.22, r * 0.12, -0.5, 0, 6.28); ctx.fill();
+  } else if (e.type === 'iwa'){
+    ctx.fillStyle = '#a9adba'; ctx.beginPath();
+    for (let i = 0; i < 8; i++){ const a = i / 8 * 6.28, rr = r * (0.9 + (i % 2) * 0.12); ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+    ctx.closePath(); ctx.fill();
+    if (e.hp < 2){ ctx.strokeStyle = '#5c6070'; ctx.lineWidth = r * 0.06; ctx.beginPath(); ctx.moveTo(-r * 0.1, -r * 0.9); ctx.lineTo(r * 0.15, -r * 0.5); ctx.lineTo(-r * 0.05, -r * 0.3); ctx.stroke(); }
+  } else {
+    ctx.fillStyle = '#fff';
+    [[-0.55, 0.1, 0.5], [0, -0.2, 0.65], [0.55, 0.1, 0.5], [0, 0.25, 0.6]].forEach(([cx, cy, cr]) => { ctx.beginPath(); ctx.arc(cx * r, cy * r, cr * r, 0, 6.28); ctx.fill(); });
+  }
+  // 顔
+  ctx.fillStyle = '#3a2f4a';
+  ctx.beginPath(); ctx.arc(-r * 0.28, 0, r * 0.09, 0, 6.28); ctx.arc(r * 0.28, 0, r * 0.09, 0, 6.28); ctx.fill();
+  ctx.strokeStyle = '#3a2f4a'; ctx.lineWidth = Math.max(2, r * 0.06); ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(0, r * 0.12, r * 0.16, 0.2, Math.PI - 0.2); ctx.stroke();
+  if (e.flash > 0){ ctx.globalAlpha = 0.7; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, r * 1.05, 0, 6.28); ctx.fill(); }
+  ctx.restore();
+}
+function draw(){
+  if (S.mode === 'cam' && video.readyState >= 2){
+    const r = vidRect();
+    ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1); ctx.drawImage(video, W - r.x - r.w, r.y, r.w, r.h); ctx.restore();
+    ctx.fillStyle = 'rgba(24,34,90,.45)'; ctx.fillRect(0, 0, W, H);
+  } else {
+    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2b3a8c'); g.addColorStop(1, '#6a4fa3');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  [...S.enemies].sort((a, b) => b.z - a.z).forEach(drawEnemy);
+
+  // 剣と切りあと
+  ctx.lineCap = 'round';
+  for (const h of hands){
+    for (const t of h.trail){
+      const a = 1 - (S.now - t.t) / 0.25;
+      ctx.strokeStyle = `rgba(190,245,255,${a})`; ctx.lineWidth = 14 * a + 2;
+      ctx.beginPath(); ctx.moveTo(t.x1, t.y1); ctx.lineTo(t.x2, t.y2); ctx.stroke();
+    }
+    if (h.vis && h.base){
+      ctx.strokeStyle = h.slashing ? '#ffffff' : 'rgba(200,235,255,.85)'; ctx.lineWidth = h.slashing ? 9 : 6;
+      ctx.beginPath(); ctx.moveTo(h.base.x, h.base.y); ctx.lineTo(h.x, h.y); ctx.stroke();
+    }
+  }
+  // ガードとまほうの見た目
+  if (S.poseGuard){
+    ctx.strokeStyle = 'rgba(182,255,176,.9)'; ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.arc(anchor.x, anchor.y + anchor.unit * 0.4, anchor.unit * 1.3, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+  }
+  if (S.charge > 0){
+    ctx.strokeStyle = `rgba(143,240,255,${0.4 + S.charge * 0.6})`; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(anchor.x, anchor.y - anchor.unit * 1.5, anchor.unit * 0.5 * S.charge, 0, 6.28); ctx.stroke();
+  }
+  for (const f of S.fx){
+    const a = 1 - f.t / f.life;
+    if (f.kind === 'dot'){ ctx.fillStyle = f.col; ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(f.x, f.y, 6, 0, 6.28); ctx.fill(); ctx.globalAlpha = 1; }
+    else if (f.kind === 'ring'){ ctx.strokeStyle = `rgba(143,240,255,${a})`; ctx.lineWidth = 16 * a + 2; ctx.beginPath(); ctx.arc(f.x, f.y, (f.t / f.life) * Math.hypot(W, H), 0, 6.28); ctx.stroke(); }
+    else { ctx.font = '700 24px sans-serif'; ctx.textAlign = 'center'; ctx.globalAlpha = a; ctx.lineWidth = 4; ctx.strokeStyle = '#23306b'; ctx.strokeText(f.str, f.x, f.y - f.t * 40); ctx.fillStyle = f.col; ctx.fillText(f.str, f.x, f.y - f.t * 40); ctx.globalAlpha = 1; }
+  }
+  if (S.hurt > 0){ ctx.fillStyle = `rgba(255,150,150,${S.hurt})`; ctx.fillRect(0, 0, W, H); }
+  if (!S.mode) return;
+
+  // 画面上の表示
+  ctx.textBaseline = 'middle'; ctx.font = '700 22px sans-serif';
+  ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.fillText('❤️'.repeat(Math.max(0, S.hearts)), 14, 28);
+  ctx.textAlign = 'right'; ctx.fillText('スコア ' + S.score, W - 14, 28);
+  const bw = Math.min(260, W * 0.5), bx = (W - bw) / 2;
+  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(bx, 50, bw, 12);
+  ctx.fillStyle = S.charge >= 1 ? '#ffe35a' : '#8ff0ff'; ctx.fillRect(bx, 50, bw * S.charge, 12);
+  ctx.textAlign = 'center'; ctx.font = '700 18px sans-serif'; ctx.fillStyle = '#fff';
+  let hint = 'ふる→きる　りょう手を上げて声→まほう　うでクロス→ガード';
+  if (S.mode === 'cam' && !S.body) hint = 'からだが うつっていません。すこし はなれてください';
+  else if (S.charge >= 1) hint = S.mode === 'cam' && S.noMic ? 'そのまま キープ！' : 'いまだ！ 声を 出して！';
+  else if (S.magicCD > 0) hint = 'まほうは じゅんび中…';
+  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(20,28,70,.8)'; ctx.strokeText(hint, W / 2, H - 22, W - 20); ctx.fillText(hint, W / 2, H - 22, W - 20);
+  if (S.mode === 'cam' && analyser && S.charge > 0){
+    const th = Math.max(SHOUT_MIN, S.noise * 4);
+    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(bx, 66, bw, 6);
+    ctx.fillStyle = '#b6ffb0'; ctx.fillRect(bx, 66, bw * Math.min(1, S.vol / (th * 1.5)), 6);
+    ctx.fillStyle = '#fff'; ctx.fillRect(bx + bw / 1.5, 64, 2, 10);
+  }
+}
+
+function frame(ts){
+  const now = ts / 1000, dt = Math.max(0, Math.min(0.05, now - S.now || 0));
+  S.now = now;
+  if (W !== innerWidth || H !== innerHeight) resize();
+  if (S.mode === 'cam' && pose && video.readyState >= 2 && video.currentTime !== lastVT){
+    const pdt = lastPoseT ? Math.min(0.2, now - lastPoseT) : 0.033;
+    lastVT = video.currentTime; lastPoseT = now;
+    const res = pose.detectForVideo(video, ts);
+    if (res.landmarks && res.landmarks[0]) onPose(res.landmarks[0], pdt); else clearPose();
+  }
+  update(dt); draw();
+}
+Object.assign(window.__game, { tick: frame, onPose });   // テスト用：手動で1コマ進める／関節データを直接わたす
+const loop = ts => { frame(ts); requestAnimationFrame(loop); };
+requestAnimationFrame(loop);
+
+// ---------- はじめる ----------
+function ensureAudio(){ if (!ac){ try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (ac && ac.state === 'suspended') ac.resume(); }
+async function startCam(){
+  ensureAudio();
+  const msg = $('msg');
+  if (pose){ S.mode = 'cam'; begin(); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ msg.textContent = 'この ひらきかたでは カメラを つかえません。https か localhost で ひらいてください。'; return; }
+  msg.textContent = 'カメラを じゅんび中…';
+  const vopt = { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } };
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: vopt, audio: { echoCancellation: true, noiseSuppression: true } }); }
+  catch (e){
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: vopt }); S.noMic = true; }
+    catch (e2){ msg.textContent = 'カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'; return; }
+  }
+  video.srcObject = new MediaStream(stream.getVideoTracks());
+  await video.play();
+  const at = stream.getAudioTracks();
+  if (at.length && ac){
+    analyser = ac.createAnalyser(); analyser.fftSize = 1024; volBuf = new Float32Array(analyser.fftSize);
+    ac.createMediaStreamSource(new MediaStream(at)).connect(analyser);
+  } else S.noMic = true;
+  msg.textContent = 'うごきを 見る じゅんび中…（はじめは すこし かかります）';
+  try {
+    const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
+    const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
+    const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
+    try { pose = await make('GPU'); } catch (e){ pose = await make('CPU'); }
+  } catch (e){ msg.textContent = 'うごきを 見る しくみを よみこめませんでした。ネットに つながっているか かくにんしてください。'; return; }
+  msg.textContent = '';
+  S.mode = 'cam'; begin();
+}
+$('bCam').onclick = startCam;
+$('bNoCam').onclick = () => { ensureAudio(); S.mode = 'nocam'; clearPose(); begin(); };
+$('bRetry').onclick = begin;
+$('bBack').onclick = () => { $('over').classList.add('hide'); $('title').classList.remove('hide'); };
+
+// ---------- カメラなしの操作 ----------
+let ptT = 0;
+cv.addEventListener('pointerdown', e => { if (S.mode !== 'nocam') return; hands[0].vis = false; feedHand(0, e.clientX, e.clientY, 0.016, true); ptT = e.timeStamp; });
+cv.addEventListener('pointermove', e => { if (S.mode !== 'nocam' || !hands[0].vis) return; feedHand(0, e.clientX, e.clientY, Math.max(0.004, (e.timeStamp - ptT) / 1000), true); ptT = e.timeStamp; });
+const ptEnd = () => { if (S.mode === 'nocam') feedHand(0, 0, 0, 0, false); };
+cv.addEventListener('pointerup', ptEnd); cv.addEventListener('pointercancel', ptEnd);
+function holdBtn(id, key){
+  const b = $(id), set = v => { S[key] = v; b.classList.toggle('on', v); };
+  b.addEventListener('pointerdown', e => { e.preventDefault(); set(true); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(n => b.addEventListener(n, () => set(false)));
+}
+holdBtn('pMagic', 'padMagic'); holdBtn('pGuard', 'padGuard');
+$('pShout').addEventListener('pointerdown', e => { e.preventDefault(); S.shoutUntil = S.now + 0.25; });
+addEventListener('keydown', e => { if (S.mode !== 'nocam') return; if (e.code === 'KeyM') S.padMagic = true; if (e.code === 'KeyG') S.padGuard = true; if (e.code === 'Space') S.shoutUntil = S.now + 0.25; });
+addEventListener('keyup', e => { if (e.code === 'KeyM') S.padMagic = false; if (e.code === 'KeyG') S.padGuard = false; });
+</script>
+</body>
+</html>
