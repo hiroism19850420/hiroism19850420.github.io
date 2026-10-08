@@ -3,6 +3,8 @@
 window.Voice = (function () {
   'use strict';
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  // Android の Chrome は、マイクを getUserMedia でつかんでいる間は音声認識に音が届かない。連続認識も不安定
+  const ANDROID = /Android/i.test(navigator.userAgent);
   const st = {
     supported: !!SR, recOn: false, wantRec: false, micOn: false, mode: 'none', pref: 'auto',
     raw: 0, level: 0, db: -100, floor: 0.1, lastErr: '', results: 0, lastText: '', lastResultAt: 0, recStartAt: 0,
@@ -18,7 +20,7 @@ window.Voice = (function () {
   // ---------- 音声認識 ----------
   function buildRec() {
     rec = new SR();
-    rec.lang = 'ja-JP'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 3;
+    rec.lang = 'ja-JP'; rec.continuous = !ANDROID; rec.interimResults = true; rec.maxAlternatives = 3;
     rec.onstart = () => { st.recOn = true; st.recStartAt = performance.now(); cons = { idx: -1, len: 0 }; cur = { idx: -1, len: 0 }; cb.change(); };
     rec.onresult = (e) => {
       st.results++; st.lastResultAt = performance.now(); uttSinceResult = 0;
@@ -112,8 +114,9 @@ window.Voice = (function () {
     actx = audioCtx; st.pref = pref || st.pref;
     stopRec(); stopMic();
     let mic = false;
-    if (st.pref === 'auto' || st.pref === 'both') mic = await startMic();
-    if (SR) { startRec(); st.mode = mic ? 'both' : (st.pref === 'swap' ? 'swap' : 'rec'); }
+    const swap = st.pref === 'swap' || (st.pref === 'auto' && ANDROID && SR);
+    if (st.pref === 'both' || (st.pref === 'auto' && !swap)) mic = await startMic();
+    if (SR) { startRec(); st.mode = mic ? 'both' : (swap ? 'swap' : 'rec'); }
     else st.mode = 'none';
     note('かいし: mode=' + st.mode + (SR ? '' : '(おんせいにんしき ひたいおう)'));
     return st.mode;
