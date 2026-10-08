@@ -493,7 +493,7 @@
       setChip(el, 'hit');
       play('ok'); setOrb('good', `${q.ans.k}！`);
       await sleep(520);
-      await say(PRAISE[rnd(PRAISE.length)], { kind: 'praise', label: 'せいかい！' });
+      await say(PRAISE[MOCK ? 0 : rnd(PRAISE.length)], { kind: 'praise', label: 'せいかい！' });
       return 'ok';
     }
   }
@@ -506,7 +506,7 @@
     buildBoard(st); renderHud(); setHeard('');
     play('page');
     await sleep(350);
-    if (st.chars.length !== prevN && st.chars.length > 1) await say(`ここからは、${COUNT_SAY[st.chars.length]}の お話です。`, { label: `だい ${G.round + 1} わ` });
+    if (st.chars.length !== prevN && st.chars.length > 1 && !window.__noIntro) await say(`ここからは、${COUNT_SAY[st.chars.length]}の お話です。`, { label: `だい ${G.round + 1} わ` });
     await say(`第${G.round + 1}話。`, { label: `だい ${G.round + 1} わ` });
     await sleep(250);
     let tick = 0;
