@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>旦那の仕事は妻を笑顔にすること</title>
+<link rel="stylesheet" href="style.css">
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<div id="app">
+  <header>
+    <div id="chapter"></div>
+    <div id="gauge">
+      <span class="ico">😠</span>
+      <div id="bar"><i id="fill"></i></div>
+      <span class="ico">😊</span>
+      <b id="num">40</b>
+    </div>
+  </header>
+
+  <div id="stage">
+    <canvas id="face"></canvas>
+    <div id="pops"></div>
+    <div id="verdict" class="hidden"><b></b><span></span><em></em></div>
+    <div id="card" class="hidden"><b></b><span></span></div>
+  </div>
+
+  <div id="cap"></div>
+  <div id="wife" class="bubble"><small>妻</small><p></p></div>
+  <div id="you" class="bubble">
+    <small>あなた <span id="mic"></span></small>
+    <p id="youText"></p>
+    <div id="timer"><i></i></div>
+    <div id="vol" class="hidden"><i></i><u class="q"></u><u class="l"></u><span>声の大きさ</span></div>
+  </div>
+  <form id="typeForm" class="hidden">
+    <input id="typeIn" type="text" autocomplete="off" placeholder="声が使えないときは、文字で返事">
+    <button>言う</button>
+  </form>
+</div>
+
+<div id="title" class="overlay">
+  <h1>旦那の仕事は<br>妻を<span>笑顔</span>に<br>すること</h1>
+  <p class="lead">声だけで妻を笑顔にする、<br>命がけの一日。</p>
+  <ul class="how">
+    <li>妻のひとことに、<b>声で</b>返事をする</li>
+    <li>言葉えらびと、<b>返事のはやさ・声の大きさ</b>で笑顔が変わる</li>
+    <li>笑顔ゲージが 0 になると……</li>
+  </ul>
+  <button id="startBtn" class="big">タップして マイクをオン</button>
+  <div id="titleVoice" class="hidden">
+    <p class="sayit">🎤「<b>ただいま</b>」と言ってスタート</p>
+    <p id="titleHeard" class="heard"></p>
+    <button id="titleSkip" class="link">声が届かないときは ここをタップ</button>
+  </div>
+  <button id="ttsBtn" class="link"></button>
+  <p id="titleNote" class="note"></p>
+</div>
+
+<div id="result" class="overlay hidden">
+  <p class="rlabel">今日のあなたは</p>
+  <h2 id="rank"></h2>
+  <p id="rsmile"></p>
+  <p id="rstats"></p>
+  <p id="rsay"></p>
+  <div id="mailBox">
+    <h3 id="mailHead">妻に送るメールが できました</h3>
+    <input id="mailSub" type="text">
+    <textarea id="mailBody" rows="10"></textarea>
+    <div class="mailBtns">
+      <a id="mailSend" class="btn">メールで送る</a>
+      <a id="lineSend" class="btn" target="_blank" rel="noopener">LINEで送る</a>
+      <button id="mailCopy" class="btn">コピー</button>
+    </div>
+  </div>
+  <p class="sayit">🎤「<b>もう一回</b>」と言うと もう一度</p>
+  <p id="resultHeard" class="heard"></p>
+  <button id="retryBtn" class="link">タップで もう一度</button>
+</div>
+
+<script src="js/voice.js"></script>
+<script src="js/data.js"></script>
+<script src="js/face.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  font-family: "Hiragino Maru Gothic ProN", "Kosugi Maru", "BIZ UDPGothic", "Yu Gothic", "Meiryo", sans-serif;
+  background: var(--bg, #fbe6c8); color: #3a2218; transition: background .4s;
+  -webkit-user-select: none; user-select: none;
+}
+.hidden { display: none !important; }
+
+#app {
+  height: 100dvh; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px;
+  padding: max(10px, env(safe-area-inset-top)) 14px max(12px, env(safe-area-inset-bottom));
+}
+header { display: flex; flex-direction: column; gap: 6px; }
+#chapter { font-weight: 900; font-size: 15px; min-height: 20px; text-align: center; letter-spacing: .05em; color: var(--ink, #3a2218); }
+#gauge { display: flex; align-items: center; gap: 6px; }
+#gauge .ico { font-size: 20px; }
+#bar { flex: 1; height: 18px; border-radius: 9px; background: #fff; border: 3px solid #3a2218; overflow: hidden; }
+#fill { display: block; height: 100%; width: 40%; background: linear-gradient(90deg, #7b5cff, #ff8a5c 45%, #ff5c8f); transition: width .35s; }
+#num { width: 34px; text-align: right; font-size: 18px; color: var(--ink, #3a2218); }
+
+#stage { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+#face { height: 100%; max-height: 360px; max-width: 100%; aspect-ratio: 1; border-radius: 30px; border: 4px solid #3a2218; background: #fff3da; }
+#pops { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.pop {
+  position: absolute; padding: 4px 10px; border-radius: 14px; background: #fff; border: 3px solid #ff5c8f; color: #d81b60;
+  font-weight: 900; font-size: 15px; white-space: nowrap; animation: pop 1.4s ease-out forwards;
+}
+.pop.bad { border-color: #5b2a86; color: #fff; background: #5b2a86; }
+.pop.dim { border-color: #b9a89a; color: #8a7668; }
+@keyframes pop { 0% { transform: translateY(10px) scale(.6); opacity: 0; } 15% { transform: translateY(0) scale(1.1); opacity: 1; } 70% { opacity: 1; } 100% { transform: translateY(-50px) scale(1); opacity: 0; } }
+
+#verdict {
+  position: absolute; left: 50%; top: 8px; transform: translateX(-50%); text-align: center; white-space: nowrap;
+  padding: 6px 16px; border-radius: 16px; background: #fff; border: 4px solid #3a2218; animation: drop .25s ease-out;
+}
+#verdict b { font-size: 26px; font-weight: 900; }
+#verdict span { font-size: 20px; font-weight: 900; margin-left: 8px; }
+#verdict em { display: block; font-style: normal; font-size: 13px; font-weight: 700; }
+#verdict.plus { border-color: #e91e63; color: #d81b60; }
+#verdict.minus { border-color: #4a148c; color: #4a148c; background: #f1e4ff; }
+@keyframes drop { from { transform: translateX(-50%) translateY(-20px) scale(.7); opacity: 0; } }
+
+#card {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(58, 34, 24, .88); color: #fff; border-radius: 30px; text-align: center; padding: 16px;
+}
+#card b { font-size: 28px; font-weight: 900; color: #ffd54f; }
+#card span { font-size: 15px; line-height: 1.7; white-space: pre-line; }
+
+#cap { min-height: 20px; text-align: center; font-size: 14px; font-weight: 700; color: var(--ink, #3a2218); }
+.bubble { position: relative; background: #fff; border: 3px solid #3a2218; border-radius: 18px; padding: 8px 14px 10px; }
+.bubble small { display: block; font-size: 11px; font-weight: 900; color: #a0522d; }
+.bubble p { margin: 2px 0 0; font-size: 19px; font-weight: 700; line-height: 1.45; min-height: 55px; }
+#wife { border-color: #e91e63; }
+#wife small { color: #e91e63; }
+#you { background: #f3f8ff; border-color: #1e63c4; }
+#you small { color: #1e63c4; }
+#you p { min-height: 28px; color: #17407e; }
+#mic { margin-left: 6px; color: #e53935; }
+#timer { height: 8px; border-radius: 4px; background: #d6e2f3; overflow: hidden; margin-top: 6px; }
+#timer i { display: block; height: 100%; width: 0; background: #1e63c4; }
+#timer.hot i { background: #e53935; }
+#vol { position: relative; height: 12px; border-radius: 6px; background: #d6e2f3; margin-top: 6px; }
+#vol i { display: block; height: 100%; width: 0; border-radius: 6px; background: linear-gradient(90deg, #8fb4e8, #ff9f43, #e53935); }
+#vol u { position: absolute; top: -2px; bottom: -2px; width: 2px; background: #17407e; }
+#vol span { position: absolute; right: 4px; top: -1px; font-size: 9px; font-weight: 900; color: #17407e; }
+
+#typeForm { display: flex; gap: 6px; }
+#typeForm input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 8px 10px; border: 3px solid #3a2218; border-radius: 12px; }
+#typeForm button { font: inherit; font-weight: 900; padding: 0 14px; border: 3px solid #3a2218; border-radius: 12px; background: #ffd54f; }
+
+.overlay {
+  position: fixed; inset: 0; z-index: 10; overflow-y: auto; background: #fff3da; text-align: center;
+  padding: max(20px, env(safe-area-inset-top)) 18px 30px; display: flex; flex-direction: column; align-items: center; gap: 12px;
+}
+/* タイトル: 赤文字＋白ふち＋赤ふち(光らせない・ゆらさない) */
+h1 {
+  margin: 14px 0 0; font-size: clamp(34px, 10.5vw, 52px); line-height: 1.25; font-weight: 900; color: #e60012; letter-spacing: .02em;
+  text-shadow:
+    3px 0 #fff, -3px 0 #fff, 0 3px #fff, 0 -3px #fff, 2px 2px #fff, -2px 2px #fff, 2px -2px #fff, -2px -2px #fff,
+    6px 0 #e60012, -6px 0 #e60012, 0 6px #e60012, 0 -6px #e60012, 4px 4px #e60012, -4px 4px #e60012, 4px -4px #e60012, -4px -4px #e60012,
+    6px 3px #e60012, -6px 3px #e60012, 6px -3px #e60012, -6px -3px #e60012, 3px 6px #e60012, -3px 6px #e60012, 3px -6px #e60012, -3px -6px #e60012;
+}
+.lead { margin: 6px 0 0; font-size: 17px; font-weight: 900; line-height: 1.6; }
+.how { margin: 0; padding: 12px 16px 12px 32px; text-align: left; font-size: 14px; line-height: 1.8; background: #fff; border: 3px solid #3a2218; border-radius: 16px; max-width: 420px; }
+.how b { color: #e60012; }
+.big { font: inherit; font-size: 20px; font-weight: 900; color: #fff; background: #e60012; border: 4px solid #3a2218; border-radius: 20px; padding: 14px 26px; box-shadow: 0 5px 0 #3a2218; }
+.big:active { transform: translateY(3px); box-shadow: 0 2px 0 #3a2218; }
+.sayit { margin: 6px 0 0; font-size: 19px; font-weight: 900; }
+.sayit b { color: #e60012; font-size: 24px; }
+.heard { margin: 0; min-height: 22px; font-size: 15px; color: #1e63c4; font-weight: 700; }
+.link { font: inherit; font-size: 13px; font-weight: 700; color: #7a5a48; background: none; border: none; text-decoration: underline; padding: 6px; }
+.note { margin: 0; font-size: 12px; color: #a0522d; max-width: 420px; line-height: 1.6; }
+
+.rlabel { margin: 10px 0 0; font-weight: 900; }
+#rank { margin: 0; font-size: clamp(34px, 11vw, 50px); font-weight: 900; color: #e60012; }
+#rsmile { margin: 0; font-size: 20px; font-weight: 900; }
+#rstats { margin: 0; font-size: 14px; font-weight: 700; color: #7a5a48; }
+#rsay { margin: 0; padding: 10px 16px; font-size: 17px; font-weight: 700; background: #fff; border: 3px solid #e91e63; border-radius: 18px; max-width: 420px; }
+#mailBox { width: 100%; max-width: 440px; background: #fff; border: 3px solid #3a2218; border-radius: 18px; padding: 12px; text-align: left; }
+#mailBox h3 { margin: 0 0 8px; font-size: 16px; text-align: center; }
+#mailBox input, #mailBox textarea {
+  width: 100%; font: inherit; font-size: 15px; line-height: 1.7; border: 2px solid #c9b6a5; border-radius: 10px; padding: 8px 10px; background: #fffdf7;
+  -webkit-user-select: text; user-select: text; color: #3a2218;
+}
+#mailBox input { font-weight: 900; margin-bottom: 6px; }
+#mailBox textarea { resize: vertical; }
+.mailBtns { display: flex; gap: 6px; margin-top: 8px; }
+.btn { flex: 1; font: inherit; font-size: 14px; font-weight: 900; text-align: center; text-decoration: none; color: #fff; background: #1e63c4; border: 3px solid #3a2218; border-radius: 12px; padding: 9px 2px; cursor: pointer; }
+#lineSend { background: #06c755; }
+#mailCopy { background: #ff9f43; }
