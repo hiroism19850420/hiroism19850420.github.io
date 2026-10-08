@@ -813,8 +813,14 @@
     for (;;) {
       showOv(`<h2>なまえを<br>さけんでください</h2><div class="meter"><i id="nm-fill"></i></div><p class="big" id="nm-heard">…</p>
         ${typing ? '<input id="nm-input" maxlength="6" placeholder="なまえ" style="font:inherit;width:70%;text-align:center;background:#000;color:#fff;border:.14em solid #fff;border-radius:.4em;padding:.4em"><button class="btn" id="nm-ok">けってい</button>' : '<p class="sub">マイクに むかって おおきな こえで どうぞ</p>'}
-        <button class="btn" id="nm-skip">「ゆうしゃ」で はじめる</button>`);
-      const meter = setInterval(() => { const f = $('#nm-fill'); if (f) f.style.width = (Voice.st.level * 100).toFixed(0) + '%'; }, 50);
+        <button class="btn" id="nm-skip">「ゆうしゃ」で はじめる</button><p class="sub" id="nm-diag" style="opacity:.6;font-size:.6em"></p>`);
+      // しばらく聞き取れないときは、原因がわかるように 認識のようすを 小さく出す
+      const t0 = performance.now();
+      const meter = setInterval(() => {
+        const f = $('#nm-fill'); if (f) f.style.width = (Voice.st.level * 100).toFixed(0) + '%';
+        const d = $('#nm-diag'), s = Voice.st;
+        if (d && !typing && performance.now() - t0 > 6000) d.textContent = `v8 ほうしき:${s.mode} にんしき:${s.recOn ? 'ON' : 'OFF'} けっか:${s.results} エラー:${s.lastErr || 'なし'}`;
+      }, 50);
       // 確定結果が来ない端末(iPhone など)では、途中結果が 1.6 秒変わらなければ採用する
       const heard = new Promise(res => { let tm = null; nameWait = (h) => { const s = cleanName(h.text); if (!s) return; $('#nm-heard').textContent = s; clearTimeout(tm); if (h.final) res(s); else tm = setTimeout(() => res(s), 1600); }; });
       const picks = [heard, tapOn('#nm-skip').then(() => 'ゆうしゃ')];

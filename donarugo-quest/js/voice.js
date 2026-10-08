@@ -18,37 +18,35 @@ window.Voice = (function () {
   const note = (s) => { st.log.push(new Date().toTimeString().slice(0, 8) + ' ' + s); if (st.log.length > 30) st.log.shift(); cb.change(); };
 
   // ---------- 音声認識 ----------
-  function buildRec() {
-    rec = new SR();
-    rec.lang = 'ja-JP'; rec.continuous = !ANDROID; rec.interimResults = true; rec.maxAlternatives = 3;
-    rec.onstart = () => { st.recOn = true; st.recStartAt = performance.now(); cons = { idx: -1, len: 0 }; cur = { idx: -1, len: 0 }; cb.change(); };
-    rec.onresult = (e) => {
+  // 1回ごとに新しく作りなおす(使い回すと Android で再開に失敗して、そのまま止まることがある)
+  function go() {
+    if (!st.wantRec || rec) return;
+    const r = rec = new SR();
+    r.lang = 'ja-JP'; r.continuous = !ANDROID; r.interimResults = true; r.maxAlternatives = 3;
+    r.onstart = () => { st.recOn = true; st.recStartAt = performance.now(); cons = { idx: -1, len: 0 }; cur = { idx: -1, len: 0 }; cb.change(); };
+    r.onresult = (e) => {
       st.results++; st.lastResultAt = performance.now(); uttSinceResult = 0;
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        const full = r[0].transcript || '';
+        const x = e.results[i];
+        const full = x[0].transcript || '';
         let fresh = full, alts = [];
         if (i < cons.idx) continue;
         if (i === cons.idx) fresh = full.slice(cons.len);
-        else for (let k = 1; k < r.length; k++) alts.push(r[k].transcript || '');
+        else for (let k = 1; k < x.length; k++) alts.push(x[k].transcript || '');
         cur = { idx: i, len: full.length };
         st.lastText = full;
-        if (fresh.trim()) cb.heard({ text: fresh, alts, final: r.isFinal });
+        if (fresh.trim()) cb.heard({ text: fresh, alts, final: x.isFinal });
       }
     };
-    rec.onerror = (e) => {
+    r.onerror = (e) => {
       st.lastErr = e.error;
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { st.denied = true; st.wantRec = false; }
       if (e.error !== 'no-speech' && e.error !== 'aborted') note('にんしきエラー: ' + e.error);
     };
-    rec.onend = () => { st.recOn = false; cb.change(); if (st.wantRec) setTimeout(() => { if (st.wantRec && !st.recOn) { try { rec.start(); } catch (e) { } } }, 120); };
+    r.onend = () => { if (rec === r) rec = null; st.recOn = false; cb.change(); if (st.wantRec) setTimeout(go, 150); };
+    try { r.start(); } catch (e) { rec = null; st.lastErr = 'start: ' + (e.name || e); setTimeout(go, 400); }
   }
-  function startRec() {
-    if (!SR) return;
-    st.wantRec = true;
-    if (!rec) buildRec();
-    if (!st.recOn) { try { rec.start(); } catch (e) { } }
-  }
+  function startRec() { if (!SR) return; st.wantRec = true; go(); }
   function stopRec() { st.wantRec = false; if (rec) { try { rec.abort(); } catch (e) { } } }
   function consume() { cons = { idx: cur.idx, len: cur.len }; simConsumed = true; }
 
