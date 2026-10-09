@@ -168,6 +168,19 @@ function drawAnimal(t,r,expr,it){
   }
 }
 
+// ---------- 重さの数字（動物の右下につく、まるい名札） ----------
+const WCOL={mouse:'#8a8aa0',rabbit:'#ff8fb0',pig:'#ef6f92',elephant:'#5f86b0',box:'#b67d3d'};
+function drawWeight(t,r,w){
+  const br=Math.max(12,r*0.46),b=1+Math.sin(T*4+r)*0.05;
+  ctx.save();ctx.translate(r*0.8,r*0.72);ctx.rotate(0.12);ctx.scale(b,b);
+  ctx.fillStyle='rgba(0,0,0,0.18)';circle(1.5,2.5,br);
+  ctx.fillStyle='#fffdf5';circle(0,0,br);
+  ctx.strokeStyle=WCOL[t];ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,0,br,0,Math.PI*2);ctx.stroke();
+  ctx.fillStyle=WCOL[t];ctx.font='900 '+(br*1.4)+'px "Arial Rounded MT Bold","Hiragino Maru Gothic ProN","Yu Gothic",sans-serif';
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(w,0,br*0.1);
+  ctx.restore();
+}
+
 // ---------- ゲーム処理 ----------
 function PX(){return CX+f*U;}
 function toWorld(lx,ly){const c=Math.cos(ang),s=Math.sin(ang);return {x:PX()+lx*c-ly*s,y:PIV_Y+lx*s+ly*c};}
@@ -300,7 +313,9 @@ function drawBoard(cand){
     ctx.globalAlpha=1;
   }
   ctx.fillStyle='#555';circle(0,0,5);
-  for(const it of items){ctx.save();ctx.translate(it.lx,it.ly);drawAnimal(it.t,AN[it.t].r,exprOf(it),it);ctx.restore();}
+  for(const it of items){ctx.save();ctx.translate(it.lx,it.ly);drawAnimal(it.t,AN[it.t].r,exprOf(it),it);
+    if(it.t!=='box'||cleared)drawWeight(it.t,AN[it.t].r,it.w);       // なぞの箱は 釣り合うまで ひみつ
+    ctx.restore();}
   ctx.restore();
 }
 
@@ -309,7 +324,7 @@ function drawPalette(){
   ctx.strokeStyle='#b88a52';ctx.lineWidth=4;ctx.stroke();
   for(const s of palSlots()){
     const n=pal[s.t];
-    ctx.save();ctx.translate(s.x,s.y);ctx.globalAlpha=n>0?1:0.25;drawAnimal(s.t,AN[s.t].r,'normal',null);ctx.restore();
+    ctx.save();ctx.translate(s.x,s.y);ctx.globalAlpha=n>0?1:0.25;drawAnimal(s.t,AN[s.t].r,'normal',null);drawWeight(s.t,AN[s.t].r,AN[s.t].w);ctx.restore();
     ctx.globalAlpha=1;ctx.fillStyle='#6b4226';
     for(let k=0;k<n;k++)circle(s.x+(k-(n-1)/2)*13,570,4.5);          // 残りの数を点で表示
   }
@@ -388,7 +403,7 @@ function draw(){
   const cand=(drag&&!drag.fulcrum)?nearestSlot(drag.x,drag.y):null;
   drawBoard(cand);
   if(state!=='title'){drawPalette();drawTopUI();drawHint();}
-  if(drag&&!drag.fulcrum){ctx.save();ctx.translate(drag.x,drag.y-12);ctx.scale(1.1,1.1);drawAnimal(drag.t,AN[drag.t].r,'normal');ctx.restore();}
+  if(drag&&!drag.fulcrum){ctx.save();ctx.translate(drag.x,drag.y-12);ctx.scale(1.1,1.1);drawAnimal(drag.t,AN[drag.t].r,'normal');drawWeight(drag.t,AN[drag.t].r,drag.w);ctx.restore();}
   for(const c of confetti){ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.rot);ctx.fillStyle=c.c;ctx.fillRect(-5,-3,10,6);ctx.restore();}
   drawOverlay();
 }
