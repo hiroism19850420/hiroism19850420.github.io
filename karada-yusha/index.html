@@ -30,7 +30,9 @@
 <canvas id="cv"></canvas>
 
 <div id="pad">
-  <button id="pGuard">ガード（おしっぱなし）</button>
+  <button id="pL">← よける</button>
+  <button id="pGuard">ガード</button>
+  <button id="pR">よける →</button>
 </div>
 
 <div id="title" class="panel">
@@ -39,7 +41,8 @@
     <div>👊 <b>てきに むかって うでを つきだす</b> … パンチ</div>
     <div>💥 <b>はやく れんぞくで うつ</b> … うった分だけ ぜんぶ 当たる。コンボで 点が ふえる</div>
     <div>👹 <b>ときどき ボスが 出る</b> … なんども なぐって たおす</div>
-    <div>🛡️ <b>むねの前で うでを クロス</b> … ガード</div>
+    <div>🔴 <b>赤い玉が とんできたら 頭を よこに うごかす</b> … よける（ガードでは ふせげない）</div>
+    <div>🛡️ <b>むねの前で うでを クロス</b> … ガード（ぶつかってくる てきを はねかえす）</div>
   </div>
   <button id="bCam">カメラで あそぶ</button>
   <button id="bNoCam" class="sub">カメラなしで ためす（マウス・ゆび）</button>
@@ -71,6 +74,9 @@ const PUNCH_REACH = 0.6;   // こぶしの当たりはんい（肩はば単位�
 const FIST_LEN    = 0.3;   // ひじ→手首の長さに対して、手首の先の どこを こぶしとするか
 const COMBO_TIME  = 1.2;   // コンボが つづく秒数
 const MAX_HEART   = 5;
+const SHOT_FIRST  = 12;    // 最初の玉が とんでくる時間（秒）
+const SHOT_TIME   = 1.3;   // 玉が うたれてから とどくまで（秒）。だんだん短くなる
+const SHOT_HIT    = 0.6;  // 玉の当たりはんい（ねらわれた所から 頭が これだけ はなれれば セーフ）
 const BOSS_FIRST  = 20;    // 最初のボスが出る時間（秒）
 const BOSS_EVERY  = 25;    // ボスを たおしてから 次のボスまで（秒）
 
@@ -90,11 +96,13 @@ const S = {
   mode: null, running: false, now: 0, elapsed: 0, score: 0, hearts: MAX_HEART,
   enemies: [], fx: [], spawnT: 0, bossT: BOSS_FIRST, bossN: 0,
   body: false, poseGuard: false, padGuard: false, hurt: 0,
-  combo: 0, comboT: 0, best: 0
+  combo: 0, comboT: 0, best: 0,
+  shots: [], shotT: SHOT_FIRST, lean: 0
 };
+const head = { x: 0, y: 0, tx: 0, ty: 0 };   // よける判定に使う 頭の位置
 const anchor = { x: 0, y: 0, unit: 100, tx: 0, ty: 0, tunit: 100 };
 const hands = [0, 1].map(() => ({ x: 0, y: 0, p: [0, 0, 0], org: [0, 0, 0], vis: false, armed: true, punchAt: -9 }));
-window.__game = { S, hands, anchor };
+window.__game = { S, hands, anchor, head };
 
 // ---------- 音 ----------
 let ac = null, master = null, noiseBuf = null;
@@ -125,6 +133,8 @@ const sfx = {
   guard: () => { tone(180, 0.18, 'square', 0.08, 120); tone(1400, 0.2, 'triangle', 0.06, -300); noise(0.05, 0.2, 'highpass', 3000); },
   hurt:  () => { tone(220, 0.30, 'sawtooth', 0.07, -120); tone(90, 0.25, 'sine', 0.3, -40); },
   spawn: () => tone(300, 0.08, 'sine', 0.03, 200),
+  shoot: () => { tone(900, 0.3, 'sawtooth', 0.06, -600); tone(1300, 0.08, 'square', 0.04); },
+  dodge: () => { noise(0.18, 0.2, 'bandpass', 500, 3000, 2); tone(660, 0.1, 'sine', 0.07, 400, 0.05); },
   warn:  () => { tone(990, 0.07, 'square', 0.04); tone(990, 0.07, 'square', 0.04, 0, 0.12); },
   boss:  () => { arp([196, 185, 175, 165], 0.16, 0.3, 'sawtooth', 0.09); tone(55, 1.0, 'sine', 0.3); },
   bossHit: () => { tone(80, 0.16, 'sine', 0.4, -30); noise(0.09, 0.3, 'lowpass', 900); },
@@ -148,6 +158,8 @@ function onPose(lm, dt){
   if (!S.body){ clearPose(); return; }
   const unit = Math.max(40, Math.hypot(ls.x - rs.x, ls.y - rs.y));
   anchor.tx = (ls.x + rs.x) / 2; anchor.ty = (ls.y + rs.y) / 2; anchor.tunit = unit;
+  const nose = P(0), seen = nose.v > 0.5;
+  head.tx = seen ? nose.x : anchor.tx; head.ty = seen ? nose.y : anchor.ty - unit * 0.9;
   const lw = P(15), rw = P(16);
   [[lw, P(13), ls, 11, 15], [rw, P(14), rs, 12, 16]].forEach(([w, e, sh, si, wi], i) => {
     if (w.v < WRIST_VIS || e.v < 0.5){ feedHand(i, 0, 0, 0, dt, false); return; }
@@ -240,6 +252,16 @@ function damage(e){
     text(W / 2, H * 0.35, 'ボスを たおした！', '#ffe35a', 40, 1.5);
   } else sfx.pop();
 }
+// てきが 頭を ねらって 玉を うつ。ねらう場所は うった しゅんかんの 頭の位置で 固定。
+function shoot(){
+  const c = S.enemies.filter(e => !e.dead && e.z > 0.25);
+  if (!c.length) return false;
+  const e = c[Math.floor(Math.random() * c.length)];
+  e.flash = 0.2;
+  S.shots.push({ sx: e.x, sy: e.y, tx: head.x, ty: head.y, t: 0, life: Math.max(0.9, SHOT_TIME - S.elapsed * 0.004) });
+  sfx.shoot();
+  return true;
+}
 function dots(x, y, n, col, pow = 1){
   for (let i = 0; i < n; i++){
     const a = Math.random() * 6.28, v = (80 + Math.random() * 160) * pow;
@@ -254,6 +276,9 @@ function update(dt){
   if (S.mode !== 'cam' || !S.body){ anchor.tx = W / 2; anchor.ty = H * 0.5; anchor.tunit = Math.min(W, H) * 0.16; }
   anchor.x += (anchor.tx - anchor.x) * k; anchor.y += (anchor.ty - anchor.y) * k; anchor.unit += (anchor.tunit - anchor.unit) * k;
   if (S.mode === 'nocam') S.poseGuard = S.padGuard;
+  if (S.mode !== 'cam' || !S.body){ head.tx = anchor.x + (S.mode === 'nocam' ? S.lean : 0) * anchor.unit * 1.3; head.ty = anchor.y - anchor.unit * 0.9; }
+  const hk = Math.min(1, dt * 14);
+  head.x += (head.tx - head.x) * hk; head.y += (head.ty - head.y) * hk;
   S.hurt = Math.max(0, S.hurt - dt);
   for (const f of S.fx){ f.t += dt; if (f.kind === 'dot'){ f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 400 * dt; } }
   S.fx = S.fx.filter(f => f.t < f.life);
@@ -282,15 +307,29 @@ function update(dt){
     }
   }
   S.enemies = S.enemies.filter(e => !e.dead);
+  if (!S.running) return;
+  // 玉：体が うつっていない間は うたない
+  S.shotT -= dt;
+  if (S.shotT <= 0 && (S.mode !== 'cam' || S.body)) S.shotT = shoot() ? Math.max(2.2, 5 - S.elapsed * 0.03) * (boss ? 0.6 : 1) : 0.5;
+  for (const s of S.shots){
+    s.t += dt;
+    if (s.t < s.life) continue;
+    s.done = true;
+    if (Math.hypot(head.x - s.tx, head.y - s.ty) < anchor.unit * SHOT_HIT){
+      S.hearts--; S.hurt = 0.4; S.combo = 0; sfx.hurt(); dots(s.tx, s.ty, 12, '#ff7a5a');
+      if (S.hearts <= 0){ gameOver(); break; }
+    } else { S.score += 20; text(s.tx, s.ty, 'よけた！ +20', '#b6ffb0'); sfx.dodge(); }
+  }
+  S.shots = S.shots.filter(s => !s.done);
 }
 function begin(){
-  Object.assign(S, { running: true, elapsed: 0, score: 0, hearts: MAX_HEART, enemies: [], fx: [], spawnT: 1.0, bossT: BOSS_FIRST, bossN: 0, hurt: 0, combo: 0, comboT: 0, best: 0 });
+  Object.assign(S, { running: true, elapsed: 0, score: 0, hearts: MAX_HEART, enemies: [], fx: [], spawnT: 1.0, bossT: BOSS_FIRST, bossN: 0, hurt: 0, combo: 0, comboT: 0, best: 0, shots: [], shotT: SHOT_FIRST, lean: 0 });
   $('title').classList.add('hide'); $('over').classList.add('hide');
   $('pad').classList.toggle('show', S.mode === 'nocam');
   sfx.start();
 }
 function gameOver(){
-  S.running = false; S.enemies = []; sfx.over();
+  S.running = false; S.enemies = []; S.shots = []; sfx.over();
   let best = S.score;
   try { best = Math.max(S.score, +localStorage.getItem('karadaYushaBest') || 0); localStorage.setItem('karadaYushaBest', best); } catch (e) {}
   $('score2').textContent = 'スコア ' + S.score;
@@ -357,6 +396,23 @@ function draw(){
   [...S.enemies].sort((a, b) => b.z - a.z).forEach(drawEnemy);
 
   const u = anchor.unit;
+  // カメラなしのときは 頭の位置が わかるように 顔を かく。カメラのときは 玉が 来ている間だけ 頭に 輪を 出す
+  if (S.mode === 'nocam'){
+    ctx.fillStyle = '#ffe0b0'; ctx.beginPath(); ctx.arc(head.x, head.y, u * 0.32, 0, 6.28); ctx.fill();
+    ctx.fillStyle = '#3a2f4a'; ctx.beginPath(); ctx.arc(head.x - u * 0.1, head.y - u * 0.03, u * 0.035, 0, 6.28); ctx.arc(head.x + u * 0.1, head.y - u * 0.03, u * 0.035, 0, 6.28); ctx.fill();
+  } else if (S.mode === 'cam' && S.shots.length){
+    ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(head.x, head.y, u * 0.32, 0, 6.28); ctx.stroke();
+  }
+  // とんでくる玉と、当たる場所
+  for (const s of S.shots){
+    const k = s.t / s.life, R = u * SHOT_HIT, e = k * k;
+    ctx.fillStyle = `rgba(255,60,60,${0.12 + 0.22 * k})`; ctx.beginPath(); ctx.arc(s.tx, s.ty, R, 0, 6.28); ctx.fill();
+    ctx.strokeStyle = '#ff5a5a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(s.tx, s.ty, R * (2.4 - 1.4 * k), 0, 6.28); ctx.stroke();
+    const bx = s.sx + (s.tx - s.sx) * e, by = s.sy + (s.ty - s.sy) * e, br = u * (0.12 + 0.38 * e);
+    const g = ctx.createRadialGradient(bx - br * 0.3, by - br * 0.3, br * 0.1, bx, by, br);
+    g.addColorStop(0, '#fff2b0'); g.addColorStop(0.4, '#ff8a3c'); g.addColorStop(1, '#d92a2a');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.28); ctx.fill();
+  }
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
   // こぶし
   if (S.mode === 'cam') for (const h of hands){
@@ -399,10 +455,11 @@ function draw(){
   }
   const cam = S.mode === 'cam';
   const tips = cam
-    ? ['てきに むかって うでを つきだす → パンチ', 'はやく れんぞくで うつと コンボ！', 'むねの前で うでを クロス → ガード']
-    : ['タップ → パンチ', 'はやく れんだすると コンボ！', 'ガードを おしっぱなし → ガード'];
+    ? ['てきに むかって うでを つきだす → パンチ', 'はやく れんぞくで うつと コンボ！', '赤い玉は 頭を よこに うごかして よける', 'むねの前で うでを クロス → ガード']
+    : ['タップ → パンチ', 'はやく れんだすると コンボ！', '赤い玉は ← → で よける', 'ガードを おしっぱなし → ガード'];
   let hint = tips[Math.floor(S.now / 3.5) % tips.length];
   if (cam && !S.body) hint = 'からだが うつっていません。すこし はなれてください';
+  else if (S.shots.length) hint = cam ? '赤い玉だ！ 頭を よこに よけろ！' : '赤い玉だ！ ← → で よけろ！';
   else if (S.enemies.some(e => TYPES[e.type].boss)) hint = 'ボスだ！ れんぞくパンチ！';
   ctx.font = '700 18px sans-serif'; ctx.fillStyle = '#fff'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(20,28,70,.8)';
   ctx.strokeText(hint, W / 2, H - 22, W - 20); ctx.fillText(hint, W / 2, H - 22, W - 20);
@@ -420,7 +477,7 @@ function frame(ts){
   }
   update(dt); draw();
 }
-Object.assign(window.__game, { tick: frame, onPose, punch, spawn, sfx });   // テスト用：手動で1コマ進める／関節データを直接わたす
+Object.assign(window.__game, { tick: frame, onPose, punch, spawn, shoot, sfx });   // テスト用：手動で1コマ進める／関節データを直接わたす
 const loop = ts => { frame(ts); requestAnimationFrame(loop); };
 requestAnimationFrame(loop);
 
@@ -464,11 +521,18 @@ $('bBack').onclick = () => { $('over').classList.add('hide'); $('title').classLi
 
 // ---------- カメラなしの操作 ----------
 cv.addEventListener('pointerdown', e => { if (S.mode === 'nocam') punch(e.clientX, e.clientY); });
-const guardBtn = $('pGuard'), setGuard = v => { S.padGuard = v; guardBtn.classList.toggle('on', v); };
-guardBtn.addEventListener('pointerdown', e => { e.preventDefault(); setGuard(true); });
-['pointerup', 'pointerleave', 'pointercancel'].forEach(n => guardBtn.addEventListener(n, () => setGuard(false)));
-addEventListener('keydown', e => { if (S.mode === 'nocam' && e.code === 'KeyG') S.padGuard = true; });
-addEventListener('keyup', e => { if (e.code === 'KeyG') S.padGuard = false; });
+function holdBtn(id, on, off){
+  const b = $(id);
+  b.addEventListener('pointerdown', e => { e.preventDefault(); on(); b.classList.add('on'); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(n => b.addEventListener(n, () => { if (b.classList.contains('on')){ off(); b.classList.remove('on'); } }));
+}
+holdBtn('pGuard', () => { S.padGuard = true; }, () => { S.padGuard = false; });
+holdBtn('pL', () => { S.lean = -1; }, () => { if (S.lean < 0) S.lean = 0; });
+holdBtn('pR', () => { S.lean = 1; }, () => { if (S.lean > 0) S.lean = 0; });
+const KEYS = { KeyG: v => { S.padGuard = v; }, ArrowLeft: v => { S.lean = v ? -1 : S.lean < 0 ? 0 : S.lean; }, ArrowRight: v => { S.lean = v ? 1 : S.lean > 0 ? 0 : S.lean; } };
+KEYS.KeyA = KEYS.ArrowLeft; KEYS.KeyD = KEYS.ArrowRight;
+addEventListener('keydown', e => { if (S.mode === 'nocam' && KEYS[e.code]) KEYS[e.code](true); });
+addEventListener('keyup', e => { if (KEYS[e.code]) KEYS[e.code](false); });
 </script>
 </body>
 </html>
