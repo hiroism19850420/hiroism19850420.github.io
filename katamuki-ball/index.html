@@ -47,15 +47,15 @@ const HOLE_R = 4.2;        // 落とし穴の半径（ボールがぴったり�
 const LANE_HW = 10;        // 道の幅の半分
 const RAIL_R = 0.8;        // ガード（細い棒）の太さの半分
 const RAIL_INSET = 1.5;    // 道のふちからガードの中心までの距離
-const PITCH = 6;           // 台が奥へ下がっている角度（固定）。左右に回しきってもボールが手前へ戻らない強さにしてある
-const ROLL_MAX = 6;        // ハンドルを回しきったときの左右の傾き（PITCH 以下にしておくと手前へ戻らない）
-const PHONE_GAIN = 0.3;    // スマホの傾き → 台の傾き（スマホ20度で回しきり）
-const ROLL_LAG = 0.07;     // 台が傾きに追いつくまでの時間（秒）
+const PITCH = 8;           // 台が奥へ下がっている角度（固定）
+const ROLL_MAX = 8;        // ハンドルを回しきったときの左右の傾き（PITCH 以下にしておくと手前へ戻らない）
+const PHONE_GAIN = 0.5;    // スマホの傾き → 台の傾き（スマホ16度で回しきり）
+const ROLL_LAG = 0.05;     // 台が傾きに追いつくまでの時間（秒）
 const G = 981;             // 重力
 const K_ROLL = 0.6;        // 中が空のボールがすべらず転がるときの係数（中まで詰まった球なら 5/7）
-const ROLL_RES = 0.12;     // 転がり抵抗
-const RAIL_BOUNCE = 0.15;   // ガードに当たったときのはね返り
-const RAIL_RUB = 0.9;      // ガードにこすっている間の減速
+const ROLL_RES = 0.04;     // 転がり抵抗（軽いボールなので小さい）
+const RAIL_BOUNCE = 0.5;    // ガードに当たったときのはね返り（軽いボールはよくはねる）
+const RAIL_RUB = 0.2;      // ガードにこすっている間の減速（軽いのであまり止まらない）
 const BALLS = 4;
 
 // 道の中心線。手前（y=0）から奥へ、右奥→左奥→右奥→左奥のジグザグ
@@ -70,7 +70,7 @@ const RAILS = [
 const HOLE_T = 0.80, HOLE_LAT = 2.5;   // 落とし穴：最後の区間のどこか／中心から左へどれだけ
 const GOAL_HW = 6.5;                   // ゴールの口の幅の半分
 const START_T = 0.06, START_LAT_MAX = LANE_HW - RAIL_INSET - RAIL_R - BALL_R - 0.2;
-const BALL_COLORS = ['#ff4d5e','#ffb020','#35c46a','#b46bff'];
+const BALL_COLORS = ['#f6f5ee','#f6f5ee','#f6f5ee','#f6f5ee'];   // 本物と同じ白
 
 // ---- 台の形を作る ----
 const segs = [];
@@ -347,7 +347,7 @@ function draw(){
     ctx.globalAlpha = alpha;
     if (T.state !== 'end') { ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(bx + 3, by + 4, br, br * .85, 0, 0, 6.3); ctx.fill(); }
     const g2 = ctx.createRadialGradient(bx - br * .35, by - br * .4, br * .1, bx, by, br);
-    g2.addColorStop(0, '#fff'); g2.addColorStop(.35, BALL_COLORS[T.ball % BALL_COLORS.length]); g2.addColorStop(1, 'rgba(0,0,0,.55)');
+    g2.addColorStop(0, '#fff'); g2.addColorStop(.35, BALL_COLORS[T.ball % BALL_COLORS.length]); g2.addColorStop(1, 'rgba(60,80,110,.5)');
     ctx.fillStyle = BALL_COLORS[T.ball % BALL_COLORS.length]; ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.3); ctx.fill();
     ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.3); ctx.fill();
     ctx.globalAlpha = 1;
