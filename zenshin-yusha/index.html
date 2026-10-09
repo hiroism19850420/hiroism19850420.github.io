@@ -42,6 +42,7 @@
   <button id="pUp">↑ ジャンプ</button>
   <button id="pHand">🙌</button>
   <button id="pRun">🏃</button>
+  <button id="pPush">💪</button>
   <button id="pR">右 →</button>
 </div>
 
@@ -55,6 +56,7 @@
     <div>🙌 てんじょう、ばんざい… <b>両手を 上げる</b></div>
     <div>🏃 ゆかが くずれる、犬… <b>その場で かけ足</b></div>
     <div>✋ だるまさんが ころんだ… <b>ぴたっと 止まる</b></div>
+    <div>🏋️ スクワット ○回 … <b>その回数 しゃがんで 立つ</b></div>
     <div>🧠 ときどき 問題 … <b>声で こたえる</b>（例：3 たす 5 は？）</div>
   </div>
   <div class="row" id="levels">
@@ -62,8 +64,10 @@
     <button class="lv on" data-lv="normal">ふつう（3分）</button>
     <button class="lv" data-lv="hard">しっかり（5分）</button>
     <button class="lv" data-lv="rush">どんどん（3分・むずかしい）</button>
+    <button class="lv" data-lv="geki">ゲキムズ（2分・れんぞくだけ）</button>
   </div>
   <label><input type="checkbox" id="noJump">ジャンプなし</label>
+  <label><input type="checkbox" id="usePush">うでたてふせも 出す（おためし。カメラに 横を むいて）</label>
   <label><input type="checkbox" id="useQuiz" checked><span id="quizLabel">問題も 出す（マイクを つかって 声で こたえる）</span></label>
   <button id="bCam">カメラで あそぶ</button>
   <button id="bNoCam" class="sub">カメラなしで ためす（キー・ボタン）</button>
@@ -95,6 +99,8 @@ const READY_TIME = 1.5;  // からだが うつってから 始まるまで（�
 const SHORT_LEAD = 3.0;  // 声から 当たるまでが これより短い時は 短い言い方にする
 const FREEZE_D   = 0.12;  // 「うごくな」の間に これだけ動いたら アウト
 const FREEZE_TIME = 1.5;  // 「うごくな」で 止まっている時間（秒）
+const PUSH_DOWN  = 0.55;  // うでたてふせ：肩が 手より これしか 高くなければ「下げた」（どうの長さ単位）
+const PUSH_UP    = 0.85;  // 　　　　　　　そこから ここまで 上がれば 1回
 const VOICE_RATE = 1.2;  // 声の速さ（どんどんモードは VOICE_FAST）
 const VOICE_FAST = 1.35;
 const CHAIN_LEAD = [1.3, 1.0];  // つづけて来る時の 2つ目からの間（秒）[ふつう, どんどん]
@@ -103,12 +109,15 @@ const QUIZ_TIME  = 8;    // 問題を 聞きおわってから 答えるまで�
 const QUIZ_FAST  = 5;    // どんどんモードでの その時間
 // むずかしさ：total=長さ（秒）、lead=声から当たるまで（はじめ→おわり）、gap=次の声まで（はじめ→おわり）、
 // run=かけ足の[歩数, 秒]、runEvery=何回に1回 かけ足が入るか、combo=つづけて来る わりあい、
+// sq=スクワットの[回数, 秒]、push=うでたてふせの回数、
 // fast=どんどんモード（短い言い方・速い声・間なし。声が言いおわって すぐ 当たる）
 const LEVELS = {
-  easy:   { name: 'かるめ',   total: 120, lead: [3.4, 2.8], gap: [1.6, 1.0], run: [14, 6.0], runEvery: 5, combo: 0.1 },
-  normal: { name: 'ふつう',   total: 180, lead: [3.2, 2.4], gap: [1.2, 0.6], run: [20, 7.0], runEvery: 4, combo: 0.2 },
-  hard:   { name: 'しっかり', total: 300, lead: [3.0, 2.2], gap: [0.9, 0.4], run: [30, 9.0], runEvery: 4, combo: 0.3 },
-  rush:   { name: 'どんどん', total: 180, lead: [2.0, 1.5], gap: [0, 0],     run: [16, 5.0], runEvery: 6, combo: 0.3, fast: true, quizEvery: 8 }
+  easy:   { name: 'かるめ',   total: 120, lead: [3.4, 2.8], gap: [1.6, 1.0], run: [14, 6.0], runEvery: 5, combo: 0.1, sq: [3, 9],  push: 3 },
+  normal: { name: 'ふつう',   total: 180, lead: [3.2, 2.4], gap: [1.2, 0.6], run: [20, 7.0], runEvery: 4, combo: 0.2, sq: [5, 12], push: 5 },
+  hard:   { name: 'しっかり', total: 300, lead: [3.0, 2.2], gap: [0.9, 0.4], run: [30, 9.0], runEvery: 4, combo: 0.3, sq: [8, 16], push: 8 },
+  rush:   { name: 'どんどん', total: 180, lead: [2.0, 1.5], gap: [0, 0],     run: [16, 5.0], runEvery: 6, combo: 0.3, fast: true, quizEvery: 8, sq: [4, 8], push: 3 },
+  // ゲキムズ：動きの名前だけを 言って、lead 秒ごとに 次つぎ 来る。問題・かけ足・止まる は なし
+  geki:   { name: 'ゲキムズ', total: 120, lead: [1.4, 1.0], gap: [0, 0],     run: [16, 5.0], runEvery: 1e9, combo: 0, fast: true, geki: true, rate: 1.5 }
 };
 // 動きの種類：画面の文字（見た目ごとに 変えていない時）と 色、当たる時の音
 const MOVES = {
@@ -119,6 +128,9 @@ const MOVES = {
   left:   { label: '← 左へ', col: '#8ff0ff', snd: 'side' },
   freeze: { label: '✋ うごくな！', col: '#d6b6ff', snd: 'go' },
   run:    { label: 'はしれ！', col: '#ffe35a' },
+  squat:  { label: 'スクワット！', col: '#ffa23c' },
+  push:   { label: 'うでたてふせ！', col: '#ff9ad5' },
+  stand:  { label: '立って もどろう', col: '#b6ffb0' },
   rest:   { label: 'ひといき… しんこきゅう', col: '#b6ffb0' },
   quiz:   { col: '#fff' }
 };
@@ -161,6 +173,14 @@ const SKINS = {
     { emoji: '🐝', say: ['ハチが とまった！ うごくな！', 'ハチだ！ うごくな！'], good: 'にげていった！', miss: 'さされた！' },
     { emoji: '📸', nice: true, say: ['しゃしんを とるよ！ はい、チーズ！', 'はい、チーズ！'], label: '✋ ポーズで 止まれ！', good: 'パシャ！', miss: 'ぶれた…' }
   ],
+  // {N}=回数
+  squat: [
+    { emoji: '🏋️', nice: true, say: ['スクワット {N}かい！', 'スクワット {N}かい！'], good: 'やりきった！', miss: 'あと すこし！' },
+    { emoji: '🥬', nice: true, say: ['おおきな かぶを ぬくぞ！ スクワット {N}かい！', 'かぶを ぬけ！ スクワット {N}かい！'], label: 'うんとこしょ！', good: 'ぬけた！', miss: 'ぬけなかった…' },
+    { emoji: '🐸', nice: true, say: ['カエルに なった！ スクワット {N}かい！', 'カエルだ！ スクワット {N}かい！'], label: 'ケロケロ！', good: 'にんげんに もどった！', miss: 'まだ カエル…' }
+  ],
+  push: [{ emoji: '💪', nice: true, say: ['うでたてふせ {N}かい！ カメラに よこを むいて！', 'うでたてふせ {N}かい！'], good: 'やりきった！', miss: 'あと すこし！' }],
+  stand: [{ say: ['たって！', 'たって！'] }],
   rest: [{ say: ['ひといき。 しんこきゅう。', 'ひといき。 しんこきゅう。'] }]
 };
 // つづけて来るもの。A=はじめの向き、B=その反対（みぎ／ひだりは その時に きまる）
@@ -189,11 +209,11 @@ const S = {
   mode: null, state: 'title', level: 'normal', noJump: false, now: 0, elapsed: 0,
   ev: null, chain: [], gap: 0, n: 0, last: '', rested: false, readyT: 0, lost: 0,
   score: 0, combo: 0, bestCombo: 0, dodged: 0, total: 0, hurt: 0, fx: [],
-  quiz: false, sinceQuiz: 0, quizN: 0, quizOK: 0,
-  cnt: { jump: 0, squat: 0, up: 0, step: 0, side: 0 }
+  quiz: false, sinceQuiz: 0, quizN: 0, quizOK: 0, push: false, repN: 0,
+  cnt: { jump: 0, squat: 0, up: 0, step: 0, side: 0, push: 0 }
 };
 // 体の今の状態。x,y は 肩とこしの まん中（画面の座標）、lift は 立っている時より どれだけ上か
-const P = { seen: false, legs: false, x: 0, y: 0, T: 100, foot: 0, lift: 0, up: false, wasUp: false, kd: 0, side: 0, stepAt: -9, air: false, low: false, stillY: 0, stillT: 0 };
+const P = { seen: false, legs: false, x: 0, y: 0, T: 100, foot: 0, lift: 0, up: false, wasUp: false, arm: 1, pd: false, kd: 0, side: 0, stepAt: -9, air: false, low: false, stillY: 0, stillT: 0 };
 const base = { y: 0, T: 100, foot: 0 };   // まっすぐ 立っている時の高さ・どうの長さ・足もと
 const N = { dir: 0, squat: false, jumpT: 0, up: false, s: 0 };   // カメラなしの時の 操作
 const said = [];
@@ -246,7 +266,7 @@ function say(str, onend){
     if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(str);
     u.lang = 'ja-JP'; if (jaVoice) u.voice = jaVoice;
-    u.rate = LEVELS[S.level].fast ? VOICE_FAST : VOICE_RATE; u.pitch = 1.1;
+    u.rate = LEVELS[S.level].rate || (LEVELS[S.level].fast ? VOICE_FAST : VOICE_RATE); u.pitch = 1.1;
     if (onend) u.onend = onend;
     speechSynthesis.speak(u);
   } catch (e) {}
@@ -333,6 +353,9 @@ function onPose(lm){
   P.foot = la.v > 0.5 && ra.v > 0.5 ? Math.max(la.y, ra.y) : 0;
   const nose = pt(0), lw = pt(15), rw = pt(16);
   P.up = lw.v > 0.5 && rw.v > 0.5 && lw.y < nose.y && rw.y < nose.y;
+  // うでたてふせ用：肩が 手（見えている方の 低い方）より どれだけ 高いか
+  const wy = Math.max(lw.v > 0.4 ? lw.y : -1e9, rw.v > 0.4 ? rw.y : -1e9);
+  if (wy > -1e8) P.arm = (wy - sy) / base.T;
   P.legs = lk.v > 0.5 && rk.v > 0.5;
   // かけ足：左右の ひざの高さの差が、右が上→左が上→…と 入れかわるたびに 1歩
   if (P.legs){
@@ -343,8 +366,14 @@ function onPose(lm){
 }
 function step(){
   if (S.state !== 'play') return;
-  S.cnt.step++;
-  if (S.ev && S.ev.type === 'run' && S.ev.go && !S.ev.judged){ S.ev.steps++; sfx.step(); }
+  S.cnt.step++; rep('run');
+}
+// 回数を かぞえる指示の 1回ぶん。スクワットと うでたてふせは 声でも かぞえる
+function rep(type){
+  const ev = S.ev;
+  if (!ev || ev.type !== type || !ev.go || ev.judged) return;
+  ev.steps++; sfx.step();
+  if (type !== 'run' && ev.steps < ev.need) say(String(ev.steps));
 }
 // カメラなし：キーやボタンで 体の動きを まねる
 function simPlayer(dt){
@@ -358,6 +387,8 @@ function simPlayer(dt){
 
 // ---------- 進行 ----------
 function text(x, y, str, col, size = 40, life = 0.9){ S.fx.push({ x, y, str, col, size, t: 0, life }); }
+const WORD = { jump: 'ジャンプ！', duck: 'しゃがめ！', up: 'ばんざい！', right: 'みぎ！', left: 'ひだり！' };   // ゲキムズで言う ことば
+const REPS = { run: 1, squat: 1, push: 1 };   // 回数を かぞえる動き
 const DIR = { right: 'みぎ', left: 'ひだり' }, OPP = { right: 'left', left: 'right' };
 const pick = a => a[Math.floor(Math.random() * a.length)];
 // 画面の はしに いる時は、まん中へ もどる向きに よけさせる
@@ -368,7 +399,17 @@ function nextEvent(){
   const L = LEVELS[S.level], f = Math.min(1, S.elapsed / L.total);
   S.n++;
   if (!S.rested && f > 0.5){ S.rested = true; startEvent('rest'); return; }
-  if (S.n % L.runEvery === 0){ startEvent('run'); return; }
+  if (L.geki){
+    // 次の動きを 先に きめて「つぎ」に 出しておく。同じ動きは 2回まで
+    const next = last => { const t = pick(['jump', 'up', 'duck', 'side', 'side'].filter(t => !(S.noJump && t === 'jump') && !(t === last && t === S.last))); return t === 'side' ? sideNow() : t; };
+    let m = S.chain.shift() || next('');
+    if (DIR[m] && (m === 'right' ? P.x > W * 0.7 : P.x < W * 0.3)) m = OPP[m];
+    const kind = DIR[m] ? 'side' : m;
+    S.chain = [next(kind)]; S.last = kind;
+    startEvent(m, { say: WORD[m], label: m === 'up' ? '🙌 ばんざい！' : '', skin: SKINS[kind][0], lead: lerp(L.lead[0], L.lead[1], f) });
+    return;
+  }
+  if (S.n % L.runEvery === 0){ const kinds = S.push ? ['run', 'squat', 'push'] : ['run', 'squat']; startEvent(kinds[S.repN++ % kinds.length]); return; }
   if (S.quiz && ++S.sinceQuiz >= (L.quizEvery || QUIZ_EVERY)){ S.sinceQuiz = 0; startEvent('quiz'); return; }
   if (f > 0.1 && Math.random() < L.combo){
     const c = pick(COMBOS.filter(c => !(S.noJump && c.steps.includes('jump')))), A = sideNow();
@@ -385,11 +426,13 @@ function nextEvent(){
 // opt.say=言う文を さしかえる、opt.skin=見た目を きめる、opt.silent=声なし（つづきの2つ目から）
 function startEvent(type, opt = {}){
   const L = LEVELS[S.level], f = Math.min(1, S.elapsed / L.total), base0 = lerp(L.lead[0], L.lead[1], f);
+  const need = type === 'squat' ? L.sq[0] : type === 'push' ? L.push : L.run[0];
+  const dur = type === 'squat' ? L.sq[1] : type === 'push' ? 5 + L.push * 2.5 : L.run[1];
   const skin = opt.skin || (SKINS[DIR[type] ? 'side' : type] ? pick(SKINS[DIR[type] ? 'side' : type]) : {});
-  const str = opt.say || (skin.say ? skin.say[L.fast || base0 < SHORT_LEAD ? 1 : 0].replaceAll('{D}', DIR[type] || '') : '');
+  const str = opt.say || (skin.say ? skin.say[L.fast || base0 < SHORT_LEAD ? 1 : 0].replaceAll('{D}', DIR[type] || '').replaceAll('{N}', need) : '');
   // 声が 言いおわる前に 当たらないように、文の長さに 合わせて のばす
-  const lead = type === 'rest' ? 7 : opt.silent ? CHAIN_LEAD[L.fast ? 1 : 0] : type === 'run' ? (L.fast ? 1.0 : 1.5) : Math.max(base0, speechTime(str) + (L.fast ? 0.4 : 0.8));
-  S.ev = { type, skin, label: skin.label || MOVES[type].label, col: MOVES[type].col, t: 0, lead, x0: P.x, ok: false, judged: false, tick: 0, boom: false, go: false, steps: 0, need: L.run[0], dur: L.run[1] };
+  const lead = type === 'rest' ? 7 : type === 'stand' ? 4 : type === 'push' ? speechTime(str) + 3.5 : type === 'squat' ? speechTime(str) + 0.3 : opt.lead ? opt.lead : opt.silent ? CHAIN_LEAD[L.fast ? 1 : 0] : type === 'run' ? (L.fast ? 1.0 : 1.5) : Math.max(base0, speechTime(str) + (L.fast ? 0.4 : 0.8));
+  S.ev = { type, skin, label: opt.label || skin.label || MOVES[type].label, col: MOVES[type].col, t: 0, lead, x0: P.x, ok: false, judged: false, tick: 0, boom: false, go: false, steps: 0, need, dur };
   if (type === 'quiz'){
     // 読みあげが 終わってから 聞きはじめる（終わりが わからない たんまつでは 長さの見こみで）
     const ev = S.ev, q = ev.q = makeQuiz();
@@ -398,20 +441,20 @@ function startEvent(type, opt = {}){
     say(q.say, () => { ev.spoken = true; });
     return;
   }
-  if (type !== 'rest') S.total++;
+  if (type !== 'rest' && type !== 'stand') S.total++;
   if (!opt.silent) say(str);
 }
 function judge(ok){
   const ev = S.ev;
   const sk = ev.skin, L = LEVELS[S.level];
-  ev.judged = true; ev.ok = ok; ev.endAt = ev.t + (S.chain.length ? 0 : L.fast ? 0.15 : 0.6);
+  ev.judged = true; ev.ok = ok; ev.endAt = ev.t + (S.chain.length || L.geki ? 0 : L.fast ? 0.15 : 0.6);
   if (ok){
     S.dodged++; S.combo++; S.bestCombo = Math.max(S.bestCombo, S.combo);
     const pts = 100 + Math.min(S.combo, 20) * 10;
     S.score += pts;
     if (ev.type === 'left' || ev.type === 'right') S.cnt.side++;
     text(W / 2, H * 0.42, (sk.good || 'よけた！') + ' +' + pts, '#b6ffb0');
-    ev.type === 'run' ? sfx.clear() : sfx.ok();
+    REPS[ev.type] ? sfx.clear() : sfx.ok();
   } else {
     S.combo = 0;
     if (sk.nice) sfx.tick(); else { S.hurt = 0.5; sfx.hurt(); }
@@ -425,7 +468,8 @@ function updateEvent(dt){
   if (ev.judged){
     if (ev.t < ev.endAt) return;
     const L = LEVELS[S.level];
-    if (S.chain.length && ev.type !== 'quiz'){ const m = S.chain.shift(); startEvent(m, { silent: true, skin: SKINS[DIR[m] ? 'side' : m][0] }); }
+    if (S.chain.length && ev.type !== 'quiz' && !L.geki){ const m = S.chain.shift(); startEvent(m, { silent: true, skin: SKINS[DIR[m] ? 'side' : m][0] }); }
+    else if (ev.type === 'push') startEvent('stand');   // ゆかから 立ち上がる時間を とる
     else { S.ev = null; S.gap = lerp(L.gap[0], L.gap[1], Math.min(1, S.elapsed / L.total)); }
     return;
   }
@@ -436,15 +480,17 @@ function updateEvent(dt){
     return;
   }
   if (ev.type === 'rest'){ if (d >= 0){ S.ev = null; S.gap = 1.2; say('こうはんせん！'); } return; }
-  if (ev.type === 'run'){
+  if (ev.type === 'stand'){ if (d >= 0){ S.ev = null; S.gap = 1.0; } return; }
+  if (REPS[ev.type]){
     if (!ev.go && d >= 0){ ev.go = true; sfx.go(); }
     if (ev.steps >= ev.need) judge(true);
     else if (d >= ev.dur) judge(false);
     return;
   }
   // 当たる 1秒前と 0.5秒前に ピッ、当たる時に その こうげきの音
-  if (ev.tick < 1 && d >= -1.0){ ev.tick = 1; sfx.tick(); }
-  if (ev.tick < 2 && d >= -0.5){ ev.tick = 2; sfx.tick(); }
+  const quiet = LEVELS[S.level].geki;   // ゲキムズは 声が 合図なので ピッは 鳴らさない
+  if (ev.tick < 1 && d >= -1.0){ ev.tick = 1; if (!quiet) sfx.tick(); }
+  if (ev.tick < 2 && d >= -0.5){ ev.tick = 2; if (!quiet) sfx.tick(); }
   if (!ev.boom && d >= 0){ ev.boom = true; if (!ev.skin.nice || ev.type === 'freeze') sfx[MOVES[ev.type].snd](); }
   if (ev.type === 'freeze'){
     // 止まるまでに 少し ゆとりを おき、そこからの 動きを 見る
@@ -480,20 +526,27 @@ function update(dt){
   }
   if (S.state !== 'play') return;
   // 体が うつっていない間は 止めて待つ
-  if (S.mode === 'cam' && !P.seen){ S.lost += dt; if (S.lost > 0.5) return; } else S.lost = 0;
+  // うでたてふせと その後の 立ち上がりの間は、ねた しせいなので ふだんの判定を 止める（体が 見えなくても 進める）
+  const lying = !!S.ev && (S.ev.type === 'push' || S.ev.type === 'stand');
+  if (S.mode === 'cam' && !P.seen && !lying){ S.lost += dt; if (S.lost > 0.5) return; } else S.lost = 0;
 
   P.lift = (base.y - P.y) / base.T;
-  if (!P.air && P.lift > JUMP_H){ P.air = true; S.cnt.jump++; } else if (P.lift < JUMP_H / 2) P.air = false;
-  if (!P.low && P.lift < -SQUAT_H){ P.low = true; S.cnt.squat++; } else if (P.lift > -SQUAT_H / 2) P.low = false;
-  if (P.up && !P.wasUp) S.cnt.up++;
-  P.wasUp = P.up;
+  if (!lying){
+    if (!P.air && P.lift > JUMP_H){ P.air = true; S.cnt.jump++; } else if (P.lift < JUMP_H / 2) P.air = false;
+    if (!P.low && P.lift < -SQUAT_H){ P.low = true; S.cnt.squat++; rep('squat'); } else if (P.lift > -SQUAT_H / 2) P.low = false;
+    if (P.up && !P.wasUp) S.cnt.up++;
+    P.wasUp = P.up;
+  } else if (S.mode === 'cam' && P.seen){
+    if (!P.pd && P.arm < PUSH_DOWN) P.pd = true;
+    else if (P.pd && P.arm > PUSH_UP){ P.pd = false; S.cnt.push++; rep('push'); }
+  }
   if (Math.abs(P.y - P.stillY) < base.T * 0.06) P.stillT += dt; else { P.stillY = P.y; P.stillT = 0; }
 
   S.elapsed += dt;
   // 「立っている高さ」を 少しずつ 合わせなおす。前後に動いて 高さが ずれた時は、指示の はじめか 合間に 早めに 合わせる
   if (S.mode === 'cam'){
     const early = !S.ev || (S.ev.t - S.ev.lead < -0.8 && S.ev.type !== 'quiz');
-    const k = Math.abs(P.lift) < 0.12 ? dt * 1.5 : P.stillT > 1.2 && early ? dt * 4 : 0;
+    const k = lying ? 0 : Math.abs(P.lift) < 0.12 ? dt * 1.5 : P.stillT > 1.2 && early ? dt * 4 : 0;
     base.y += (P.y - base.y) * k; base.T += (P.T - base.T) * k;
     if (P.foot) base.foot += (Math.min(H - 20, P.foot) - base.foot) * k;
   }
@@ -503,9 +556,11 @@ function update(dt){
   if (S.elapsed >= LEVELS[S.level].total) finish(); else nextEvent();
 }
 function begin(){
-  Object.assign(S, { state: S.mode === 'cam' ? 'ready' : 'play', elapsed: 0, ev: null, chain: [], gap: 1.6, n: 0, last: '', rested: false, readyT: 0, lost: 0, score: 0, combo: 0, bestCombo: 0, dodged: 0, total: 0, hurt: 0, fx: [], sinceQuiz: 1, quizN: 0, quizOK: 0, cnt: { jump: 0, squat: 0, up: 0, step: 0, side: 0 } });
+  Object.assign(S, { state: S.mode === 'cam' ? 'ready' : 'play', elapsed: 0, ev: null, chain: [], gap: 1.6, n: 0, last: '', rested: false, readyT: 0, lost: 0, score: 0, combo: 0, bestCombo: 0, dodged: 0, total: 0, hurt: 0, fx: [], sinceQuiz: 1, quizN: 0, quizOK: 0, repN: 0, cnt: { jump: 0, squat: 0, up: 0, step: 0, side: 0, push: 0 } });
+  S.push = $('usePush').checked && !LEVELS[S.level].geki;
+  P.pd = false;
   // マイクの きょかは 始める時に もらっておく（聞くのは 問題の時だけ）
-  S.quiz = !!rec && $('useQuiz').checked;
+  S.quiz = !!rec && $('useQuiz').checked && !LEVELS[S.level].geki;
   listen(false);
   if (S.quiz && !recOn) try { rec.start(); } catch (e) {}
   Object.assign(N, { dir: 0, squat: false, jumpT: 0, up: false, s: 0 });
@@ -521,6 +576,7 @@ function finish(){
   $('rank').textContent = rate >= 0.9 ? '🏆 でんせつの勇者' : rate >= 0.7 ? '⚔️ いちにんまえの勇者' : rate >= 0.4 ? '🛡️ みならい勇者' : '🎒 たびびと';
   const c = S.cnt, rows = [['よけた回数', `${S.dodged} / ${S.total}`], ['スコア', S.score], ['さいだい れんぞく', S.bestCombo],
     ['ジャンプ', c.jump + ' 回'], ['しゃがんだ', c.squat + ' 回'], ['両手を 上げた', c.up + ' 回'], ['よこに よけた', c.side + ' 回'], ['かけ足', c.step + ' 歩']];
+  if (c.push) rows.push(['うでたてふせ', c.push + ' 回']);
   if (S.quizN) rows.splice(1, 0, ['問題の せいかい', `${S.quizOK} / ${S.quizN}`]);
   $('result').innerHTML = rows.map(([a, b]) => `<span>${a}</span><span>${b}</span>`).join('');
   let best = S.score;
@@ -644,7 +700,7 @@ function draw(){
         ctx.fillStyle = left < 0.3 ? '#ff5a5a' : '#fff'; ctx.fillRect(W * 0.5 - W * 0.35 * left, y + sz * 1.4, W * 0.7 * left, 14);
         if (ev.heard) big('きこえた：' + ev.heard, y + sz * 1.9, sz * 0.35, '#cfe0ff');
       }
-    } else if (ev.type === 'run'){
+    } else if (REPS[ev.type]){
       big(ev.go ? `${E.label} ${ev.steps} / ${ev.need}` : E.label, y, sz * pop, E.col);
       if (ev.go){
         ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.fillRect(W * 0.15, y + sz * 0.75, W * 0.7, 18);
@@ -749,15 +805,16 @@ const ACT = {
   down:  v => { N.squat = v; },
   up:    v => { if (v && N.jumpT <= 0) N.jumpT = 0.5; },
   hand:  v => { N.up = v; },
-  run:   v => { if (v) step(); }
+  run:   v => { if (v) step(); },
+  push:  v => { if (v && S.ev && S.ev.type === 'push' && S.ev.go && !S.ev.judged){ S.cnt.push++; rep('push'); } }
 };
 window.__game.act = ACT;
-[['pL', 'left'], ['pR', 'right'], ['pDown', 'down'], ['pUp', 'up'], ['pHand', 'hand'], ['pRun', 'run']].forEach(([id, a]) => {
+[['pL', 'left'], ['pR', 'right'], ['pDown', 'down'], ['pUp', 'up'], ['pHand', 'hand'], ['pRun', 'run'], ['pPush', 'push']].forEach(([id, a]) => {
   const b = $(id);
   b.addEventListener('pointerdown', e => { e.preventDefault(); ACT[a](true); b.classList.add('on'); });
   ['pointerup', 'pointerleave', 'pointercancel'].forEach(n => b.addEventListener(n, () => { if (b.classList.contains('on')){ ACT[a](false); b.classList.remove('on'); } }));
 });
-const KEYS = { ArrowLeft: 'left', ArrowRight: 'right', ArrowDown: 'down', ArrowUp: 'up', KeyB: 'hand', Space: 'run' };
+const KEYS = { ArrowLeft: 'left', ArrowRight: 'right', ArrowDown: 'down', ArrowUp: 'up', KeyB: 'hand', KeyP: 'push', Space: 'run' };
 addEventListener('keydown', e => { if (S.mode === 'nocam' && KEYS[e.code] && !e.repeat){ e.preventDefault(); ACT[KEYS[e.code]](true); } });
 addEventListener('keyup', e => { if (KEYS[e.code]) ACT[KEYS[e.code]](false); });
 </script>
