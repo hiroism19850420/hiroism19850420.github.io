@@ -51,6 +51,7 @@
     <div>🛡️ <b>むねの前で うでを クロス</b> … ガード　　👹 ときどき ボスが 出る</div>
   </div>
   <div class="modes"><button id="mEasy" class="sub on">かんたん</button><button id="mHard" class="sub">むずかしい</button></div>
+  <div class="modes"><button id="bVoice" class="sub on">🔊 こえの あんない：あり</button></div>
   <button id="bCam">カメラで あそぶ</button>
   <button id="bNoCam" class="sub">カメラなしで ためす（マウス・ゆび）</button>
   <div id="msg"></div>
@@ -174,6 +175,40 @@ const sfx = {
   start: () => arp([523, 659, 784, 1047], 0.09, 0.2, 'square', 0.05),
   over:  () => arp([523, 440, 349, 262], 0.16, 0.35, 'triangle', 0.08)
 };
+
+// ---------- こえの あんない ----------
+// 「いまは これを して」を 1つだけ えらんで、声と 画面の 大きな文字で 知らせる。
+const VOICE = { on: true, key: '', at: -9, until: 0, pri: 0, show: '' };
+function say(text, pri = 1){
+  if (!VOICE.on || !window.speechSynthesis) return true;
+  if (S.now < VOICE.until && pri <= VOICE.pri) return false;   // 話している とちゅうは、もっと 大事な ことだけ わりこむ
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ja-JP'; u.rate = 1.1; u.pitch = 1.2;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+  VOICE.pri = pri; VOICE.until = S.now + 0.4 + text.length * 0.13;
+  return true;
+}
+function coach(){
+  const cam = S.mode === 'cam', alive = S.enemies.filter(e => !e.dead), n = alive.length;
+  let key = '', text = '';
+  if (cam && !S.body){ key = 'body'; text = 'カメラの まえに たってね'; }
+  else if (S.shots.length){ key = 'dodge'; text = cam ? 'あたまを よこに！ よけて！' : 'やじるしで よけて！'; }
+  else if (alive.some(e => TYPES[e.type].boss)){ key = 'boss'; text = cam ? 'ボスだ！ たくさん パンチ！' : 'ボスだ！ たくさん タップ！'; }
+  else if (n >= 5 && S.magicCD <= 0){ key = 'magic'; text = cam ? `りょうてを あげて、「${SPELLS[nextSpell()].name}」と いって！` : 'まほうの ボタンを おして！'; }
+  else if (n >= 3){ key = 'sword'; text = cam ? 'りょうてを にぎって、けんで きって！' : 'なぞって、けんで きって！'; }
+  else if (n >= 1){ key = 'punch'; text = cam ? 'パンチ！ うでを まえに！' : 'タップで パンチ！'; }
+  else if (cam && !S.full){ key = 'far'; text = 'もうすこし うしろに さがってね'; }
+  VOICE.show = text;
+  if (!key) return;
+  const pri = key === 'dodge' ? 3 : key === 'boss' ? 2 : 1, changed = key !== VOICE.key;
+  // 言うことが かわったとき（少し間をあける）か、同じことを しばらく 言っていないとき
+  if ((changed && (S.now - VOICE.at > 3.5 || pri > VOICE.pri)) || S.now - VOICE.at > 6){
+    if (say(text, pri)){ VOICE.key = key; VOICE.at = S.now; }
+  }
+}
 
 // ---------- まほうの名前の聞きとり ----------
 const SPELLS = {
@@ -365,7 +400,7 @@ function damage(e, n = 1){
   if (T.boss){
     sfx.boom(); S.bossT = BOSS_EVERY;
     S.fx.push({ kind: 'ring', x: e.x, y: e.y, t: 0, life: 0.6 });
-    text(W / 2, H * 0.35, 'ボスを たおした！', '#ffe35a', 40, 1.5);
+    text(W / 2, H * 0.35, 'ボスを たおした！', '#ffe35a', 40, 1.5); say('やったね！ ボスを たおした！', 2);
   } else ice ? sfx.shatter() : sfx.pop();
 }
 // てきが 頭を ねらって 玉を うつ。ねらう場所は うった しゅんかんの 頭の位置で 固定。
@@ -518,9 +553,10 @@ function update(dt){
     if (Math.hypot(head.x - s.tx, head.y - s.ty) < anchor.unit * SHOT_HIT){
       S.hearts--; S.hurt = 0.4; S.combo = 0; sfx.hurt(); dots(s.tx, s.ty, 12, '#ff7a5a');
       if (S.hearts <= 0){ gameOver(); break; }
-    } else { S.score += 20; text(s.tx, s.ty, 'よけた！ +20', '#b6ffb0'); sfx.dodge(); }
+    } else { S.score += 20; text(s.tx, s.ty, 'よけた！ +20', '#b6ffb0'); sfx.dodge(); say('じょうず！', 1); }
   }
   S.shots = S.shots.filter(s => !s.done);
+  if (S.running) coach();
 }
 function begin(){
   const D = DIFF[S.diff];
@@ -529,9 +565,12 @@ function begin(){
   $('title').classList.add('hide'); $('over').classList.add('hide');
   $('pad').classList.toggle('show', S.mode === 'nocam');
   sfx.start();
+  Object.assign(VOICE, { key: '', at: S.now + 1.5, until: 0, pri: 0, show: '' });
+  say('はじめるよ！ てきが きたら パンチ！', 2);
 }
 function gameOver(){
   S.running = false; S.enemies = []; S.shots = []; S.burn = 0; S.charge = 0; listen(false); sfx.over();
+  VOICE.show = ''; say('おつかれさま！ よく がんばったね！', 3);
   let best = S.score;
   const key = 'karadaYushaBest_' + S.diff;   // さいこう点は むずかしさ ごと
   try { best = Math.max(S.score, +localStorage.getItem(key) || 0); localStorage.setItem(key, best); } catch (e) {}
@@ -715,7 +754,10 @@ function draw(){
   else if (S.shots.length) hint = [cam ? '赤い玉だ！ 頭を よこに よけろ！' : '赤い玉だ！ ← → で よけろ！'];
   else if (S.enemies.some(e => TYPES[e.type].boss)) hint = ['ボスだ！ パンチ・剣・まほうで たおせ！'];
   else if (cam && !S.full) hint = ['ぜんしんが うつるように、もう少し はなれてください'];
-  ctx.font = '700 18px sans-serif'; ctx.fillStyle = '#fff'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(20,28,70,.8)';
+  // こえの あんないが あるときは、いま すること 1つだけを 大きく 出す
+  const big = VOICE.on && S.running && VOICE.show && !(cam && S.charge >= 1);
+  if (big) hint = [VOICE.show];
+  ctx.font = `700 ${big ? 26 : 18}px sans-serif`; ctx.fillStyle = big ? '#ffe35a' : '#fff'; ctx.lineWidth = big ? 6 : 4; ctx.strokeStyle = 'rgba(20,28,70,.9)';
   hint.forEach((str, i) => { const y = H - 22 - (hint.length - 1 - i) * 24; ctx.strokeText(str, W / 2, y, W - 20); ctx.fillText(str, W / 2, y, W - 20); });
 }
 
@@ -731,7 +773,7 @@ function frame(ts){
   }
   update(dt); draw();
 }
-Object.assign(window.__game, { tick: frame, onPose, punch, spawn, shoot, cast, hear, sfx });   // テスト用：手動で1コマ進める／関節データを直接わたす
+Object.assign(window.__game, { tick: frame, onPose, punch, spawn, shoot, cast, hear, sfx, VOICE });   // テスト用：手動で1コマ進める／関節データを直接わたす
 const loop = ts => { frame(ts); requestAnimationFrame(loop); };
 requestAnimationFrame(loop);
 
@@ -786,6 +828,14 @@ function setDiff(k){
   $('mEasy').classList.toggle('on', k === 'easy'); $('mHard').classList.toggle('on', k === 'hard');
   try { localStorage.setItem('karadaYushaDiff', k); } catch (e) {}
 }
+function setVoice(v){
+  VOICE.on = v;
+  $('bVoice').classList.toggle('on', v); $('bVoice').textContent = v ? '🔊 こえの あんない：あり' : '🔇 こえの あんない：なし';
+  if (!v && window.speechSynthesis) speechSynthesis.cancel();
+  try { localStorage.setItem('karadaYushaVoice', v ? '1' : '0'); } catch (e) {}
+}
+$('bVoice').onclick = () => setVoice(!VOICE.on);
+try { if (localStorage.getItem('karadaYushaVoice') === '0') setVoice(false); } catch (e) {}
 $('mEasy').onclick = () => setDiff('easy'); $('mHard').onclick = () => setDiff('hard');
 try { if (localStorage.getItem('karadaYushaDiff') === 'hard') setDiff('hard'); } catch (e) {}
 $('bBack').onclick = () => { $('over').classList.add('hide'); $('title').classList.remove('hide'); };
