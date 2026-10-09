@@ -61,9 +61,12 @@ const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
 // 調整用の数値（速さの単位は「肩はば何個ぶん／秒」）
-const PUNCH_SPEED = 3.5;   // こぶしが これより速く動いたら「パンチ」
-const PUNCH_REARM = 1.8;   // これより おそくなるか、向きが反対になったら 次のパンチを受けつける
-const PUNCH_GAP   = 0.07;  // 同じ手の パンチとパンチの 最短の間（秒）
+const PUNCH_SPEED = 3.5;   // こぶしが これより速く動いていて、
+const PUNCH_DIST  = 0.4;   // 動きだした所から これだけ進んだら「パンチ」（ふるえ・ゆれでは 出ない）
+const PUNCH_REARM = 1.8;   // これより おそくなるか、引きもどしたら 次のパンチを受けつける
+const PUNCH_GAP   = 0.1;   // 同じ手の パンチとパンチの 最短の間（秒）
+const Z_WEIGHT    = 0.5;   // 奥行きは ふるえやすいので、たて・よこより 軽く見る
+const WRIST_VIS   = 0.6;   // 手首が これより はっきり 見えているときだけ 数える
 const PUNCH_REACH = 0.6;   // こぶしの当たりはんい（肩はば単位）
 const FIST_LEN    = 0.3;   // ひじ→手首の長さに対して、手首の先の どこを こぶしとするか
 const COMBO_TIME  = 1.2;   // コンボが つづく秒数
@@ -90,7 +93,7 @@ const S = {
   combo: 0, comboT: 0, best: 0
 };
 const anchor = { x: 0, y: 0, unit: 100, tx: 0, ty: 0, tunit: 100 };
-const hands = [0, 1].map(() => ({ x: 0, y: 0, fwd: 0, vis: false, armed: true, dir: [0, 0, 0], punchAt: -9 }));
+const hands = [0, 1].map(() => ({ x: 0, y: 0, p: [0, 0, 0], org: [0, 0, 0], vis: false, armed: true, punchAt: -9 }));
 window.__game = { S, hands, anchor };
 
 // ---------- 音 ----------
@@ -146,10 +149,10 @@ function onPose(lm, dt){
   const unit = Math.max(40, Math.hypot(ls.x - rs.x, ls.y - rs.y));
   anchor.tx = (ls.x + rs.x) / 2; anchor.ty = (ls.y + rs.y) / 2; anchor.tunit = unit;
   const lw = P(15), rw = P(16);
-  [[lw, P(13), 11, 15], [rw, P(14), 12, 16]].forEach(([w, e, si, wi], i) => {
-    if (w.v < 0.4){ feedHand(i, 0, 0, 0, dt, false); return; }
+  [[lw, P(13), ls, 11, 15], [rw, P(14), rs, 12, 16]].forEach(([w, e, sh, si, wi], i) => {
+    if (w.v < WRIST_VIS || e.v < 0.5){ feedHand(i, 0, 0, 0, dt, false); return; }
     // z は小さいほどカメラに近い。肩より どれだけ前に出ているかを 肩はば単位にする
-    feedHand(i, w.x + (w.x - e.x) * FIST_LEN, w.y + (w.y - e.y) * FIST_LEN, ((lm[si].z || 0) - (lm[wi].z || 0)) * r.w / unit, dt, true);
+    feedHand(i, w.x + (w.x - e.x) * FIST_LEN, w.y + (w.y - e.y) * FIST_LEN, ((lm[si].z || 0) - (lm[wi].z || 0)) * r.w / unit, dt, true, sh.x, sh.y);
   });
   // 手首の左右が肩の左右と入れかわっていたら「クロス」
   const both = lw.v > 0.4 && rw.v > 0.4;
@@ -161,23 +164,24 @@ function clearPose(){
   S.body = false; S.poseGuard = false;
   hands.forEach(h => { h.vis = false; });
 }
-// こぶしの動きを見て、速く動いた しゅんかんを 1発のパンチにする。
-// 1発うったあとは、おそくなるか 向きが反対になる（＝引きもどす）まで 次を数えない。
-// これで 行って もどっての くり返しが、うった回数ぶん そのまま パンチになる。
-function feedHand(i, x, y, fwd, dt, vis){
+// こぶしの位置を「同じがわの肩から見た位置」で追う（体ごと ゆれても パンチにならない）。
+// 肩から はなれる向きに 速く動き、動きだした所から PUNCH_DIST 進んだら 1発。
+// おそくなるか 引きもどすと 動きだしの所を 取りなおすので、
+// 行って もどっての くり返しが、うった回数ぶん そのまま パンチになる。
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+function feedHand(i, x, y, fwd, dt, vis, sx = 0, sy = 0){
   const h = hands[i];
   if (!vis){ h.vis = false; return; }
-  if (!h.vis){ Object.assign(h, { x, y, fwd, vis: true, armed: true }); return; }
-  const d = Math.max(dt, 0.001), u = anchor.unit;
-  const nx = h.x + (x - h.x) * 0.7, ny = h.y + (y - h.y) * 0.7, nf = h.fwd + (fwd - h.fwd) * 0.5;
-  const v = [(nx - h.x) / d / u, (ny - h.y) / d / u, (nf - h.fwd) / d];
-  const sp = Math.hypot(v[0], v[1], v[2]);
-  h.x = nx; h.y = ny; h.fwd = nf;
-  if (!h.armed && (sp < PUNCH_REARM || v[0] * h.dir[0] + v[1] * h.dir[1] + v[2] * h.dir[2] < 0)) h.armed = true;
-  // 手を引きもどす動き（カメラから はなれる）は パンチにしない
-  if (h.armed && sp > PUNCH_SPEED && v[2] > -PUNCH_SPEED * 0.5 && S.now - h.punchAt > PUNCH_GAP){
-    h.armed = false; h.dir = v; h.punchAt = S.now;
-    punch(nx, ny);
+  const u = anchor.unit, p = [(x - sx) / u, (y - sy) / u, fwd * Z_WEIGHT];
+  if (!h.vis){ Object.assign(h, { x, y, p, org: p, vis: true, armed: true }); return; }
+  const d = Math.max(dt, 0.001);
+  const np = p.map((c, k) => h.p[k] + (c - h.p[k]) * 0.75);
+  const v = np.map((c, k) => (c - h.p[k]) / d), sp = Math.hypot(...v);
+  h.x += (x - h.x) * 0.7; h.y += (y - h.y) * 0.7; h.p = np;
+  if (sp < PUNCH_REARM || dot(v, np) <= 0){ h.org = np; h.armed = true; return; }
+  if (h.armed && sp > PUNCH_SPEED && Math.hypot(np[0] - h.org[0], np[1] - h.org[1], np[2] - h.org[2]) > PUNCH_DIST && S.now - h.punchAt > PUNCH_GAP){
+    h.armed = false; h.punchAt = S.now;
+    punch(h.x, h.y);
   }
 }
 
