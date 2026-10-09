@@ -47,19 +47,19 @@ const HOLE_R = 4.2;        // 落とし穴の半径（ボールがぴったり�
 const LANE_HW = 10;        // 道の幅の半分
 const RAIL_R = 0.8;        // ガード（細い棒）の太さの半分
 const RAIL_INSET = 1.5;    // 道のふちからガードの中心までの距離
-const PITCH = 4;           // 台が奥へ下がっている角度（固定）
-const ROLL_MAX = 10;       // ハンドルを回しきったときの左右の傾き
-const PHONE_GAIN = 0.5;    // スマホの傾き → 台の傾き（スマホ20度で回しきり）
+const PITCH = 6;           // 台が奥へ下がっている角度（固定）。左右に回しきってもボールが手前へ戻らない強さにしてある
+const ROLL_MAX = 6;        // ハンドルを回しきったときの左右の傾き（PITCH 以下にしておくと手前へ戻らない）
+const PHONE_GAIN = 0.3;    // スマホの傾き → 台の傾き（スマホ20度で回しきり）
 const ROLL_LAG = 0.07;     // 台が傾きに追いつくまでの時間（秒）
 const G = 981;             // 重力
 const K_ROLL = 0.6;        // 中が空のボールがすべらず転がるときの係数（中まで詰まった球なら 5/7）
 const ROLL_RES = 0.12;     // 転がり抵抗
-const RAIL_BOUNCE = 0.3;   // ガードに当たったときのはね返り
+const RAIL_BOUNCE = 0.15;   // ガードに当たったときのはね返り
 const RAIL_RUB = 0.9;      // ガードにこすっている間の減速
 const BALLS = 4;
 
 // 道の中心線。手前（y=0）から奥へ、右奥→左奥→右奥→左奥のジグザグ
-const PTS = [[0,0],[28,34],[4,66],[34,90],[16,120]];
+const PTS = [[0,0],[20,34],[0,66],[22,96],[8,124]];
 // ガード：[区間, 側(+1=進行方向の左, -1=右), 始まり, 終わり]（区間の長さを1とした位置）
 const RAILS = [
   [0, 1,-0.10, 0.85], [0,-1,-0.10, 0.70],
@@ -108,7 +108,7 @@ const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
 const W = 360; let viewH = 640, S = 4, ox = 0, oy = 0;
 const BX0 = Math.min(...POLY.map(p => p[0])) - 6, BX1 = Math.max(...POLY.map(p => p[0])) + 6;
-const BY0 = -9, BY1 = 136;
+const BY0 = -9, BY1 = 140;
 function resize(){
   const r = cv.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -244,6 +244,7 @@ function step(dt){
     }
     const rub = 1 - RAIL_RUB * dt; T.vx *= rub; T.vy *= rub;
   }
+  if (T.vy < 0) T.vy = 0;   // 台は必ず奥へ下がっているので、手前へは戻さない
   // 落とし穴・ゴール・ふちから落ちる
   if (Math.hypot(T.x - HOLE[0], T.y - HOLE[1]) < HOLE_R * .9) return finish('hole');
   if (!inPoly(T.x, T.y)) {
@@ -302,13 +303,13 @@ function draw(){
   const tab = [segPoint(3, 1 - .02, GOAL_HW), segPoint(3, 1 + 4 / s3.len, GOAL_HW), segPoint(3, 1 + 4 / s3.len, -GOAL_HW), segPoint(3, 1 - .02, -GOAL_HW)];
   path(tab); ctx.fillStyle = '#5cc3df'; ctx.fill();
   path(POLY);
-  const bd = ctx.createLinearGradient(0, sy(0), 0, sy(120));
+  const bd = ctx.createLinearGradient(0, sy(0), 0, sy(124));
   bd.addColorStop(0, '#49b5d6'); bd.addColorStop(1, '#6fd0e4');
   ctx.fillStyle = bd; ctx.fill();
   ctx.strokeStyle = '#2b8fb0'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
   ctx.save(); path(POLY); ctx.clip();
   ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.2;
-  [[4,66],[34,90],[29,97]].forEach(p => { for (let r = 2; r <= 8; r += 2) { ctx.beginPath(); ctx.ellipse(sx(p[0]), sy(p[1]), r * S, r * S * .8, 0, 0, 6.3); ctx.stroke(); } });
+  [[0,66],[22,96],[17,104]].forEach(p => { for (let r = 2; r <= 8; r += 2) { ctx.beginPath(); ctx.ellipse(sx(p[0]), sy(p[1]), r * S, r * S * .8, 0, 0, 6.3); ctx.stroke(); } });
   // 傾いている側を少し暗くする
   const lean = T.roll / ROLL_MAX;
   if (Math.abs(lean) > .02) {
