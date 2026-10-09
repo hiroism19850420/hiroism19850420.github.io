@@ -116,8 +116,9 @@ const LEVELS = {
   normal: { name: 'ふつう',   total: 180, lead: [3.2, 2.4], gap: [1.2, 0.6], run: [20, 7.0], runEvery: 4, combo: 0.2, sq: [5, 12], push: 5 },
   hard:   { name: 'しっかり', total: 300, lead: [3.0, 2.2], gap: [0.9, 0.4], run: [30, 9.0], runEvery: 4, combo: 0.3, sq: [8, 16], push: 8 },
   rush:   { name: 'どんどん', total: 180, lead: [2.0, 1.5], gap: [0, 0],     run: [16, 5.0], runEvery: 6, combo: 0.3, fast: true, quizEvery: 8, sq: [4, 8], push: 3 },
-  // ゲキムズ：動きの名前だけを 言って、lead 秒ごとに 次つぎ 来る。問題・かけ足・止まる は なし
-  geki:   { name: 'ゲキムズ', total: 120, lead: [1.4, 1.0], gap: [0, 0],     run: [16, 5.0], runEvery: 1e9, combo: 0, fast: true, geki: true, rate: 1.5 }
+  // ゲキムズ：動きの名前だけを 言って、lead 秒ごとに 次つぎ 来る。問題・かけ足・止まる は なし。
+  // repEvery 回に1回、スクワット（と、えらんでいれば うでたてふせ）が 入る
+  geki:   { name: 'ゲキムズ', total: 120, lead: [1.4, 1.0], gap: [0, 0],     run: [16, 5.0], runEvery: 1e9, combo: 0, fast: true, geki: true, rate: 1.5, repEvery: 12, sq: [5, 9], push: 5 }
 };
 // 動きの種類：画面の文字（見た目ごとに 変えていない時）と 色、当たる時の音
 const MOVES = {
@@ -400,6 +401,7 @@ function nextEvent(){
   S.n++;
   if (!S.rested && f > 0.5){ S.rested = true; startEvent('rest'); return; }
   if (L.geki){
+    if (S.n % L.repEvery === 0){ const kinds = S.push ? ['squat', 'push'] : ['squat']; startEvent(kinds[S.repN++ % kinds.length]); return; }
     // 次の動きを 先に きめて「つぎ」に 出しておく。同じ動きは 2回まで
     const next = last => { const t = pick(['jump', 'up', 'duck', 'side', 'side'].filter(t => !(S.noJump && t === 'jump') && !(t === last && t === S.last))); return t === 'side' ? sideNow() : t; };
     let m = S.chain.shift() || next('');
@@ -557,7 +559,7 @@ function update(dt){
 }
 function begin(){
   Object.assign(S, { state: S.mode === 'cam' ? 'ready' : 'play', elapsed: 0, ev: null, chain: [], gap: 1.6, n: 0, last: '', rested: false, readyT: 0, lost: 0, score: 0, combo: 0, bestCombo: 0, dodged: 0, total: 0, hurt: 0, fx: [], sinceQuiz: 1, quizN: 0, quizOK: 0, repN: 0, cnt: { jump: 0, squat: 0, up: 0, step: 0, side: 0, push: 0 } });
-  S.push = $('usePush').checked && !LEVELS[S.level].geki;
+  S.push = $('usePush').checked;
   P.pd = false;
   // マイクの きょかは 始める時に もらっておく（聞くのは 問題の時だけ）
   S.quiz = !!rec && $('useQuiz').checked && !LEVELS[S.level].geki;
