@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>そろり！にげろ！怪盗ヌパン！</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#141a3c;font-family:"Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif;color:#fff;-webkit-user-select:none;user-select:none;touch-action:none}
+  #cam{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  #cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;gap:12px;overflow-y:auto;touch-action:pan-y;padding:16px;box-sizing:border-box;background:rgba(14,18,48,.86);text-align:center}
+  .panel.hide{display:none}
+  h1{margin:0;font-size:clamp(26px,6vw,48px);line-height:1.25;color:#ffe35a;text-shadow:0 3px 0 #7a2a4a}
+  h2{margin:0;font-size:clamp(15px,3.6vw,22px);color:#8ff0ff;font-weight:700}
+  .how{display:grid;gap:5px;font-size:clamp(13px,3.1vw,18px);text-align:left;background:rgba(255,255,255,.1);border-radius:14px;padding:14px 18px;max-width:520px}
+  .how b{color:#8ff0ff}
+  button{font:inherit;font-weight:700;font-size:clamp(16px,4vw,22px);color:#23204a;background:#ffe35a;border:0;border-radius:999px;padding:14px 28px;box-shadow:0 5px 0 #b98a12;cursor:pointer}
+  button:active{transform:translateY(3px);box-shadow:0 2px 0 #b98a12}
+  button.sub{background:#cfe0ff;box-shadow:0 5px 0 #7a8fc4;font-size:clamp(13px,3.2vw,17px);padding:10px 20px}
+  #msg{min-height:1.5em;font-size:clamp(13px,3.2vw,17px);color:#ffd0d0;max-width:520px}
+  .note{font-size:clamp(11px,2.8vw,14px);opacity:.8;max-width:520px}
+  #res{font-size:clamp(20px,5.4vw,36px);font-weight:700;line-height:1.5}
+  .modes{display:flex;gap:10px}
+  .modes button.on{background:#8ff0ff;box-shadow:0 5px 0 #3c9db0}
+  #pad{position:absolute;left:0;right:0;bottom:64px;display:none;justify-content:center;gap:10px;padding:0 10px}
+  #pad.show{display:flex}
+  #pad button{font-size:clamp(14px,3.6vw,18px);padding:13px 20px;background:#fff;box-shadow:0 4px 0 #8a93b8}
+  #pad button.on{background:#8ff0ff}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<video id="cam" playsinline muted></video>
+<canvas id="cv"></canvas>
+
+<div id="pad">
+  <button id="pStep">🐾 そろり（1ぽ）</button>
+  <button id="pCrouch">🙇 しゃがむ</button>
+</div>
+
+<div id="title" class="panel">
+  <h1>そろり！にげろ！<br>怪盗ヌパン！</h1>
+  <h2>だい1しょう　しのびこむ</h2>
+  <div class="how">
+    <div>🐾 <b>その場で ゆっくり 足ぶみ</b> … そろり そろりと 前へ すすむ</div>
+    <div>👂 <b>けいびいんの 足音が 止まったら</b> … ふりむく あいず。ぴたっと 止まる</div>
+    <div>💨 <b>はやく 足ぶみすると</b> … 足音で 気づかれる</div>
+    <div>🙇 <b>見つかったら すぐ しゃがむ</b> … かくれて やりすごす</div>
+  </div>
+  <div class="modes"><button id="mEasy" class="sub on">かんたん</button><button id="mHard" class="sub">むずかしい</button></div>
+  <button id="bCam">カメラで あそぶ</button>
+  <button id="bNoCam" class="sub">カメラなしで ためす（ボタン）</button>
+  <div id="msg"></div>
+  <div class="note">頭から ひざの下まで うつるように、はなれて 立ってください。音を 出して あそびます。<br>カメラは この たんまつの中で つかいます。えいぞうは どこにも おくりません。</div>
+</div>
+
+<div id="clear" class="panel hide">
+  <h1>だい1しょう クリア！</h1>
+  <div id="res"></div>
+  <div id="best"></div>
+  <div class="note">つづき（たからの へや）は じゅんび中です。</div>
+  <button id="bRetry">もういちど</button>
+  <button id="bBack" class="sub">タイトルへ</button>
+</div>
+
+<script type="module">
+const MP_VER = '0.10.14';
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
+const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+
+// 調整用の数値（長さの単位は「肩はば何個ぶん」）
+const STEP_TH      = 0.14;  // 左右の ひざ・足首の 高さの差が これを こえたら 1ぽ
+const STEP_MIN_GAP = 0.12;  // これより 短い間の 2ほ目は ふるえとして 数えない（秒）
+const CROUCH_IN    = 0.6;   // ももの たての長さが 立っているときの この割合より 短くなったら しゃがみ
+const CROUCH_OUT   = 0.75;  // この割合まで もどったら 立った
+const LOUD_SUS     = 0.22;  // はやい 足ぶみ 1ぽで ふえる「けはい」
+const LOUD_MAX     = 0.8;   // 足音で ふえる「けはい」の 上限
+const TURN_SUS     = 0.6;  // けはいが これを こえると、けいびいんが 早めに ふりむく
+const LOOK_STEP    = 0.5;   // ふりむいている間の 1ぽで ふえる「けはい」
+const GUARD_PACE   = 0.52;  // けいびいんの 足音の間（秒）
+const HIDE_HOLD    = 3;     // しゃがんで かくれている 秒数
+const BACK_HIDE    = 5;     // かくれて やりすごしたとき もどされる 歩数
+const BACK_FAIL    = 12;    // かくれられなかったとき もどされる 歩数
+// むずかしさ。goal＝ゴールまでの歩数、loudGap＝これより はやい 足ぶみは 大きな足音（秒）、warn＝足音が止まってから ふりむくまで（秒）、
+// moveSpeed＝ふりむき中に これより はやく 動くと あやしまれる（肩はば／秒）、caught＝動きつづけて 見つかるまで（秒）、
+// back・look＝むこう向き・こっち向きの 長さ（秒、最短と最長）、hide＝見つかってから しゃがむまでの ゆうよ（秒）、call＝相棒が「とまれ」と 言うか
+const DIFF = {
+  easy: { goal: 50, loudGap: 0.30, warn: 0.9, moveSpeed: 1.3, caught: 0.55, back: [4, 7],   look: [2, 3], hide: 5,   call: true },
+  hard: { goal: 80, loudGap: 0.40, warn: 0.5, moveSpeed: 0.9, caught: 0.3,  back: [2.5, 6], look: [2, 4], hide: 3.5, call: false }
+};
+const DEBUG = new URLSearchParams(location.search).has('debug');   // アドレスの後ろに ?debug を つけると、判定の数字を 画面に出す
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const video = document.getElementById('cam');
+const $ = id => document.getElementById(id);
+let W = 0, H = 0;
+function resize(){
+  const d = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * d; cv.height = H * d;
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+}
+addEventListener('resize', resize); resize();
+
+// phase：ready（ぜんしんが うつるのを 待つ）→ intro（無線）→ back（むこう向き）→ warn（足音が止まる）→ look（こっち向き）
+//        見つかると found（しゃがめ）→ hiding（かくれている）→ retreat（もどされる）→ back。ゴールで clear
+const S = {
+  mode: null, diff: 'easy', phase: 'title', t: 0, now: 0, elapsed: 0,
+  prog: 0, scroll: 0, sus: 0, found: 0, streak: 0, half: false, idle: 0, loudHint: false,
+  body: false, full: false, crouch: false, crouchA: 0, move: 0, padCrouch: false,
+  stepAt: -9, stepSide: 0, loudAt: -9, guardStepT: 0, guardFoot: 0,
+  lines: [], caption: null, fx: [], dbg: '', retreatMsg: ''
+};
+const body = { unit: 0, thigh: 0 };
+const gait = { f: 0, base: 0, up: false, side: 0 };
+const track = {};   // 関節ごとの 前の位置（動きの速さを 出すため）
+window.__game = { S, body, gait };
+
+const rand = ([a, b]) => a + Math.random() * (b - a);
+const running = () => ['back', 'warn', 'look', 'found', 'hiding', 'retreat'].includes(S.phase);
+function setPhase(p, t = 0){ S.phase = p; S.t = t; }
+
+// ---------- 音 ----------
+let ac = null, master = null, noiseBuf = null;
+function tone(freq, dur, type = 'sine', vol = 0.12, slide = 0, at = 0){
+  if (!ac) return;
+  const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + at;
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t + dur);
+}
+function noise(dur, vol, type = 'bandpass', f1 = 1000, f2 = 0, q = 1, at = 0){
+  if (!ac) return;
+  const n = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(), t = ac.currentTime + at;
+  n.buffer = noiseBuf; n.loop = true;
+  f.type = type; f.Q.value = q; f.frequency.setValueAtTime(f1, t);
+  if (f2) f.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  n.connect(f).connect(g).connect(master); n.start(t, Math.random()); n.stop(t + dur);
+}
+const arp = (fs, step, dur, type, vol) => fs.forEach((f, i) => tone(f, dur, type, vol, 0, i * step));
+const sfx = {
+  tip:    () => { tone(1200, 0.04, 'sine', 0.05, -500); noise(0.03, 0.05, 'highpass', 4000); },          // そろり
+  loud:   () => { tone(110, 0.16, 'sine', 0.4, -50); noise(0.1, 0.35, 'lowpass', 1200, 300); },           // ドタッ
+  // けいびいんの 足音。これが 止まるのが「ふりむく」あいず なので、はっきり 鳴らす
+  guard:  k => { tone(k ? 150 : 130, 0.09, 'triangle', 0.3, -60); noise(0.04, 0.22, 'bandpass', 2200, 0, 3); },
+  hm:     () => { tone(330, 0.12, 'square', 0.07); tone(440, 0.22, 'square', 0.07, 60, 0.14); },         // ん？
+  turn:   () => noise(0.18, 0.2, 'bandpass', 800, 2400, 2),
+  safe:   () => { tone(660, 0.1, 'sine', 0.06); tone(880, 0.16, 'sine', 0.06, 0, 0.09); },
+  found:  () => { arp([880, 660, 880, 660, 880, 660], 0.13, 0.12, 'square', 0.1); tone(70, 0.8, 'sine', 0.3, -20); },
+  hide:   () => noise(0.25, 0.2, 'lowpass', 1500, 300),
+  phew:   () => arp([523, 440, 392], 0.12, 0.25, 'triangle', 0.07),
+  start:  () => arp([392, 494, 587], 0.1, 0.2, 'triangle', 0.06),
+  clear:  () => arp([523, 659, 784, 1047, 1319], 0.1, 0.3, 'square', 0.06)
+};
+
+// BGM は tools/music.py で作る（そろりそろり sneak ／ ドタバタ chase）。ループの位置は assets/bgm/manifest.json の数字。
+// sneak は 足音が 聞こえるように うっすら 鳴らす
+const BGM = { sneak: { loopStart: 34.28571, loopEnd: 68.57143, vol: 0.2 }, chase: { loopStart: 25.26316, loopEnd: 50.52632, vol: 0.45 } };
+const bgmBuf = {};
+let bgmCur = null, bgmWant = null;
+function loadBgm(){
+  for (const k in BGM) fetch(`assets/bgm/${k}.mp3`).then(r => r.arrayBuffer()).then(b => ac.decodeAudioData(b))
+    .then(buf => { bgmBuf[k] = buf; if (bgmWant === k && !bgmCur) bgm(k); }).catch(() => {});
+}
+function bgm(name){
+  bgmWant = name;
+  if (!ac || (bgmCur && bgmCur.name === name)) return;
+  if (bgmCur){ const c = bgmCur; c.g.gain.setTargetAtTime(0, ac.currentTime, 0.1); c.src.stop(ac.currentTime + 0.6); bgmCur = null; }
+  const buf = bgmBuf[name]; if (!name || !buf) return;
+  const src = ac.createBufferSource(), g = ac.createGain(), m = BGM[name];
+  src.buffer = buf; src.loop = true; src.loopStart = m.loopStart; src.loopEnd = Math.min(m.loopEnd, buf.duration - 0.05);
+  g.gain.value = m.vol; src.connect(g).connect(ac.destination); src.start();
+  bgmCur = { name, src, g };
+}
+
+// ---------- 無線の声 ----------
+// who：tsugumi（相棒）／ guard（けいびいん）。話している とちゅうは、同じか もっと 大事な ことだけ わりこむ。
+const WHO = { tsugumi: { name: 'ツグミ', rate: 1.1, pitch: 1.3 }, guard: { name: 'けいびいん', rate: 0.9, pitch: 0.4 } };
+const VOICE = { until: 0, pri: 0 };
+function say(text, pri = 1, who = 'tsugumi'){
+  if (S.now < VOICE.until && pri < VOICE.pri) return false;
+  const w = WHO[who], len = 0.5 + text.length * 0.15;
+  if (window.speechSynthesis){
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ja-JP'; u.rate = w.rate; u.pitch = w.pitch;
+      speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+  VOICE.pri = pri; VOICE.until = S.now + len;
+  S.caption = { who: w.name, text, until: S.now + len + 1.2 };
+  return true;
+}
+
+// ---------- カメラ・姿勢 ----------
+let pose = null, lastVT = -1, lastPoseT = 0;
+const JOINTS = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+function onPose(lm, dt){
+  const vw = video.videoWidth || 640, vh = video.videoHeight || 480, d = Math.max(dt, 0.001);
+  const P = i => ({ x: (1 - lm[i].x) * vw, y: lm[i].y * vh, v: lm[i].visibility ?? 1 });
+  const ls = P(11), rs = P(12);
+  S.body = ls.v > 0.5 && rs.v > 0.5;
+  if (!S.body){ clearPose(); return; }
+  const unit = Math.max(20, Math.hypot(ls.x - rs.x, ls.y - rs.y));
+  body.unit = body.unit ? body.unit + (unit - body.unit) * 0.3 : unit;
+  const u = body.unit, lh = P(23), rh = P(24), lk = P(25), rk = P(26), la = P(27), ra = P(28);
+  S.full = lk.v > 0.5 && rk.v > 0.5;
+
+  // 動きの速さ：関節ごとの速さの うち 2番目に 大きいもの。1か所だけなら 半分に 見る（ふるえを 動きと まちがえないため）
+  const sp = [];
+  for (const i of JOINTS){
+    const p = P(i), q = track[i];
+    if (p.v < 0.5){ delete track[i]; continue; }
+    if (!q){ track[i] = { x: p.x, y: p.y }; continue; }
+    const nx = q.x + (p.x - q.x) * 0.6, ny = q.y + (p.y - q.y) * 0.6;
+    sp.push(Math.hypot(nx - q.x, ny - q.y) / d / u);
+    q.x = nx; q.y = ny;
+  }
+  sp.sort((a, b) => b - a);
+  S.move += (Math.max(sp[1] || 0, (sp[0] || 0) * 0.5) - S.move) * 0.5;
+
+  // 足ぶみ：左右の ひざ・足首の 高さの差
+  let f = 0, n = 0;
+  if (S.full){ f += lk.y - rk.y; n++; }
+  if (la.v > 0.5 && ra.v > 0.5){ f += la.y - ra.y; n++; }
+  if (n) feedStep(f / n / u, d);
+
+  // しゃがみ：こしから ひざまでの たての長さが ちぢむ
+  let ratio = 1;
+  if (S.full && lh.v > 0.5 && rh.v > 0.5){
+    const thigh = ((lk.y + rk.y) - (lh.y + rh.y)) / 2 / u;
+    if (!body.thigh) body.thigh = Math.max(0.7, thigh);
+    else if (thigh > body.thigh) body.thigh += (thigh - body.thigh) * 0.2;       // 立っているときの長さを おぼえる
+    else if (!S.crouch) body.thigh = Math.max(0.7, body.thigh + (thigh - body.thigh) * 0.002);
+    ratio = thigh / body.thigh;
+    S.crouch = ratio < (S.crouch ? CROUCH_OUT : CROUCH_IN);
+  } else S.crouch = false;
+  S.dbg = `うごき ${S.move.toFixed(2)}（${DIFF[S.diff].moveSpeed} より上で あやしまれる）　足の差 ${(gait.f - gait.base).toFixed(2)}（${STEP_TH} で 1ぽ）　もも ${ratio.toFixed(2)}（${CROUCH_IN} より下で しゃがみ）　${S.full ? '' : 'ひざが 見えない'}`;
+}
+function clearPose(){
+  S.body = false; S.full = false; S.crouch = false; S.move = 0; gait.up = false;
+  for (const k in track) delete track[k];
+}
+// 足を 上げた しゅんかんを 1ぽと 数える。左右を かえても、同じ足を 上げ下げしても 数える。
+function feedStep(f, dt){
+  gait.f += (f - gait.f) * 0.6;
+  gait.base += (gait.f - gait.base) * Math.min(1, dt / 2);   // 立ち方の かたより（片ひざが 高く うつる 等）を ゆっくり 打ち消す
+  const g = gait.f - gait.base, a = Math.abs(g), sd = Math.sign(g);
+  if (!gait.up){ if (a > STEP_TH){ gait.up = true; gait.side = sd; step(); } }
+  else if (a < STEP_TH * 0.5) gait.up = false;
+  else if (sd !== gait.side && a > STEP_TH){ gait.side = sd; step(); }
+}
+
+// ---------- 進行 ----------
+function step(){
+  const gap = S.now - S.stepAt;
+  if (gap < STEP_MIN_GAP) return;
+  S.stepAt = S.now; S.stepSide ^= 1; S.idle = 0;
+  const D = DIFF[S.diff];
+  if (S.phase === 'back' || S.phase === 'warn'){
+    S.prog++;
+    if (gap < D.loudGap){
+      S.sus = Math.min(LOUD_MAX, S.sus + LOUD_SUS); S.loudAt = S.now; sfx.loud();   // 足音だけでは 見つからない
+      if (!S.loudHint){ S.loudHint = true; say('はやすぎる。そろり そろりだ', 2); }
+    } else sfx.tip();
+  } else if (S.phase === 'look'){
+    S.sus = Math.min(1, S.sus + LOOK_STEP); sfx.loud();
+  }
+}
+function caught(){
+  const D = DIFF[S.diff];
+  S.found++; S.sus = 1; S.streak = 0;
+  setPhase('found', D.hide); sfx.found(); bgm('chase');
+  S.fx.push({ kind: 'flash', col: '255,80,80', t: 0, life: 0.5 });
+  say('みつかった！ しゃがんで かくれろ！', 5);
+}
+function retreat(n, msg){
+  S.prog = Math.max(0, S.prog - n); S.retreatMsg = msg;
+  setPhase('retreat', 2.4);
+}
+function update(dt){
+  S.crouchA += ((S.crouch ? 1 : 0) - S.crouchA) * Math.min(1, dt * 10);
+  S.scroll += (S.prog - S.scroll) * Math.min(1, dt * 6);
+  for (const f of S.fx) f.t += dt;
+  S.fx = S.fx.filter(f => f.t < f.life);
+  if (S.mode === 'nocam'){ S.body = S.full = true; S.crouch = S.padCrouch; S.move = 0; }
+  if (S.lines.length && S.now >= VOICE.until){ const l = S.lines.shift(); say(l[1], 9, l[0]); }
+  const D = DIFF[S.diff];
+
+  if (S.phase === 'ready'){
+    S.t = S.full ? S.t + dt : 0;
+    if (S.t > 1) intro();
+    return;
+  }
+  if (S.phase === 'intro'){
+    if (!S.lines.length && S.now >= VOICE.until + 0.3){ setPhase('back', rand(D.back)); bgm('sneak'); sfx.start(); }
+    return;
+  }
+  if (!running() || !S.body) return;   // 体が うつっていない間は 時間を 止める
+  S.elapsed += dt;
+
+  if (S.phase === 'back'){
+    S.t -= dt; S.idle += dt;
+    S.sus = Math.max(0, S.sus - dt * 0.12);
+    S.guardStepT -= dt;
+    if (S.guardStepT <= 0){ S.guardStepT = GUARD_PACE; S.guardFoot ^= 1; sfx.guard(S.guardFoot); }
+    if (!S.half && S.prog >= D.goal / 2){ S.half = true; say('はんぶん きた。あと すこしだ', 2); }
+    if (S.idle > 7){ S.idle = 0; say('いまだ。そろり そろりと すすめ', 1); }
+    if (S.prog >= D.goal){ clear(); return; }
+    if (S.t <= 0 || S.sus >= TURN_SUS){
+      setPhase('warn', D.warn); sfx.hm();
+      if (D.call) say('とまれ！', 3);
+    }
+  } else if (S.phase === 'warn'){
+    S.t -= dt;
+    if (S.t <= 0){ setPhase('look', rand(D.look)); sfx.turn(); S.lookSus = S.sus; }
+  } else if (S.phase === 'look'){
+    S.t -= dt;
+    if (S.move > D.moveSpeed) S.sus = Math.min(1, S.sus + dt / D.caught);
+    if (S.sus >= 1){ caught(); return; }
+    if (S.t <= 0){
+      // 動かずに やりすごした
+      if (S.sus <= S.lookSus + 0.01 && ++S.streak % 3 === 0) say('いいぞ、その ちょうしだ', 1);
+      S.sus = Math.min(S.sus, 0.3); sfx.safe();
+      setPhase('back', rand(D.back)); S.guardStepT = 0.3; S.idle = 0;
+    }
+  } else if (S.phase === 'found'){
+    S.t -= dt;
+    if (S.crouch){ setPhase('hiding', HIDE_HOLD); sfx.hide(); say('そのまま、うごくな', 4); }
+    else if (S.t <= 0){ say('つかまるぞ！ いったん さがれ！', 5); retreat(BACK_FAIL, 'うしろへ もどされた…'); }
+  } else if (S.phase === 'hiding'){
+    S.t = S.crouch ? S.t - dt : Math.min(HIDE_HOLD, S.t + dt);
+    if (S.t <= 0){ say('…きのせいか', 5, 'guard'); sfx.phew(); retreat(BACK_HIDE, 'ふう… あぶなかった'); }
+  } else if (S.phase === 'retreat'){
+    S.t -= dt;
+    if (S.t <= 0){
+      S.sus = 0; bgm('sneak');
+      setPhase('back', rand(D.back)); S.guardStepT = 0.3; S.idle = 0;
+      say('よし、もういちど そろり そろりだ', 2);
+    }
+  }
+}
+function begin(){
+  Object.assign(S, { elapsed: 0, prog: 0, scroll: 0, sus: 0, found: 0, streak: 0, half: false, idle: 0, loudHint: false,
+    stepAt: -9, loudAt: -9, guardStepT: 0, lines: [], caption: null, fx: [], retreatMsg: '', padCrouch: false });
+  VOICE.until = 0; VOICE.pri = 0;
+  $('title').classList.add('hide'); $('clear').classList.add('hide');
+  $('pad').classList.toggle('show', S.mode === 'nocam');
+  bgm(null);
+  if (S.mode === 'cam'){ setPhase('ready'); say('ぜんしんが うつるように、うしろに さがってね', 1); }
+  else intro();
+}
+function intro(){
+  setPhase('intro');
+  VOICE.until = 0;
+  S.lines = [
+    ['tsugumi', 'こちら あいぼうの ツグミ。ヌパン、きこえるか'],
+    ['tsugumi', 'けいびいんの うしろを、そろり そろりと すすめ'],
+    ['tsugumi', 'あしおとが とまったら、ふりむく あいずだ。ぴたっと とまれ']
+  ];
+}
+function skipIntro(){
+  if (S.phase !== 'intro') return false;
+  S.lines = []; VOICE.until = 0; S.caption = null;
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  return true;
+}
+const mmss = s => `${Math.floor(s / 60)}ふん ${Math.floor(s % 60)}びょう`;
+function clear(){
+  setPhase('clear'); sfx.clear(); bgm(null);
+  say('よくやった、ヌパン。たからの へやは すぐ そこだ', 9);
+  const rank = S.found === 0 ? '🌙 かんぺき！ だれにも 気づかれなかった' : S.found <= 2 ? '⭐ おみごと！' : '💦 ドタバタ どろぼう';
+  const key = 'kaitouNupanBest1_' + S.diff;   // さいこう記録は むずかしさ ごと
+  let best = S.elapsed;
+  try { const b = +localStorage.getItem(key); if (b > 0) best = Math.min(best, b); localStorage.setItem(key, best); } catch (e) {}
+  $('res').innerHTML = `${S.diff === 'hard' ? 'むずかしい' : 'かんたん'}<br>タイム ${mmss(S.elapsed)}<br>見つかった ${S.found}かい<br>${rank}`;
+  $('best').textContent = 'さいこう記録 ' + mmss(best);
+  $('pad').classList.remove('show'); $('clear').classList.remove('hide');
+}
+
+// ---------- 描画 ----------
+function label(str, x, y, size, col, edge = 'rgba(14,18,48,.9)'){
+  ctx.font = `700 ${size}px sans-serif`; ctx.lineWidth = Math.max(4, size / 6); ctx.strokeStyle = edge; ctx.lineJoin = 'round';
+  ctx.strokeText(str, x, y, W - 20); ctx.fillStyle = col; ctx.fillText(str, x, y, W - 20);
+}
+function drawRoom(u, gy, px){
+  const g = ctx.createLinearGradient(0, 0, 0, gy);
+  g.addColorStop(0, '#161c44'); g.addColorStop(1, '#2b3168');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, gy);
+  // かべの まどと 絵が、すすむと うしろへ ながれる
+  const gap = u * 5, sx = S.scroll * px, i0 = Math.floor(sx / gap);
+  for (let i = i0 - 1; i < i0 + Math.ceil(W / gap) + 2; i++){
+    const x = i * gap - sx + u * 2, y = gy - u * 4.2;
+    if (((i % 3) + 3) % 3 === 0){
+      // まど（月あかり）
+      ctx.fillStyle = '#0c1030'; ctx.fillRect(x - u * 0.9, y - u * 0.3, u * 1.8, u * 2.8);
+      ctx.fillStyle = 'rgba(180,205,255,.5)'; ctx.fillRect(x - u * 0.75, y - u * 0.15, u * 1.5, u * 2.5);
+      ctx.fillStyle = '#fff6c8'; ctx.beginPath(); ctx.arc(x + u * 0.25, y + u * 0.5, u * 0.3, 0, 6.28); ctx.fill();
+      ctx.fillStyle = '#0c1030'; ctx.fillRect(x - u * 0.04, y - u * 0.15, u * 0.08, u * 2.5); ctx.fillRect(x - u * 0.75, y + u * 1.05, u * 1.5, u * 0.08);
+      ctx.fillStyle = 'rgba(180,205,255,.08)'; ctx.beginPath(); ctx.moveTo(x - u * 0.75, y + u * 2.35); ctx.lineTo(x + u * 0.75, y + u * 2.35); ctx.lineTo(x + u * 2.2, gy + u * 1.6); ctx.lineTo(x - u * 0.2, gy + u * 1.6); ctx.fill();
+    } else {
+      // がくぶちの 絵
+      const c = ['#c95a6a', '#5aa9c9', '#7bc95a', '#c9a85a', '#9a6ad0'][((i % 5) + 5) % 5];
+      ctx.fillStyle = '#c9a23a'; ctx.fillRect(x - u * 0.8, y, u * 1.6, u * 2);
+      ctx.fillStyle = '#1b1f3a'; ctx.fillRect(x - u * 0.65, y + u * 0.15, u * 1.3, u * 1.7);
+      ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y + u * 0.85, u * 0.38, 0, 6.28); ctx.fill();
+      ctx.fillRect(x - u * 0.45, y + u * 1.25, u * 0.9, u * 0.45);
+    }
+  }
+  // ゆか
+  ctx.fillStyle = '#3b2f52'; ctx.fillRect(0, gy, W, H - gy);
+  ctx.fillStyle = '#54446e'; ctx.fillRect(0, gy, W, u * 0.12);
+  ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 2;
+  const tg = u * 1.6;
+  for (let x = -((sx % tg) + tg) % tg; x < W + tg; x += tg){ ctx.beginPath(); ctx.moveTo(x, gy); ctx.lineTo(x - u * 0.8, H); ctx.stroke(); }
+}
+function drawDoor(x, gy, u){
+  ctx.fillStyle = '#c9a23a'; ctx.fillRect(x - u * 1.0, gy - u * 3.5, u * 2.0, u * 3.5);
+  ctx.fillStyle = '#5a2a3a'; ctx.fillRect(x - u * 0.85, gy - u * 3.35, u * 1.7, u * 3.35);
+  ctx.fillStyle = '#ffe35a'; ctx.beginPath(); ctx.arc(x + u * 0.55, gy - u * 1.6, u * 0.12, 0, 6.28); ctx.fill();
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  label('たからの へや', x, gy - u * 3.9, Math.round(u * 0.42), '#ffe35a');
+}
+function drawThief(x, gy, u){
+  const c = S.crouchA, lift = Math.max(0, Math.min(1, 1 - (S.now - S.stepAt) / 0.25)) * (1 - c);
+  const legH = u * (1.05 - 0.7 * c), hipY = gy - legH, bodyH = u * (1.15 - 0.2 * c), neckY = hipY - bodyH;
+  const dark = '#0c0f22', red = '#d2232a', pants = '#cfcabd', skin = '#f2c9a0';
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x, gy + u * 0.06, u * 0.7, u * 0.12, 0, 0, 6.28); ctx.fill();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  // 足（つま先立ち。1ぽごとに 上がる足が かわる）
+  [[-0.16, 0], [0.18, 1]].forEach(([ox, side]) => {
+    const up = side === S.stepSide ? lift * u * 0.4 : 0, fx = x + ox * u + u * 0.12, fy = gy - up;
+    // ほそ長い足に グレーの ズボン、黒い くつ
+    ctx.strokeStyle = pants; ctx.lineWidth = u * 0.17; ctx.beginPath(); ctx.moveTo(x + ox * u, hipY);
+    ctx.quadraticCurveTo(x + ox * u + u * (0.3 + c * 0.35), (hipY + fy) / 2, fx, fy); ctx.stroke();
+    ctx.strokeStyle = dark; ctx.lineWidth = u * 0.15; ctx.beginPath(); ctx.moveTo(fx - u * 0.02, fy); ctx.lineTo(fx + u * 0.26, fy); ctx.stroke();
+  });
+  // 赤い ジャケット（前かがみ）と すそ
+  ctx.fillStyle = red;
+  ctx.beginPath(); ctx.moveTo(x - u * 0.2, hipY - u * 0.35); ctx.lineTo(x - u * 0.42, hipY + u * 0.12); ctx.lineTo(x + u * 0.05, hipY + u * 0.02); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x + u * 0.1, hipY - bodyH / 2, u * 0.31, bodyH / 2 + u * 0.05, 0.18, 0, 6.28); ctx.fill();
+  // 青い シャツと 黄色い ネクタイ
+  ctx.fillStyle = '#2a4fa8'; ctx.beginPath(); ctx.moveTo(x + u * 0.2, neckY + u * 0.02); ctx.lineTo(x + u * 0.42, neckY + u * 0.12); ctx.lineTo(x + u * 0.36, neckY + u * 0.5); ctx.fill();
+  ctx.strokeStyle = '#f2d21b'; ctx.lineWidth = u * 0.07; ctx.beginPath(); ctx.moveTo(x + u * 0.36, neckY + u * 0.14); ctx.lineTo(x + u * 0.42, neckY + u * 0.62); ctx.stroke();
+  // うで（そろりの手）
+  const hy = neckY + u * (0.45 + Math.sin(S.now * 2) * 0.03);
+  ctx.strokeStyle = '#a81a20'; ctx.lineWidth = u * 0.16; ctx.beginPath(); ctx.moveTo(x + u * 0.15, neckY + u * 0.3); ctx.lineTo(x + u * 0.68, hy); ctx.stroke();
+  ctx.strokeStyle = skin; ctx.lineWidth = u * 0.12; ctx.beginPath(); ctx.moveTo(x + u * 0.7, hy); ctx.lineTo(x + u * 0.8, hy + u * 0.2); ctx.stroke();
+  // 頭：短い黒かみ、長い もみあげ、にやり
+  const hx = x + u * 0.3, hd = neckY - u * 0.25, r = u * 0.36;
+  ctx.fillStyle = skin; ctx.beginPath(); ctx.ellipse(hx, hd, r * 0.85, r, 0, 0, 6.28); ctx.fill();
+  ctx.beginPath(); ctx.arc(hx + r * 0.85, hd + r * 0.08, r * 0.14, 0, 6.28); ctx.fill();   // はな
+  ctx.fillStyle = dark; ctx.beginPath(); ctx.ellipse(hx - r * 0.12, hd - r * 0.22, r * 0.9, r * 0.88, 0, Math.PI * 0.72, Math.PI * 1.93); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(hx - r * 0.35, hd - r * 0.3); ctx.lineTo(hx + r * 0.02, hd - r * 0.3); ctx.lineTo(hx - r * 0.02, hd + r * 0.6); ctx.lineTo(hx - r * 0.25, hd + r * 0.45); ctx.fill();   // もみあげ
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(hx + r * 0.42, hd - r * 0.12, r * 0.2, r * 0.16, 0, 0, 6.28); ctx.fill();
+  ctx.fillStyle = dark; ctx.beginPath(); ctx.arc(hx + r * 0.5, hd - r * 0.12, r * 0.08, 0, 6.28); ctx.fill();
+  ctx.strokeStyle = dark; ctx.lineWidth = r * 0.09; ctx.beginPath(); ctx.arc(hx + r * 0.35, hd + r * 0.3, r * 0.32, Math.PI * 0.1, Math.PI * 0.75); ctx.stroke();
+  // かくれるための うえ木ばち
+  if (c > 0.3 && (S.phase === 'found' || S.phase === 'hiding')){
+    const px = x + u * 0.9, a = Math.min(1, (c - 0.3) * 3);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#2f8a4a'; [[-0.35, -1.5, 0.5], [0.3, -1.6, 0.55], [0, -2.0, 0.6]].forEach(([ox, oy, rr]) => { ctx.beginPath(); ctx.arc(px + ox * u, gy + oy * u, rr * u, 0, 6.28); ctx.fill(); });
+    ctx.fillStyle = '#a8603a'; ctx.beginPath(); ctx.moveTo(px - u * 0.55, gy - u * 1.0); ctx.lineTo(px + u * 0.55, gy - u * 1.0); ctx.lineTo(px + u * 0.4, gy); ctx.lineTo(px - u * 0.4, gy); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+function drawGuard(x, gy, u){
+  const away = S.phase === 'back' || S.phase === 'warn' || S.phase === 'intro' || S.phase === 'ready', dir = away ? 1 : -1;
+  const walk = S.phase === 'back', sw = walk ? Math.sin(S.now * Math.PI / GUARD_PACE) : 0, bob = walk ? Math.abs(sw) * u * 0.05 : 0;
+  // かいちゅうでんとうの 光
+  const hx = x + dir * u * 0.55, hy = gy - u * 1.35 - bob;
+  const sweep = S.phase === 'hiding' ? Math.sin(S.now * 2.5) * u * 0.9 : 0, len = u * 6.5;
+  const lg = ctx.createLinearGradient(hx, 0, hx + dir * len, 0);
+  const hot = S.phase === 'look' || S.phase === 'found' || S.phase === 'hiding';
+  lg.addColorStop(0, `rgba(255,240,170,${hot ? 0.55 : 0.3})`); lg.addColorStop(1, 'rgba(255,240,170,0)');
+  ctx.fillStyle = lg; ctx.beginPath(); ctx.moveTo(hx, hy);
+  ctx.lineTo(hx + dir * len, gy - u * 2.6 + sweep); ctx.lineTo(hx + dir * len, gy + u * 0.5 + sweep); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x, gy + u * 0.06, u * 0.7, u * 0.12, 0, 0, 6.28); ctx.fill();
+  // 足
+  ctx.strokeStyle = '#1d2a5c'; ctx.lineWidth = u * 0.3; ctx.lineCap = 'round';
+  [1, -1].forEach(k => { ctx.beginPath(); ctx.moveTo(x + k * u * 0.15, gy - u * 1.1 - bob); ctx.lineTo(x + k * u * 0.15 + k * sw * u * 0.3, gy - u * 0.05); ctx.stroke(); });
+  // からだ
+  ctx.fillStyle = '#3d63c9'; ctx.beginPath(); ctx.roundRect(x - u * 0.5, gy - u * 2.2 - bob, u * 1.0, u * 1.25, u * 0.22); ctx.fill();
+  ctx.fillStyle = '#1d2a5c'; ctx.fillRect(x - u * 0.5, gy - u * 1.25 - bob, u * 1.0, u * 0.14);
+  ctx.strokeStyle = '#3d63c9'; ctx.lineWidth = u * 0.24; ctx.beginPath(); ctx.moveTo(x + dir * u * 0.2, gy - u * 1.9 - bob); ctx.lineTo(hx, hy); ctx.stroke();
+  ctx.fillStyle = '#d8d8e0'; ctx.fillRect(hx - u * 0.1, hy - u * 0.1, u * 0.26 * dir + u * 0.1, u * 0.2);
+  // 頭
+  const cy = gy - u * 2.6 - bob, r = u * 0.42;
+  ctx.fillStyle = '#f2c9a0'; ctx.beginPath(); ctx.arc(x, cy, r, 0, 6.28); ctx.fill();
+  if (!away){
+    ctx.fillStyle = '#23204a';
+    [-0.35, 0.3].forEach(o => { ctx.beginPath(); ctx.arc(x + o * r - r * 0.15, cy, r * 0.11, 0, 6.28); ctx.fill(); });
+    ctx.fillStyle = '#5a3a2a'; ctx.beginPath(); ctx.ellipse(x - r * 0.18, cy + r * 0.42, r * 0.5, r * 0.14, 0, 0, 6.28); ctx.fill();   // ひげ
+  } else { ctx.fillStyle = '#5a3a2a'; ctx.beginPath(); ctx.arc(x - r * 0.15, cy + r * 0.1, r * 0.9, Math.PI * 0.6, Math.PI * 1.5); ctx.fill(); }
+  ctx.fillStyle = '#1d2a5c'; ctx.beginPath(); ctx.ellipse(x, cy - r * 0.55, r * 1.0, r * 0.5, 0, Math.PI, 0); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x + dir * r * 0.6, cy - r * 0.5, r * 0.75, r * 0.14, 0, 0, 6.28); ctx.fill();
+  ctx.fillStyle = '#ffe35a'; ctx.beginPath(); ctx.arc(x + dir * r * 0.2, cy - r * 0.8, r * 0.14, 0, 6.28); ctx.fill();
+  // 「？」「！」
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (S.phase === 'warn') label('？', x, cy - u * 1.1, Math.round(u * 0.9), '#ffe35a');
+  if (S.phase === 'found') label('！', x, cy - u * 1.1 - Math.abs(Math.sin(S.now * 12)) * u * 0.15, Math.round(u * 1.1), '#ff6a6a');
+  if (S.phase === 'hiding') label('？？', x, cy - u * 1.1, Math.round(u * 0.7), '#ffe35a');
+}
+function draw(){
+  ctx.setTransform(cv.width / W || 1, 0, 0, cv.height / H || 1, 0, 0);
+  const u = Math.min(W / 9, H / 8.5), gy = H * 0.74, px = u * 0.9;   // px＝1ぽで ながれる長さ
+  const D = DIFF[S.diff], tx = W * 0.26, gx = Math.min(W * 0.74, tx + u * 5);
+  drawRoom(u, gy, px);
+  const doorX = gx + (D.goal - S.scroll) * px + u * 1.5;
+  if (doorX < W + u * 2) drawDoor(doorX, gy, u);
+  if (S.phase !== 'clear') drawGuard(gx, gy, u);
+  drawThief(tx, gy, u);
+  for (const f of S.fx) if (f.kind === 'flash'){ ctx.fillStyle = `rgba(${f.col},${(1 - f.t / f.life) * 0.5})`; ctx.fillRect(0, 0, W, H); }
+  if (S.phase === 'look'){ ctx.strokeStyle = 'rgba(255,90,90,.55)'; ctx.lineWidth = 14; ctx.strokeRect(0, 0, W, H); }
+  if (S.phase === 'title' || S.phase === 'clear') return;
+
+  // 上：ゴールまでの 道のりと「けはい」
+  ctx.textBaseline = 'middle';
+  const bx = 44, bw = W - 88, by = 22, pr = Math.min(1, S.scroll / D.goal);
+  ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(bx, by - 5, bw, 10);
+  ctx.fillStyle = '#8ff0ff'; ctx.fillRect(bx, by - 5, bw * pr, 10);
+  ctx.font = '22px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+  ctx.fillText('🚪', W - 22, by); ctx.fillText('🐾', bx + bw * pr, by);
+  const sw = Math.min(240, W * 0.5), sx = (W - sw) / 2, sy = 50;
+  ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(sx, sy, sw, 12);
+  ctx.fillStyle = S.sus > 0.6 ? '#ff6a6a' : S.sus > 0.3 ? '#ffb35a' : '#b6ffb0'; ctx.fillRect(sx, sy, sw * S.sus, 12);
+  ctx.fillStyle = '#fff'; ctx.fillRect(sx + sw * TURN_SUS, sy - 2, 2, 16);
+  ctx.textAlign = 'right'; label('けはい', sx - 8, sy + 6, 15, '#fff');
+  ctx.textAlign = 'left'; label(`見つかった ${S.found}`, sx + sw + 8, sy + 6, 15, '#fff');
+
+  // まん中：いま すること
+  ctx.textAlign = 'center';
+  const cam = S.mode === 'cam';
+  let big = '', col = '#8ff0ff', size = Math.round(u * 0.7);
+  if (cam && !S.body && S.phase !== 'intro'){ big = 'カメラの まえに 立ってね'; col = '#ffd0d0'; }
+  else if (S.phase === 'ready'){ big = S.full ? 'そのまま…' : 'ひざの下まで うつるように さがってね'; size = Math.round(u * 0.5); }
+  else if (S.phase === 'intro'){ big = '📻 ツグミから 無線'; size = Math.round(u * 0.5); }
+  else if (S.phase === 'back'){ big = S.now - S.loudAt < 0.8 ? '足音が 大きい！' : 'そろり そろり…'; col = S.now - S.loudAt < 0.8 ? '#ffb35a' : '#8ff0ff'; }
+  else if (S.phase === 'warn'){ big = '足音が 止まった…'; col = '#ffe35a'; }
+  else if (S.phase === 'look'){ big = 'とまれ！'; col = '#ff6a6a'; size = Math.round(u * 1.2); }
+  else if (S.phase === 'found'){ big = `しゃがんで かくれろ！ ${Math.ceil(S.t)}`; col = '#ff6a6a'; size = Math.round(u * 0.8); }
+  else if (S.phase === 'hiding'){ big = S.crouch ? `そのまま… ${Math.ceil(S.t)}` : 'しゃがんで！'; col = '#ffe35a'; }
+  else if (S.phase === 'retreat'){ big = S.retreatMsg; col = '#cfe0ff'; }
+  if (big) label(big, W / 2, H * 0.2, size, col);
+  if (cam && S.body && !S.full && running()) label('ひざが うつっていません。もう少し さがってね', W / 2, H * 0.2 + size, 16, '#ffd0d0');
+  if (S.phase === 'intro') label('がめんを タップで とばす', W / 2, H * 0.2 + size, 15, '#fff');
+
+  // 左下：カメラの うつり（足まで 入っているかの かくにん用）
+  if (cam && video.readyState >= 2){
+    const vw = video.videoWidth || 640, vh = video.videoHeight || 480, w = Math.min(W * 0.26, 170), h = w * vh / vw, x = 10, y = H - h - 58;
+    ctx.save(); ctx.globalAlpha = 0.9; ctx.translate(x + w, y); ctx.scale(-1, 1); ctx.drawImage(video, 0, 0, w, h); ctx.restore();
+    ctx.strokeStyle = !S.body ? '#ff6a6a' : !S.full ? '#ffb35a' : S.phase === 'look' && S.move > D.moveSpeed ? '#ff6a6a' : '#b6ffb0';
+    ctx.lineWidth = 4; ctx.strokeRect(x, y, w, h);
+  }
+  // 下：無線の ことば
+  if (S.caption && S.now < S.caption.until) label(`📻 ${S.caption.who}「${S.caption.text}」`, W / 2, H - 26, Math.min(20, Math.round(W / 24)), '#fff');
+  if (DEBUG && S.dbg){ ctx.textAlign = 'left'; label(S.dbg, 10, 84, 13, '#fff', '#000'); }
+}
+
+function frame(ts){
+  const now = ts / 1000, dt = Math.max(0, Math.min(0.05, now - S.now || 0));
+  S.now = now;
+  if (W !== innerWidth || H !== innerHeight) resize();
+  if (S.mode === 'cam' && pose && video.readyState >= 2 && video.currentTime !== lastVT){
+    const pdt = lastPoseT ? Math.min(0.2, now - lastPoseT) : 0.033;
+    lastVT = video.currentTime; lastPoseT = now;
+    const res = pose.detectForVideo(video, ts);
+    if (res.landmarks && res.landmarks[0]) onPose(res.landmarks[0], pdt); else clearPose();
+  }
+  update(dt); draw();
+}
+Object.assign(window.__game, { tick: frame, onPose, step, caught, sfx, VOICE, DIFF });   // テスト用：手動で1コマ進める／関節データを直接わたす
+const loop = ts => { frame(ts); requestAnimationFrame(loop); };
+requestAnimationFrame(loop);
+
+// ---------- はじめる ----------
+function ensureAudio(){
+  if (!ac){
+    try {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      master = ac.createDynamicsCompressor(); master.connect(ac.destination);
+      noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+      const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      loadBgm();
+    } catch (e) { ac = null; }
+  }
+  if (ac && ac.state === 'suspended') ac.resume();
+}
+async function startCam(){
+  ensureAudio();
+  const msg = $('msg');
+  if (pose){ S.mode = 'cam'; begin(); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ msg.textContent = 'この ひらきかたでは カメラを つかえません。https か localhost で ひらいてください。'; return; }
+  msg.textContent = 'カメラを じゅんび中…';
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } } }); }
+  catch (e){ msg.textContent = 'カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'; return; }
+  video.srcObject = stream;
+  await video.play();
+  msg.textContent = 'うごきを 見る じゅんび中…（はじめは すこし かかります）';
+  try {
+    const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
+    const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
+    const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
+    try { pose = await make('GPU'); } catch (e){ pose = await make('CPU'); }
+  } catch (e){ msg.textContent = 'うごきを 見る しくみを よみこめませんでした。ネットに つながっているか かくにんしてください。'; return; }
+  msg.textContent = '';
+  S.mode = 'cam'; begin();
+}
+$('bCam').onclick = startCam;
+$('bNoCam').onclick = () => { ensureAudio(); S.mode = 'nocam'; clearPose(); begin(); };
+$('bRetry').onclick = begin;
+function setDiff(k){
+  S.diff = k;
+  $('mEasy').classList.toggle('on', k === 'easy'); $('mHard').classList.toggle('on', k === 'hard');
+  try { localStorage.setItem('kaitouNupanDiff', k); } catch (e) {}
+}
+$('mEasy').onclick = () => setDiff('easy'); $('mHard').onclick = () => setDiff('hard');
+try { if (localStorage.getItem('kaitouNupanDiff') === 'hard') setDiff('hard'); } catch (e) {}
+$('bBack').onclick = () => { $('clear').classList.add('hide'); $('title').classList.remove('hide'); setPhase('title'); };
+
+// ---------- カメラなしの操作 ----------
+// 「そろり」ボタン・スペース＝1ぽ、「しゃがむ」ボタン・↓＝おしている間 しゃがむ
+cv.addEventListener('pointerdown', () => { skipIntro(); });
+$('pStep').addEventListener('pointerdown', e => { e.preventDefault(); if (!skipIntro()) step(); });
+const pc = $('pCrouch');
+pc.addEventListener('pointerdown', e => { e.preventDefault(); S.padCrouch = true; pc.classList.add('on'); });
+['pointerup', 'pointerleave', 'pointercancel'].forEach(n => pc.addEventListener(n, () => { S.padCrouch = false; pc.classList.remove('on'); }));
+addEventListener('keydown', e => {
+  if (S.mode !== 'nocam' || e.repeat) return;
+  if (e.code === 'Space'){ e.preventDefault(); if (!skipIntro()) step(); }
+  if (e.code === 'ArrowDown') S.padCrouch = true;
+});
+addEventListener('keyup', e => { if (e.code === 'ArrowDown') S.padCrouch = false; });
+</script>
+</body>
+</html>

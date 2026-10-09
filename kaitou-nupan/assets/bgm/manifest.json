@@ -1,0 +1,12 @@
+{
+ "sneak": {
+  "loopStart": 34.28571,
+  "loopEnd": 68.57143,
+  "mean": -15.1
+ },
+ "chase": {
+  "loopStart": 25.26316,
+  "loopEnd": 50.52632,
+  "mean": -18.4
+ }
+}
