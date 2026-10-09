@@ -255,7 +255,22 @@ const BGM_LOOP = [58.18182, 116.36364], BGM_VOL = .5;
 const bufs = {};
 let bgmOn = true;
 try { bgmOn = localStorage.getItem('katamuki-bgm') !== 'off'; } catch(e){}
+let keepAlive = null;
 function audioOn(){
+  // iPhone は消音スイッチが入っていると Web の音が出ない。「再生」あつかいに切りかえて鳴るようにする
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch(e){}
+  try {
+    if (!keepAlive) {   // 古い iPhone 向け：無音の音声を流しておくと、消音スイッチでも音が出る
+      const n = 2000, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+      'RIFF'.split('').forEach((ch, i) => b[i] = ch.charCodeAt(0)); v.setUint32(4, 36 + n, true);
+      'WAVEfmt '.split('').forEach((ch, i) => b[8 + i] = ch.charCodeAt(0)); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+      v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+      'data'.split('').forEach((ch, i) => b[36 + i] = ch.charCodeAt(0)); v.setUint32(40, n, true); b.fill(128, 44);
+      keepAlive = new Audio(URL.createObjectURL(new Blob([b], {type:'audio/wav'})));
+      keepAlive.loop = true; keepAlive.setAttribute('playsinline', '');
+    }
+    if (keepAlive.paused) keepAlive.play().catch(()=>{});
+  } catch(e){}
   try {
     if (!ac) {
       ac = new (window.AudioContext || window.webkitAudioContext)();
@@ -271,9 +286,12 @@ function audioOn(){
       ['bgm','goal','miss'].forEach(n => fetch('assets/' + n + '.mp3').then(r => r.arrayBuffer()).then(b => ac.decodeAudioData(b))
         .then(b => { bufs[n] = b; if (n === 'bgm') startBgm(); }).catch(()=>{}));
     }
-    if (ac.state === 'suspended') ac.resume();
+    if (ac.state !== 'running') ac.resume().catch(()=>{});
   } catch(e){}
 }
+// 許可のダイアログや画面の切りかえで音が止まることがあるので、さわるたびに起こし直す
+['pointerdown','touchend','click'].forEach(n => window.addEventListener(n, () => { if (ac) audioOn(); }, true));
+document.addEventListener('visibilitychange', () => { if (ac && !document.hidden) audioOn(); });
 function startBgm(){
   if (!ac || bgmSrc || !bufs.bgm) return;
   bgmSrc = ac.createBufferSource(); bgmSrc.buffer = bufs.bgm; bgmSrc.loop = true;
@@ -514,6 +532,7 @@ function hud(){
   } else if (T.state === 'roll' && !input.gotTilt && T.time < 4) {
     text('かたむきが つかえないときは 画面の左右を おす', W / 2, viewH - 80, 13, '#fff', 'center');
   }
+  if (ac && ac.state !== 'running') text('🔇 音が とまっています。画面を タップ', W / 2, 62, 14, '#ffd84a', 'center');
   if (T.state === 'end') {
     const m = T.endKind === 'goal' ? ['ゴール！', '#ffd84a'] : T.endKind === 'hole' ? ['おとしあな！', '#ff8a8a'] : ['おちた！', '#ff8a8a'];
     text(m[0], W / 2, viewH * .45, 46, m[1], 'center');
@@ -544,7 +563,7 @@ function frame(t){
 resize(); draw();
 requestAnimationFrame(frame);
 
-window.KB = {T, input, update, draw, begin, release, setBallAtStart, START_X_MIN, START_X_MAX};  // 確認用
+window.KB = {audio: () => ({state: ac && ac.state, bgm: !!bgmSrc, loaded: Object.keys(bufs), bgmOn}), T, input, update, draw, begin, release, setBallAtStart, START_X_MIN, START_X_MAX};  // 確認用
 })();
 </script>
 </body>
