@@ -8,10 +8,10 @@
   html,body{margin:0;height:100%;overflow:hidden;background:#1b2550;font-family:"Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif;color:#fff;-webkit-user-select:none;user-select:none;touch-action:none}
   #cam{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
   #cv{position:absolute;inset:0;width:100%;height:100%;display:block}
-  .panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:20px;box-sizing:border-box;background:rgba(20,28,70,.82);text-align:center}
+  .panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;gap:12px;overflow-y:auto;touch-action:pan-y;padding:16px;box-sizing:border-box;background:rgba(20,28,70,.82);text-align:center}
   .panel.hide{display:none}
   h1{margin:0;font-size:clamp(26px,6vw,48px);line-height:1.25;color:#ffe35a;text-shadow:0 3px 0 #b3541e}
-  .how{display:grid;gap:8px;font-size:clamp(14px,3.4vw,19px);text-align:left;background:rgba(255,255,255,.1);border-radius:14px;padding:14px 18px;max-width:520px}
+  .how{display:grid;gap:5px;font-size:clamp(13px,3.1vw,18px);text-align:left;background:rgba(255,255,255,.1);border-radius:14px;padding:14px 18px;max-width:520px}
   .how b{color:#8ff0ff}
   button{font:inherit;font-weight:700;font-size:clamp(16px,4vw,22px);color:#23306b;background:#ffe35a;border:0;border-radius:999px;padding:14px 28px;box-shadow:0 5px 0 #b98a12;cursor:pointer}
   button:active{transform:translateY(3px);box-shadow:0 2px 0 #b98a12}
@@ -19,9 +19,11 @@
   #msg{min-height:1.5em;font-size:clamp(13px,3.2vw,17px);color:#ffd0d0;max-width:520px}
   .note{font-size:clamp(11px,2.8vw,14px);opacity:.8;max-width:520px}
   #score2{font-size:clamp(22px,6vw,40px);font-weight:700}
-  #pad{position:absolute;left:0;right:0;bottom:44px;display:none;justify-content:center;gap:10px;padding:0 10px}
+  .modes{display:flex;gap:10px}
+  .modes button.on{background:#8ff0ff;box-shadow:0 5px 0 #3c9db0}
+  #pad{position:absolute;left:0;right:0;bottom:44px;display:none;justify-content:center;flex-wrap:wrap;gap:8px;padding:0 10px}
   #pad.show{display:flex}
-  #pad button{font-size:clamp(13px,3.4vw,17px);padding:12px 16px;background:#fff;box-shadow:0 4px 0 #8a93b8}
+  #pad button{font-size:clamp(13px,3.4vw,17px);padding:11px 14px;background:#fff;box-shadow:0 4px 0 #8a93b8}
   #pad button.on{background:#8ff0ff}
 </style>
 <script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
@@ -33,21 +35,26 @@
   <button id="pL">← よける</button>
   <button id="pGuard">ガード</button>
   <button id="pR">よける →</button>
+  <button data-spell="thunder">⚡</button>
+  <button data-spell="fire">🔥</button>
+  <button data-spell="ice">❄️</button>
+  <button data-spell="sugoi">🌟</button>
 </div>
 
 <div id="title" class="panel">
   <h1>ふれ！さけべ！<br>からだで勇者！</h1>
   <div class="how">
-    <div>👊 <b>てきに むかって うでを つきだす</b> … パンチ</div>
-    <div>💥 <b>はやく れんぞくで うつ</b> … うった分だけ ぜんぶ 当たる。コンボで 点が ふえる</div>
-    <div>👹 <b>ときどき ボスが 出る</b> … なんども なぐって たおす</div>
-    <div>🔴 <b>赤い玉が とんできたら 頭を よこに うごかす</b> … よける（ガードでは ふせげない）</div>
-    <div>🛡️ <b>むねの前で うでを クロス</b> … ガード（ぶつかってくる てきを はねかえす）</div>
+    <div>👊 <b>てきに むかって うでを つきだす</b> … パンチ。はやく うてば うった分だけ 当たる</div>
+    <div>⚔️ <b>りょう手を にぎり合わせて ふる</b> … 剣。長くて、まとめて 切れる</div>
+    <div>✨ <b>りょう手を ひろげて 頭より上に 上げ、名前を さけぶ</b> … まほう<br>　⚡サンダー　🔥ファイヤー　❄️フリーザー　🌟すげーな すごいです</div>
+    <div>🔴 <b>赤い玉は 頭を よこに うごかして よける</b>（ガードでは ふせげない）</div>
+    <div>🛡️ <b>むねの前で うでを クロス</b> … ガード　　👹 ときどき ボスが 出る</div>
   </div>
+  <div class="modes"><button id="mEasy" class="sub on">かんたん</button><button id="mHard" class="sub">むずかしい</button></div>
   <button id="bCam">カメラで あそぶ</button>
   <button id="bNoCam" class="sub">カメラなしで ためす（マウス・ゆび）</button>
   <div id="msg"></div>
-  <div class="note">カメラは この たんまつの中だけで つかいます。えいぞうは どこにも おくりません。<br>上半身が うつるように、すこし はなれて 立ってください。</div>
+  <div class="note">頭から 足まで <b>ぜんしん</b>が うつるように、はなれて 立ってください。<br>カメラと マイクは この たんまつの中で つかいます。えいぞうは どこにも おくりません。まほうの名前の 聞きとりには、ブラウザの 音声にんしきを つかいます。</div>
 </div>
 
 <div id="over" class="panel hide">
@@ -73,9 +80,20 @@ const WRIST_VIS   = 0.6;   // 手首が これより はっきり 見えてい�
 const PUNCH_REACH = 0.6;   // こぶしの当たりはんい（肩はば単位）
 const FIST_LEN    = 0.3;   // ひじ→手首の長さに対して、手首の先の どこを こぶしとするか
 const COMBO_TIME  = 1.2;   // コンボが つづく秒数
-const MAX_HEART   = 5;
-const SHOT_FIRST  = 12;    // 最初の玉が とんでくる時間（秒）
-const SHOT_TIME   = 1.3;   // 玉が うたれてから とどくまで（秒）。だんだん短くなる
+const SLASH_START = 5.0;   // 剣の先が これより速く動いたら「切り」開始
+const SLASH_KEEP  = 3.0;   // これを下回ったら「切り」終了
+const SWORD_LEN   = 1.6;   // 剣の長さ（肩はば単位）
+const GRIP_IN     = 0.35;  // りょう手首が これより近づいたら 剣を にぎったことにする
+const GRIP_OUT    = 0.6;   // これより はなれたら 剣を しまう
+const CHARGE_TIME = 0.5;   // まほうの構えが完成するまでの秒数
+const SHOUT_MIN   = 0.06;  // 声の大きさの最低ライン（0〜1）
+const NAME_WAIT   = 0.9;   // 声が出てから まほうの名前の聞きとりを待つ秒数
+const SUGOI_CD    = 30;    // 「すげーな すごいです」を もう一度 使えるまで（秒）
+// むずかしさ。speed は てきの速さ、shotGap は 玉の間隔、bossHp は ボスの かたさ の倍率
+const DIFF = {
+  easy: { hearts: 7, spawn0: 1.3, spawnMin: 0.55, max0: 5, maxN: 10, speed: 0.8,  shotFirst: 18, shotGap: 1.4, shotTime: 1.6, bossHp: 0.7 },
+  hard: { hearts: 3, spawn0: 0.8, spawnMin: 0.25, max0: 7, maxN: 18, speed: 1.2,  shotFirst: 8,  shotGap: 0.7, shotTime: 1.1, bossHp: 1.3 }
+};
 const SHOT_HIT    = 0.6;  // 玉の当たりはんい（ねらわれた所から 頭が これだけ はなれれば セーフ）
 const BOSS_FIRST  = 20;    // 最初のボスが出る時間（秒）
 const BOSS_EVERY  = 25;    // ボスを たおしてから 次のボスまで（秒）
@@ -93,19 +111,23 @@ function resize(){
 addEventListener('resize', resize); resize();
 
 const S = {
-  mode: null, running: false, now: 0, elapsed: 0, score: 0, hearts: MAX_HEART,
+  mode: null, diff: 'easy', running: false, now: 0, elapsed: 0, score: 0, hearts: 7,
   enemies: [], fx: [], spawnT: 0, bossT: BOSS_FIRST, bossN: 0,
   body: false, poseGuard: false, padGuard: false, hurt: 0,
   combo: 0, comboT: 0, best: 0,
-  shots: [], shotT: SHOT_FIRST, lean: 0
+  shots: [], shotT: 10, lean: 0, full: true, strokeId: 0,
+  poseMagic: false, charge: 0, hold: 0, magicCD: 0, sugoiCD: 0, burn: 0, burnT: 0,
+  heard: null, shoutT: 0, shoutUntil: 0, listenUntil: 0, ready: false, spellIdx: 0,
+  vol: 0, noise: 0.02, noMic: false
 };
+const sword = { on: false, hold: 0, vis: false, slashing: false, stroke: 0, gx: 0, gy: 0, tx: 0, ty: 0, dx: 0, dy: -1, trail: [] };
 const head = { x: 0, y: 0, tx: 0, ty: 0 };   // よける判定に使う 頭の位置
 const anchor = { x: 0, y: 0, unit: 100, tx: 0, ty: 0, tunit: 100 };
 const hands = [0, 1].map(() => ({ x: 0, y: 0, p: [0, 0, 0], org: [0, 0, 0], vis: false, armed: true, punchAt: -9 }));
-window.__game = { S, hands, anchor, head };
+window.__game = { S, hands, anchor, head, sword };
 
 // ---------- 音 ----------
-let ac = null, master = null, noiseBuf = null;
+let ac = null, master = null, noiseBuf = null, analyser = null, volBuf = null;
 function tone(freq, dur, type = 'sine', vol = 0.12, slide = 0, at = 0){
   if (!ac) return;
   const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + at;
@@ -127,6 +149,16 @@ function noise(dur, vol, type = 'bandpass', f1 = 1000, f2 = 0, q = 1, at = 0){
 const arp = (fs, step, dur, type, vol) => fs.forEach((f, i) => tone(f, dur, type, vol, 0, i * step));
 const sfx = {
   miss:  () => noise(0.1, 0.16, 'bandpass', 700, 2600, 2),
+  swing: () => noise(0.2, 0.26, 'bandpass', 600, 3600, 2.5),
+  cut:   () => { noise(0.09, 0.3, 'highpass', 3500); tone(1500, 0.12, 'triangle', 0.08, -900); },
+  ready: () => { tone(880, 0.1, 'sine', 0.07); tone(1320, 0.18, 'sine', 0.07, 0, 0.08); },
+  denied: () => tone(200, 0.15, 'square', 0.06, -60),
+  thunder: () => { noise(0.08, 0.5, 'highpass', 3000); tone(1800, 0.15, 'sawtooth', 0.1, -1600); noise(0.9, 0.5, 'lowpass', 4000, 150); tone(60, 0.7, 'sine', 0.3, -20, 0.05); },
+  fire:  () => { noise(0.8, 0.35, 'bandpass', 300, 1800, 0.8); tone(120, 0.6, 'sawtooth', 0.06, 200); },
+  burn:  () => noise(0.12, 0.1, 'bandpass', 1200 + Math.random() * 1200, 0, 3),
+  ice:   () => { arp([2093, 1760, 2637, 1568, 3136], 0.06, 0.3, 'sine', 0.06); noise(0.5, 0.1, 'highpass', 6000); },
+  shatter: () => { noise(0.25, 0.25, 'highpass', 5000); arp([2637, 3136, 2093, 3520], 0.035, 0.12, 'sine', 0.06); },
+  sugoi: () => { arp([392, 523, 659, 784, 1047, 1319, 1568], 0.07, 0.35, 'square', 0.06); tone(70, 1.0, 'sine', 0.4, -30, 0.3); noise(1.0, 0.4, 'lowpass', 3000, 120, 1, 0.3); },
   // コンボが のびるほど 音が高くなる
   hit:   () => { const k = Math.min(S.combo, 24); tone(110 + k * 5, 0.12, 'sine', 0.34, -60); noise(0.07, 0.3, 'lowpass', 1500 + k * 80, 300); tone(500 + k * 35, 0.05, 'square', 0.04); },
   pop:   () => { tone(500, 0.08, 'square', 0.07, 600); tone(900, 0.12, 'sine', 0.08, 300, 0.06); noise(0.1, 0.15, 'bandpass', 1800, 600); },
@@ -143,11 +175,48 @@ const sfx = {
   over:  () => arp([523, 440, 349, 262], 0.16, 0.35, 'triangle', 0.08)
 };
 
+// ---------- まほうの名前の聞きとり ----------
+const SPELLS = {
+  thunder: { name: 'サンダー',   icon: '⚡', col: '#ffe35a', al: ['サンダ', 'thunder', 'カミナリ', '雷'] },
+  fire:    { name: 'ファイヤー', icon: '🔥', col: '#ff9a3c', al: ['ファイヤ', 'ファイア', 'フアイヤ', 'ハイヤ', 'fire'] },
+  ice:     { name: 'フリーザー', icon: '❄️', col: '#8ff0ff', al: ['フリザ', 'フリイザ', 'プリザ', 'ブリザ', 'フリズ', 'freez', 'frieza'] },
+  sugoi:   { name: 'すげーな すごいです', icon: '🌟', col: '#ffd0ff', al: ['スゲ', 'スゴイ', 'スゴ', '凄', 'スッゲ'] }
+};
+const ORDER = ['thunder', 'fire', 'ice', 'sugoi'];
+const norm = s => s.toLowerCase().replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60)).replace(/[ー\s・！!。、]/g, '');
+function hear(str){
+  const n = norm(str); let id = null, at = -1;
+  for (const k of ORDER) for (const a of SPELLS[k].al){ const i = n.lastIndexOf(a); if (i > at){ at = i; id = k; } }
+  if (id) S.heard = { id, t: S.now };
+  return id;
+}
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const ANDROID = /Android/i.test(navigator.userAgent);
+let rec = null, recOn = false, recDead = !SR, recAt = -9;
+// 聞きとりは まほうの構えの間だけ 動かす
+function listen(on){
+  if (recDead) return;
+  if (!on){ if (recOn){ try { rec.abort(); } catch (e) {} } return; }
+  if (recOn || S.now - recAt < 0.6) return;
+  if (!rec){
+    rec = new SR(); rec.lang = 'ja-JP'; rec.continuous = !ANDROID; rec.interimResults = true; rec.maxAlternatives = 3;
+    rec.onresult = ev => {
+      let t = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) for (let j = 0; j < ev.results[i].length; j++) t += ev.results[i][j].transcript + ' ';
+      hear(t);
+    };
+    rec.onend = () => { recOn = false; };
+    rec.onerror = ev => { if (['not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported'].includes(ev.error)) recDead = true; };
+  }
+  recAt = S.now;
+  try { rec.start(); recOn = true; } catch (e) {}
+}
+
 // ---------- カメラ・姿勢 ----------
 let pose = null, lastVT = -1, lastPoseT = 0;
 function vidRect(){
   const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
-  const sc = Math.max(W / vw, H / vh), w = vw * sc, h = vh * sc;
+  const sc = Math.min(W / vw, H / vh), w = vw * sc, h = vh * sc;   // 切りとらずに 全体を 入れる（ぜんしんが 切れないように）
   return { x: (W - w) / 2, y: (H - h) / 2, w, h };
 }
 function onPose(lm, dt){
@@ -159,22 +228,40 @@ function onPose(lm, dt){
   const unit = Math.max(40, Math.hypot(ls.x - rs.x, ls.y - rs.y));
   anchor.tx = (ls.x + rs.x) / 2; anchor.ty = (ls.y + rs.y) / 2; anchor.tunit = unit;
   const nose = P(0), seen = nose.v > 0.5;
+  S.full = P(23).v > 0.5 && P(24).v > 0.5;
   head.tx = seen ? nose.x : anchor.tx; head.ty = seen ? nose.y : anchor.ty - unit * 0.9;
   const lw = P(15), rw = P(16);
+  const both = lw.v > 0.4 && rw.v > 0.4, gap = Math.hypot(lw.x - rw.x, lw.y - rw.y);
+  // 手首の左右が肩の左右と入れかわっていたら「クロス」→ ガード
+  const cross = (lw.x - rw.x) * Math.sign(ls.x - rs.x);
+  const top = Math.min(ls.y, rs.y) - unit * 0.3, bot = Math.max(ls.y, rs.y) + unit * 1.3;
+  S.poseGuard = both && cross < -unit * 0.3 && lw.y > top && lw.y < bot && rw.y > top && rw.y < bot;
+  // りょう手を ひろげて 頭より上 → まほうの構え
+  S.poseMagic = both && lw.y < nose.y && rw.y < nose.y && gap > unit * 0.8;
+  // りょう手を にぎり合わせる → 剣。少しの間 つづいたら 出す
+  const grip = both && !S.poseGuard && gap < unit * (sword.on ? GRIP_OUT : GRIP_IN);
+  sword.hold = grip ? sword.hold + dt : 0;
+  sword.on = grip && (sword.on || sword.hold > 0.12);
+  if (sword.on){
+    hands.forEach(h => { h.vis = false; });
+    // 剣は むねから 手に むかう向きに のびる
+    const gx = (lw.x + rw.x) / 2, gy = (lw.y + rw.y) / 2, dx = gx - anchor.tx, dy = gy - (anchor.ty + unit * 0.3), d = Math.hypot(dx, dy);
+    if (d > unit * 0.35){ sword.dx += (dx / d - sword.dx) * 0.5; sword.dy += (dy / d - sword.dy) * 0.5; }
+    const n = Math.hypot(sword.dx, sword.dy) || 1;
+    swordMove(gx, gy, gx + sword.dx / n * unit * SWORD_LEN, gy + sword.dy / n * unit * SWORD_LEN, dt);
+    return;
+  }
+  sword.vis = false; sword.slashing = false;
   [[lw, P(13), ls, 11, 15], [rw, P(14), rs, 12, 16]].forEach(([w, e, sh, si, wi], i) => {
-    if (w.v < WRIST_VIS || e.v < 0.5){ feedHand(i, 0, 0, 0, dt, false); return; }
+    if (S.poseMagic || w.v < WRIST_VIS || e.v < 0.5){ feedHand(i, 0, 0, 0, dt, false); return; }
     // z は小さいほどカメラに近い。肩より どれだけ前に出ているかを 肩はば単位にする
     feedHand(i, w.x + (w.x - e.x) * FIST_LEN, w.y + (w.y - e.y) * FIST_LEN, ((lm[si].z || 0) - (lm[wi].z || 0)) * r.w / unit, dt, true, sh.x, sh.y);
   });
-  // 手首の左右が肩の左右と入れかわっていたら「クロス」
-  const both = lw.v > 0.4 && rw.v > 0.4;
-  const cross = (lw.x - rw.x) * Math.sign(ls.x - rs.x);
-  const top = Math.min(ls.y, rs.y) - unit * 0.3, bot = Math.max(ls.y, rs.y) + unit * 1.3;
-  S.poseGuard = both && cross < -unit * 0.15 && lw.y > top && lw.y < bot && rw.y > top && rw.y < bot;
 }
 function clearPose(){
-  S.body = false; S.poseGuard = false;
+  S.body = false; S.poseGuard = false; S.poseMagic = false;
   hands.forEach(h => { h.vis = false; });
+  Object.assign(sword, { on: false, hold: 0, vis: false, slashing: false });
 }
 // こぶしの位置を「同じがわの肩から見た位置」で追う（体ごと ゆれても パンチにならない）。
 // 肩から はなれる向きに 速く動き、動きだした所から PUNCH_DIST 進んだら 1発。
@@ -197,6 +284,34 @@ function feedHand(i, x, y, fwd, dt, vis, sx = 0, sy = 0){
   }
 }
 
+// 剣：にぎった所(gx,gy)と 剣の先(tx,ty)。先が速く動いている間が「切り」
+function swordMove(gx, gy, tx, ty, dt){
+  const w = sword;
+  if (!w.vis){ Object.assign(w, { gx, gy, tx, ty, vis: true, slashing: false }); return; }
+  const nx = w.tx + (tx - w.tx) * 0.6, ny = w.ty + (ty - w.ty) * 0.6;
+  const sp = Math.hypot(nx - w.tx, ny - w.ty) / Math.max(dt, 0.001) / anchor.unit;
+  if (sp > (w.slashing ? SLASH_KEEP : SLASH_START)){
+    if (!w.slashing){ w.slashing = true; w.stroke = ++S.strokeId; sfx.swing(); }
+    w.trail.push({ x1: w.tx, y1: w.ty, x2: nx, y2: ny, t: S.now });
+    if (S.running) slash(gx, gy, w.tx, w.ty, nx, ny, w.stroke);
+  } else w.slashing = false;
+  w.gx = gx; w.gy = gy; w.tx = nx; w.ty = ny;
+}
+function segDist(px, py, x1, y1, x2, y2){
+  const dx = x2 - x1, dy = y2 - y1, l2 = dx * dx + dy * dy;
+  const t = l2 ? Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / l2)) : 0;
+  return Math.hypot(px - (x1 + dx * t), py - (y1 + dy * t));
+}
+// 剣の先が通った線か、剣そのものに ふれた てきを 切る。1ふりで 同じ てきは 1回だけ
+function slash(gx, gy, x1, y1, x2, y2, stroke){
+  for (const e of S.enemies){
+    if (e.dead || e.lastStroke === stroke) continue;
+    if (Math.min(segDist(e.x, e.y, x1, y1, x2, y2), segDist(e.x, e.y, gx, gy, x2, y2)) > e.r * 1.1) continue;
+    e.lastStroke = stroke; S.combo++; S.comboT = COMBO_TIME; sfx.cut();
+    damage(e, 2);
+  }
+}
+
 // ---------- 敵 ----------
 const TYPES = {
   mochi: { hp: 1, time: 5.5, score: 10, size: 0.55 },
@@ -206,11 +321,11 @@ const TYPES = {
 };
 function spawn(type){
   const T = TYPES[type], t = S.elapsed, n = S.bossN;
-  const hp = T.boss ? T.hp + n * 5 : T.hp;
+  const D = DIFF[S.diff], hp = T.boss ? Math.round((T.hp + n * 5) * D.bossHp) : T.hp;
   S.enemies.push({
-    type, hp, maxHp: hp, z: 1, speed: 1 / (T.time * Math.max(0.55, 1 - t * 0.004)),
-    ux: (Math.random() * 2 - 1) * (T.boss ? 0.8 : 1.9), uy: T.boss ? -0.3 : -1.0 + Math.random() * 1.6,
-    flash: 0, wob: Math.random() * 6.28, x: 0, y: 0, r: 0
+    type, hp, maxHp: hp, z: 1, speed: D.speed / (T.time * Math.max(0.55, 1 - t * 0.004)),
+    ux: (Math.random() * 2 - 1) * (T.boss ? 0.8 : 2.0), uy: T.boss ? -0.3 : -1.2 + Math.random() * (S.mode === 'cam' ? 3.0 : 2.0),   // カメラのときは 頭の上から こしの下まで
+    flash: 0, frozen: 0, lastStroke: 0, wob: Math.random() * 6.28, x: 0, y: 0, r: 0
   });
   if (T.boss){ S.bossN++; sfx.boss(); text(W / 2, H * 0.35, 'ボスだ！', '#ff7a7a', 48, 1.4); } else sfx.spawn();
 }
@@ -235,14 +350,15 @@ function punch(x, y){
   }
   if (!hit) sfx.miss();
 }
-function damage(e){
-  const T = TYPES[e.type];
-  e.hp--; e.flash = 0.12;
+function damage(e, n = 1){
+  if (e.dead) return;
+  const T = TYPES[e.type], ice = e.frozen > 0;
+  e.hp -= n; e.flash = 0.12;
   e.z = Math.min(1, e.z + (T.boss ? 0.02 : 0.1));   // なぐると すこし おしもどす
   S.fx.push({ kind: 'burst', x: e.x, y: e.y, r: e.r, t: 0, life: 0.18 });
   if (e.hp > 0){ T.boss ? sfx.bossHit() : sfx.hit(); return; }
   e.dead = true;
-  const pts = T.score + (T.boss ? (S.bossN - 1) * 100 : 0) + Math.min(S.combo, 50);
+  const pts = (T.score + (T.boss ? (S.bossN - 1) * 100 : 0)) * (ice ? 2 : 1) + Math.min(S.combo, 50);   // こおった てきは 点が 2ばい
   S.score += pts;
   text(e.x, e.y - e.r, '+' + pts, '#ffe35a', T.boss ? 40 : 24, T.boss ? 1.4 : 0.8);
   dots(e.x, e.y, T.boss ? 40 : 10, T.boss ? '#ff7a7a' : e.type === 'mochi' ? '#ffb3d1' : e.type === 'iwa' ? '#c9ccd6' : '#ffffff', T.boss ? 2 : 1);
@@ -250,15 +366,15 @@ function damage(e){
     sfx.boom(); S.bossT = BOSS_EVERY;
     S.fx.push({ kind: 'ring', x: e.x, y: e.y, t: 0, life: 0.6 });
     text(W / 2, H * 0.35, 'ボスを たおした！', '#ffe35a', 40, 1.5);
-  } else sfx.pop();
+  } else ice ? sfx.shatter() : sfx.pop();
 }
 // てきが 頭を ねらって 玉を うつ。ねらう場所は うった しゅんかんの 頭の位置で 固定。
 function shoot(){
-  const c = S.enemies.filter(e => !e.dead && e.z > 0.25);
+  const c = S.enemies.filter(e => !e.dead && e.z > 0.25 && !(e.frozen > 0));
   if (!c.length) return false;
   const e = c[Math.floor(Math.random() * c.length)];
   e.flash = 0.2;
-  S.shots.push({ sx: e.x, sy: e.y, tx: head.x, ty: head.y, t: 0, life: Math.max(0.9, SHOT_TIME - S.elapsed * 0.004) });
+  S.shots.push({ sx: e.x, sy: e.y, tx: head.x, ty: head.y, t: 0, life: Math.max(0.9, DIFF[S.diff].shotTime - S.elapsed * 0.004) });
   sfx.shoot();
   return true;
 }
@@ -270,6 +386,58 @@ function dots(x, y, n, col, pow = 1){
 }
 function text(x, y, str, col, size = 24, life = 0.8){ S.fx.push({ kind: 'text', x, y, str, col, size, t: 0, life }); }
 
+// ---------- まほう ----------
+function nextSpell(){
+  for (let i = 0; i < 4; i++){ const id = ORDER[(S.spellIdx + i) % 4]; if (id !== 'sugoi' || S.sugoiCD <= 0) return id; }
+}
+function cast(id){
+  S.heard = null; S.shoutT = 0;
+  const u = anchor.unit, top = anchor.y - u * 1.6;
+  if (id === 'sugoi' && S.sugoiCD > 0){
+    text(anchor.x, top, `すごいのは あと ${Math.ceil(S.sugoiCD)}びょう`, '#ffd0d0');
+    sfx.denied(); S.charge = 0; S.magicCD = 0.8; return;
+  }
+  S.charge = 0; S.hold = 0; S.magicCD = 2.5; S.listenUntil = 0;
+  S.spellIdx = (ORDER.indexOf(id) + 1) % 4;
+  const sp = SPELLS[id];
+  text(anchor.x, top, sp.icon + sp.name + '！', sp.col, id === 'sugoi' ? 40 : 32, id === 'sugoi' ? 1.6 : 1.0);
+  if (id === 'thunder'){
+    // ぜんぶの てきに かみなり
+    sfx.thunder();
+    S.fx.push({ kind: 'flash', col: '255,255,220', t: 0, life: 0.25 });
+    S.enemies.forEach(e => {
+      if (e.dead) return;
+      const pts = [], x = e.x + (Math.random() - 0.5) * u;
+      for (let i = 0; i <= 6; i++) pts.push([i === 6 ? e.x : x + (Math.random() - 0.5) * u * 0.6, e.y * i / 6]);
+      S.fx.push({ kind: 'bolt', pts, t: 0, life: 0.35 });
+      damage(e, 3);
+    });
+  } else if (id === 'fire'){
+    // ほのおの かべ：しばらくの間、近づいた てきが もえる
+    sfx.fire(); S.burn = 6; S.burnT = 0.4;
+    S.fx.push({ kind: 'ring', x: anchor.x, y: anchor.y, col: '255,154,60', t: 0, life: 0.6 });
+    S.enemies.forEach(e => { if (!e.dead){ dots(e.x, e.y, 5, '#ff9a3c', 0.6); damage(e, 1); } });
+  } else if (id === 'ice'){
+    // ぜんぶ こおらせる：止まる・玉を うてない・たおすと 点が 2ばい
+    sfx.ice();
+    S.fx.push({ kind: 'flash', col: '170,235,255', t: 0, life: 0.4 });
+    S.enemies.forEach(e => { if (!e.dead){ e.frozen = 5; dots(e.x, e.y, 6, '#d6f6ff', 0.5); } });
+  } else {
+    // すげーな すごいです：ぜんぶに 大ダメージ、玉も 消える、ハートが 1つ もどる
+    sfx.sugoi(); S.sugoiCD = SUGOI_CD;
+    S.fx.push({ kind: 'flash', col: '255,240,170', t: 0, life: 0.6 });
+    S.fx.push({ kind: 'ring', x: anchor.x, y: anchor.y, col: '255,208,255', t: 0, life: 0.8 });
+    S.shots.forEach(b => dots(b.tx, b.ty, 8, '#ffd0ff')); S.shots = [];
+    S.enemies.forEach(e => { if (!e.dead){ dots(e.x, e.y, 8, '#fff2b0', 1.4); damage(e, 6); } });
+    if (S.hearts < DIFF[S.diff].hearts){ S.hearts++; text(anchor.x, anchor.y - u * 0.9, '❤️+1', '#ffd0d0'); }
+  }
+}
+function shouting(){
+  if (S.mode === 'cam' && S.noMic) return S.hold > 1.0;       // マイクなし：構えを1秒つづける
+  if (S.mode === 'cam') return S.vol > Math.max(SHOUT_MIN, S.noise * 4);
+  return S.now < S.shoutUntil;
+}
+
 // ---------- 進行 ----------
 function update(dt){
   const k = Math.min(1, dt * 8);
@@ -279,6 +447,15 @@ function update(dt){
   if (S.mode !== 'cam' || !S.body){ head.tx = anchor.x + (S.mode === 'nocam' ? S.lean : 0) * anchor.unit * 1.3; head.ty = anchor.y - anchor.unit * 0.9; }
   const hk = Math.min(1, dt * 14);
   head.x += (head.tx - head.x) * hk; head.y += (head.ty - head.y) * hk;
+  if (analyser){
+    analyser.getFloatTimeDomainData(volBuf);
+    let q = 0; for (let i = 0; i < volBuf.length; i++) q += volBuf[i] * volBuf[i];
+    S.vol = Math.sqrt(q / volBuf.length);
+    if (S.vol < S.noise * 2) S.noise += (S.vol - S.noise) * 0.02;
+  }
+  S.magicCD -= dt; S.sugoiCD -= dt;
+  S.charge = S.poseMagic && S.magicCD <= 0 ? Math.min(1, S.charge + dt / CHARGE_TIME) : Math.max(0, S.charge - dt * 2.5);
+  sword.trail = sword.trail.filter(t => S.now - t.t < 0.25);
   S.hurt = Math.max(0, S.hurt - dt);
   for (const f of S.fx){ f.t += dt; if (f.kind === 'dot'){ f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 400 * dt; } }
   S.fx = S.fx.filter(f => f.t < f.life);
@@ -287,14 +464,37 @@ function update(dt){
   S.elapsed += dt;
   S.comboT -= dt;
   if (S.comboT <= 0){ S.best = Math.max(S.best, S.combo); S.combo = 0; }
+  // まほう：名前が聞こえたら その まほう。声だけなら 少し待って「おまかせ」（じゅんばんに 出る）
+  if (S.mode === 'cam' && !S.noMic && S.poseMagic && S.magicCD <= 0.4) S.listenUntil = S.now + 0.8;
+  listen(S.now < S.listenUntil);
+  if (S.mode === 'nocam'){ if (S.heard && S.now - S.heard.t < 0.3 && S.magicCD <= 0) cast(S.heard.id); }
+  else if (S.charge >= 1){
+    if (!S.ready){ S.ready = true; sfx.ready(); }
+    S.hold += dt;
+    if (S.heard && S.now - S.heard.t < 1.5) cast(S.heard.id);
+    else {
+      if (!S.shoutT && shouting()) S.shoutT = S.now;
+      if (S.shoutT && (!recOn || S.now - S.shoutT > NAME_WAIT)) cast(nextSpell());
+    }
+  } else { S.hold = 0; S.shoutT = 0; S.ready = false; }
+  if (S.burn > 0){
+    S.burn -= dt; S.burnT -= dt;
+    if (S.burnT <= 0){
+      S.burnT = 0.4; let any = false;
+      for (const e of S.enemies) if (!e.dead && e.z < 0.5){ any = true; dots(e.x, e.y, 4, '#ff9a3c', 0.6); damage(e, 1); }
+      if (any) sfx.burn();
+    }
+  }
+  const D = DIFF[S.diff];
   // 時間がたつほど、出るのが早くなり、同時に出る数も ふえる
   const boss = S.enemies.some(e => TYPES[e.type].boss);
   if (!boss){ S.bossT -= dt; if (S.bossT <= 0) spawn('boss'); }
   S.spawnT -= dt;
-  const maxN = Math.min(12, 4 + Math.floor(S.elapsed / 8));
-  if (S.spawnT <= 0 && S.enemies.length < maxN){ spawnSmall(); S.spawnT = Math.max(0.5, 1.6 - S.elapsed * 0.02) * (boss ? 1.4 : 1); }
+  const maxN = Math.min(D.maxN, D.max0 + Math.floor(S.elapsed / 6));
+  if (S.spawnT <= 0 && S.enemies.length < maxN){ spawnSmall(); S.spawnT = Math.max(D.spawnMin, D.spawn0 - S.elapsed * 0.02) * (boss ? 1.3 : 1); }
   for (const e of S.enemies){
-    e.z -= e.speed * dt; e.flash = Math.max(0, e.flash - dt); place(e);
+    if (e.frozen > 0) e.frozen -= dt; else e.z -= e.speed * dt;
+    e.flash = Math.max(0, e.flash - dt); place(e);
     if (!e.warned && e.z < 0.3){ e.warned = true; sfx.warn(); }
     if (e.z > 0 || e.dead) continue;
     const big = TYPES[e.type].boss;
@@ -310,7 +510,7 @@ function update(dt){
   if (!S.running) return;
   // 玉：体が うつっていない間は うたない
   S.shotT -= dt;
-  if (S.shotT <= 0 && (S.mode !== 'cam' || S.body)) S.shotT = shoot() ? Math.max(2.2, 5 - S.elapsed * 0.03) * (boss ? 0.6 : 1) : 0.5;
+  if (S.shotT <= 0 && (S.mode !== 'cam' || S.body)) S.shotT = shoot() ? Math.max(2.2, 5 - S.elapsed * 0.03) * D.shotGap * (boss ? 0.6 : 1) : 0.5;
   for (const s of S.shots){
     s.t += dt;
     if (s.t < s.life) continue;
@@ -323,16 +523,19 @@ function update(dt){
   S.shots = S.shots.filter(s => !s.done);
 }
 function begin(){
-  Object.assign(S, { running: true, elapsed: 0, score: 0, hearts: MAX_HEART, enemies: [], fx: [], spawnT: 1.0, bossT: BOSS_FIRST, bossN: 0, hurt: 0, combo: 0, comboT: 0, best: 0, shots: [], shotT: SHOT_FIRST, lean: 0 });
+  const D = DIFF[S.diff];
+  Object.assign(S, { running: true, elapsed: 0, score: 0, hearts: D.hearts, enemies: [], fx: [], spawnT: 1.0, bossT: BOSS_FIRST, bossN: 0, hurt: 0, combo: 0, comboT: 0, best: 0, shots: [], shotT: D.shotFirst, lean: 0,
+    charge: 0, hold: 0, magicCD: 0, sugoiCD: 0, burn: 0, burnT: 0, heard: null, shoutT: 0, listenUntil: 0, ready: false, spellIdx: 0 });
   $('title').classList.add('hide'); $('over').classList.add('hide');
   $('pad').classList.toggle('show', S.mode === 'nocam');
   sfx.start();
 }
 function gameOver(){
-  S.running = false; S.enemies = []; S.shots = []; sfx.over();
+  S.running = false; S.enemies = []; S.shots = []; S.burn = 0; S.charge = 0; listen(false); sfx.over();
   let best = S.score;
-  try { best = Math.max(S.score, +localStorage.getItem('karadaYushaBest') || 0); localStorage.setItem('karadaYushaBest', best); } catch (e) {}
-  $('score2').textContent = 'スコア ' + S.score;
+  const key = 'karadaYushaBest_' + S.diff;   // さいこう点は むずかしさ ごと
+  try { best = Math.max(S.score, +localStorage.getItem(key) || 0); localStorage.setItem(key, best); } catch (e) {}
+  $('score2').textContent = (S.diff === 'hard' ? 'むずかしい' : 'かんたん') + '　スコア ' + S.score;
   $('best').textContent = `さいこう ${best}　／　さいだいコンボ ${Math.max(S.best, S.combo)}`;
   $('pad').classList.remove('show'); $('over').classList.remove('hide');
 }
@@ -351,7 +554,7 @@ function drawEnemy(e){
     ctx.fillStyle = '#ff5a5a'; ctx.fillRect(x - bw / 2, by, bw * e.hp / e.maxHp, 10);
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(x - bw / 2, by, bw, 10);
   }
-  const sq = 1 + Math.sin(S.now * 5 + e.wob) * 0.05;
+  const sq = e.frozen > 0 ? 1 : 1 + Math.sin(S.now * 5 + e.wob) * 0.05;
   ctx.translate(x + (e.flash > 0 ? (Math.random() - 0.5) * r * 0.15 : 0), y); ctx.scale(1 / sq, sq);
   if (e.type === 'mochi'){
     ctx.fillStyle = '#ffb3d1'; ctx.beginPath(); ctx.ellipse(0, r * 0.1, r, r * 0.85, 0, 0, 6.28); ctx.fill();
@@ -381,21 +584,35 @@ function drawEnemy(e){
   ctx.beginPath();
   if (big) ctx.arc(0, r * 0.42, r * 0.2, Math.PI + 0.3, -0.3); else ctx.arc(0, r * 0.12, r * 0.16, 0.2, Math.PI - 0.2);
   ctx.stroke();
+  if (e.frozen > 0){
+    // こおり。とける直前は ちかちかする
+    ctx.globalAlpha = e.frozen < 1 && Math.sin(S.now * 30) > 0 ? 0.25 : 0.55; ctx.fillStyle = '#9fe6ff'; ctx.beginPath(); ctx.arc(0, 0, r * 1.1, 0, 6.28); ctx.fill();
+    ctx.globalAlpha = 1; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, r * 1.1, 0, 6.28); ctx.stroke();
+  }
   if (e.flash > 0){ ctx.globalAlpha = 0.7; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, r * 1.05, 0, 6.28); ctx.fill(); }
   ctx.restore();
 }
 function draw(){
+  const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#2b3a8c'); bg.addColorStop(1, '#6a4fa3');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
   if (S.mode === 'cam' && video.readyState >= 2){
     const r = vidRect();
     ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1); ctx.drawImage(video, W - r.x - r.w, r.y, r.w, r.h); ctx.restore();
     ctx.fillStyle = 'rgba(24,34,90,.45)'; ctx.fillRect(0, 0, W, H);
-  } else {
-    const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#2b3a8c'); g.addColorStop(1, '#6a4fa3');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  const u = anchor.unit;
+  if (S.burn > 0){
+    // ほのおの かべ
+    const al = Math.min(1, S.burn);
+    for (let i = 0; i < 26; i++){
+      const a = i / 26 * 6.28, fx0 = anchor.x + Math.cos(a) * u * 2.2, fy0 = anchor.y + u * 0.6 + Math.sin(a) * u * 1.6;
+      const h = u * (0.55 + 0.25 * Math.sin(S.now * 11 + i * 2.3)), w = u * 0.24;
+      ctx.fillStyle = `rgba(255,${120 + (i % 3) * 40},40,${0.75 * al})`;
+      ctx.beginPath(); ctx.moveTo(fx0 - w, fy0); ctx.quadraticCurveTo(fx0 + Math.sin(S.now * 7 + i) * w, fy0 - h * 0.6, fx0, fy0 - h); ctx.quadraticCurveTo(fx0 + w * 0.6, fy0 - h * 0.4, fx0 + w, fy0); ctx.fill();
+    }
   }
   [...S.enemies].sort((a, b) => b.z - a.z).forEach(drawEnemy);
 
-  const u = anchor.unit;
   // カメラなしのときは 頭の位置が わかるように 顔を かく。カメラのときは 玉が 来ている間だけ 頭に 輪を 出す
   if (S.mode === 'nocam'){
     ctx.fillStyle = '#ffe0b0'; ctx.beginPath(); ctx.arc(head.x, head.y, u * 0.32, 0, 6.28); ctx.fill();
@@ -419,6 +636,26 @@ function draw(){
     if (!h.vis) continue;
     ctx.globalAlpha = 0.85; ctx.font = `${Math.round(u * 0.5)}px sans-serif`; ctx.fillText('👊', h.x, h.y); ctx.globalAlpha = 1;
   }
+  // 剣と 切りあと
+  ctx.lineCap = 'round';
+  for (const t of sword.trail){
+    const a = 1 - (S.now - t.t) / 0.25;
+    ctx.strokeStyle = `rgba(190,245,255,${a})`; ctx.lineWidth = 16 * a + 2;
+    ctx.beginPath(); ctx.moveTo(t.x1, t.y1); ctx.lineTo(t.x2, t.y2); ctx.stroke();
+  }
+  if (S.mode === 'cam' && sword.vis){
+    ctx.strokeStyle = sword.slashing ? '#ffffff' : 'rgba(200,235,255,.9)'; ctx.lineWidth = sword.slashing ? 11 : 8;
+    ctx.beginPath(); ctx.moveTo(sword.gx, sword.gy); ctx.lineTo(sword.tx, sword.ty); ctx.stroke();
+    ctx.strokeStyle = '#ffe35a'; ctx.lineWidth = 8;   // つば
+    const n = Math.hypot(sword.tx - sword.gx, sword.ty - sword.gy) || 1, px = -(sword.ty - sword.gy) / n * u * 0.22, py = (sword.tx - sword.gx) / n * u * 0.22;
+    ctx.beginPath(); ctx.moveTo(sword.gx - px, sword.gy - py); ctx.lineTo(sword.gx + px, sword.gy + py); ctx.stroke();
+  }
+  if (S.charge > 0){
+    // まほうの ため。たまると つぎの「おまかせ」の絵が 出る
+    ctx.strokeStyle = `rgba(143,240,255,${0.4 + S.charge * 0.6})`; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(anchor.x, anchor.y - u * 1.7, u * 0.5 * S.charge, 0, 6.28); ctx.stroke();
+    if (S.charge >= 1){ ctx.font = `${Math.round(u * 0.5)}px sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText(SPELLS[nextSpell()].icon, anchor.x, anchor.y - u * 1.7); }
+  }
   if (S.poseGuard){
     ctx.strokeStyle = 'rgba(182,255,176,.9)'; ctx.lineWidth = 8;
     ctx.beginPath(); ctx.arc(anchor.x, anchor.y + u * 0.4, u * 1.3, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
@@ -436,7 +673,12 @@ function draw(){
       for (let i = 0; i < 8; i++){ const an = i / 8 * 6.28, r1 = f.r * (0.6 + f.t / f.life), r2 = r1 + f.r * 0.5; ctx.moveTo(f.x + Math.cos(an) * r1, f.y + Math.sin(an) * r1); ctx.lineTo(f.x + Math.cos(an) * r2, f.y + Math.sin(an) * r2); }
       ctx.stroke();
     }
-    else if (f.kind === 'ring'){ ctx.strokeStyle = `rgba(255,227,90,${a})`; ctx.lineWidth = 16 * a + 2; ctx.beginPath(); ctx.arc(f.x, f.y, (f.t / f.life) * Math.hypot(W, H), 0, 6.28); ctx.stroke(); }
+    else if (f.kind === 'flash'){ ctx.fillStyle = `rgba(${f.col},${a * 0.6})`; ctx.fillRect(0, 0, W, H); }
+    else if (f.kind === 'bolt'){
+      ctx.lineJoin = 'round';
+      [['255,227,90', 12], ['255,255,255', 4]].forEach(([c, w]) => { ctx.strokeStyle = `rgba(${c},${a})`; ctx.lineWidth = w; ctx.beginPath(); f.pts.forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)); ctx.stroke(); });
+    }
+    else if (f.kind === 'ring'){ ctx.strokeStyle = `rgba(${f.col || '255,227,90'},${a})`; ctx.lineWidth = 16 * a + 2; ctx.beginPath(); ctx.arc(f.x, f.y, (f.t / f.life) * Math.hypot(W, H), 0, 6.28); ctx.stroke(); }
     else { ctx.font = `700 ${f.size}px sans-serif`; ctx.globalAlpha = a; ctx.lineWidth = 4; ctx.strokeStyle = '#23306b'; ctx.strokeText(f.str, f.x, f.y - f.t * 40); ctx.fillStyle = f.col; ctx.fillText(f.str, f.x, f.y - f.t * 40); ctx.globalAlpha = 1; }
   }
   if (S.hurt > 0){ ctx.fillStyle = `rgba(255,150,150,${S.hurt})`; ctx.fillRect(0, 0, W, H); }
@@ -451,18 +693,30 @@ function draw(){
     // コンボ数。当たった しゅんかんに 少し大きくなる
     const pop = 1 + Math.max(0, S.comboT - (COMBO_TIME - 0.12)) * 3;
     ctx.font = `700 ${Math.round(44 * pop)}px sans-serif`; ctx.lineWidth = 6; ctx.strokeStyle = '#b3541e'; ctx.fillStyle = '#ffe35a';
-    ctx.strokeText(S.combo + ' HIT', W / 2, 84); ctx.fillText(S.combo + ' HIT', W / 2, 84);
+    ctx.strokeText(S.combo + ' HIT', W / 2, 112); ctx.fillText(S.combo + ' HIT', W / 2, 112);
   }
   const cam = S.mode === 'cam';
+  // まほうの ためぐあいと、声の大きさ
+  const bw = Math.min(260, W * 0.5), bx = (W - bw) / 2;
+  ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(bx, 50, bw, 12);
+  ctx.fillStyle = S.charge >= 1 ? '#ffe35a' : '#8ff0ff'; ctx.fillRect(bx, 50, bw * (cam ? S.charge : S.magicCD > 0 ? 1 - S.magicCD / 2.5 : 1), 12);
+  if (cam && analyser && S.charge > 0){
+    const th = Math.max(SHOUT_MIN, S.noise * 4);
+    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(bx, 66, bw, 6);
+    ctx.fillStyle = '#b6ffb0'; ctx.fillRect(bx, 66, bw * Math.min(1, S.vol / (th * 1.5)), 6);
+    ctx.fillStyle = '#fff'; ctx.fillRect(bx + bw / 1.5, 64, 2, 10);
+  }
   const tips = cam
-    ? ['てきに むかって うでを つきだす → パンチ', 'はやく れんぞくで うつと コンボ！', '赤い玉は 頭を よこに うごかして よける', 'むねの前で うでを クロス → ガード']
-    : ['タップ → パンチ', 'はやく れんだすると コンボ！', '赤い玉は ← → で よける', 'ガードを おしっぱなし → ガード'];
-  let hint = tips[Math.floor(S.now / 3.5) % tips.length];
-  if (cam && !S.body) hint = 'からだが うつっていません。すこし はなれてください';
-  else if (S.shots.length) hint = cam ? '赤い玉だ！ 頭を よこに よけろ！' : '赤い玉だ！ ← → で よけろ！';
-  else if (S.enemies.some(e => TYPES[e.type].boss)) hint = 'ボスだ！ れんぞくパンチ！';
+    ? ['うでを つきだす → パンチ', 'りょう手を にぎり合わせて ふる → 剣', 'りょう手を ひろげて 上げ、名前を さけぶ → まほう', '赤い玉は 頭を よこに うごかして よける', 'むねの前で うでを クロス → ガード']
+    : ['タップ → パンチ', 'なぞる → 剣', '⚡🔥❄️🌟 の ボタン → まほう', '赤い玉は ← → で よける', 'ガードを おしっぱなし → ガード'];
+  let hint = [tips[Math.floor(S.now / 3.5) % tips.length]];
+  if (cam && !S.body) hint = ['からだが うつっていません。はなれて ぜんしんを うつしてください'];
+  else if (cam && S.charge >= 1) hint = S.noMic ? ['そのまま キープ！'] : ['いまだ！ まほうの 名前を さけべ！', 'サンダー / ファイヤー / フリーザー / すげーな すごいです'];
+  else if (S.shots.length) hint = [cam ? '赤い玉だ！ 頭を よこに よけろ！' : '赤い玉だ！ ← → で よけろ！'];
+  else if (S.enemies.some(e => TYPES[e.type].boss)) hint = ['ボスだ！ パンチ・剣・まほうで たおせ！'];
+  else if (cam && !S.full) hint = ['ぜんしんが うつるように、もう少し はなれてください'];
   ctx.font = '700 18px sans-serif'; ctx.fillStyle = '#fff'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(20,28,70,.8)';
-  ctx.strokeText(hint, W / 2, H - 22, W - 20); ctx.fillText(hint, W / 2, H - 22, W - 20);
+  hint.forEach((str, i) => { const y = H - 22 - (hint.length - 1 - i) * 24; ctx.strokeText(str, W / 2, y, W - 20); ctx.fillText(str, W / 2, y, W - 20); });
 }
 
 function frame(ts){
@@ -477,7 +731,7 @@ function frame(ts){
   }
   update(dt); draw();
 }
-Object.assign(window.__game, { tick: frame, onPose, punch, spawn, shoot, sfx });   // テスト用：手動で1コマ進める／関節データを直接わたす
+Object.assign(window.__game, { tick: frame, onPose, punch, spawn, shoot, cast, hear, sfx });   // テスト用：手動で1コマ進める／関節データを直接わたす
 const loop = ts => { frame(ts); requestAnimationFrame(loop); };
 requestAnimationFrame(loop);
 
@@ -499,11 +753,21 @@ async function startCam(){
   if (pose){ S.mode = 'cam'; begin(); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ msg.textContent = 'この ひらきかたでは カメラを つかえません。https か localhost で ひらいてください。'; return; }
   msg.textContent = 'カメラを じゅんび中…';
+  const vopt = { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } };
   let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } } }); }
-  catch (e){ msg.textContent = 'カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'; return; }
-  video.srcObject = stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: vopt, audio: { echoCancellation: true, noiseSuppression: true } }); }
+  catch (e){
+    // マイクが だめでも カメラだけで あそべる（まほうは 構えを つづけると 出る）
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: vopt }); S.noMic = true; }
+    catch (e2){ msg.textContent = 'カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'; return; }
+  }
+  video.srcObject = new MediaStream(stream.getVideoTracks());
   await video.play();
+  const at = stream.getAudioTracks();
+  if (at.length && ac){
+    analyser = ac.createAnalyser(); analyser.fftSize = 1024; volBuf = new Float32Array(analyser.fftSize);
+    ac.createMediaStreamSource(new MediaStream(at)).connect(analyser);
+  } else S.noMic = true;
   msg.textContent = 'うごきを 見る じゅんび中…（はじめは すこし かかります）';
   try {
     const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
@@ -517,10 +781,29 @@ async function startCam(){
 $('bCam').onclick = startCam;
 $('bNoCam').onclick = () => { ensureAudio(); S.mode = 'nocam'; clearPose(); begin(); };
 $('bRetry').onclick = begin;
+function setDiff(k){
+  S.diff = k;
+  $('mEasy').classList.toggle('on', k === 'easy'); $('mHard').classList.toggle('on', k === 'hard');
+  try { localStorage.setItem('karadaYushaDiff', k); } catch (e) {}
+}
+$('mEasy').onclick = () => setDiff('easy'); $('mHard').onclick = () => setDiff('hard');
+try { if (localStorage.getItem('karadaYushaDiff') === 'hard') setDiff('hard'); } catch (e) {}
 $('bBack').onclick = () => { $('over').classList.add('hide'); $('title').classList.remove('hide'); };
 
 // ---------- カメラなしの操作 ----------
-cv.addEventListener('pointerdown', e => { if (S.mode === 'nocam') punch(e.clientX, e.clientY); });
+// タップ＝パンチ、なぞる＝剣
+let ptT = 0, ptOn = false;
+cv.addEventListener('pointerdown', e => {
+  if (S.mode !== 'nocam') return;
+  punch(e.clientX, e.clientY);
+  ptOn = true; ptT = e.timeStamp; sword.vis = false; swordMove(e.clientX, e.clientY, e.clientX, e.clientY, 0.016);
+});
+cv.addEventListener('pointermove', e => {
+  if (S.mode !== 'nocam' || !ptOn) return;
+  swordMove(e.clientX, e.clientY, e.clientX, e.clientY, Math.max(0.004, (e.timeStamp - ptT) / 1000)); ptT = e.timeStamp;
+});
+['pointerup', 'pointercancel'].forEach(n => cv.addEventListener(n, () => { ptOn = false; sword.vis = false; sword.slashing = false; }));
+document.querySelectorAll('#pad [data-spell]').forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); S.heard = { id: b.dataset.spell, t: S.now }; }));
 function holdBtn(id, on, off){
   const b = $(id);
   b.addEventListener('pointerdown', e => { e.preventDefault(); on(); b.classList.add('on'); });
@@ -531,7 +814,11 @@ holdBtn('pL', () => { S.lean = -1; }, () => { if (S.lean < 0) S.lean = 0; });
 holdBtn('pR', () => { S.lean = 1; }, () => { if (S.lean > 0) S.lean = 0; });
 const KEYS = { KeyG: v => { S.padGuard = v; }, ArrowLeft: v => { S.lean = v ? -1 : S.lean < 0 ? 0 : S.lean; }, ArrowRight: v => { S.lean = v ? 1 : S.lean > 0 ? 0 : S.lean; } };
 KEYS.KeyA = KEYS.ArrowLeft; KEYS.KeyD = KEYS.ArrowRight;
-addEventListener('keydown', e => { if (S.mode === 'nocam' && KEYS[e.code]) KEYS[e.code](true); });
+addEventListener('keydown', e => {
+  if (S.mode !== 'nocam') return;
+  if (KEYS[e.code]) KEYS[e.code](true);
+  const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code); if (k >= 0) S.heard = { id: ORDER[k], t: S.now };
+});
 addEventListener('keyup', e => { if (KEYS[e.code]) KEYS[e.code](false); });
 </script>
 </body>
