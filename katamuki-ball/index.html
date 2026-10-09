@@ -5,30 +5,36 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>かたむきボール</title>
 <style>
-  html,body{margin:0;height:100%;background:#06323a;overflow:hidden;touch-action:none;
+  html,body{margin:0;height:100%;background:#2b1508;overflow:hidden;touch-action:none;
     font-family:"Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic",sans-serif;
     -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
   #wrap{position:fixed;inset:0;display:flex;justify-content:center}
   #c{height:100%;width:min(100vw,62vh);display:block}
   .panel{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-    background:rgba(3,30,36,.84);color:#fff;text-align:center;padding:20px;box-sizing:border-box}
+    background:radial-gradient(ellipse at 50% 40%,rgba(22,80,40,.93),rgba(6,30,16,.96));color:#fff;text-align:center;padding:20px;box-sizing:border-box}
   .panel.hide{display:none}
-  h1{font-size:40px;margin:0 0 6px;color:#ffd84a;letter-spacing:2px}
+  h1{font-size:40px;margin:0 0 10px;color:#ffd84a;letter-spacing:2px;text-shadow:0 3px 0 #7a3b12,2px 0 0 #7a3b12,-2px 0 0 #7a3b12,0 -2px 0 #7a3b12,0 6px 10px rgba(0,0,0,.5)}
+  .leafs{font-size:34px;margin:0 0 4px;letter-spacing:6px}
   .sub{font-size:16px;line-height:1.8;margin:0 0 18px;color:#e3f6f4}
   .big{font-size:24px;line-height:1.8;margin:0 0 18px}
   button{display:block;width:min(78vw,300px);margin:7px auto;padding:15px 10px;font-size:21px;font-weight:bold;
     font-family:inherit;color:#1b1b1b;background:#ffd84a;border:0;border-radius:14px;box-shadow:0 5px 0 #b98f00}
   button:active{transform:translateY(3px);box-shadow:0 2px 0 #b98f00}
+  #bgmBtn{position:fixed;right:10px;bottom:10px;width:44px;height:44px;margin:0;padding:0;font-size:20px;border-radius:50%;background:#e9c98a;box-shadow:0 3px 0 #7a4a1e;z-index:5}
+  #bgmBtn.off{opacity:.45}
 </style>
 <script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
 <body>
 <div id="wrap"><canvas id="c"></canvas></div>
 
 <div id="title" class="panel">
+  <div class="leafs">🌴🌿🌺🌿🌴</div>
   <h1>かたむきボール</h1>
   <p class="sub">スマホを たてに もって ハンドルのように<br>左右に かたむけると 台が かたむくよ<br>ボールは 4こ。1こでも おくの ゴールに<br>入れば せいこう！</p>
   <button id="startBtn">はじめる</button>
 </div>
+
+<button id="bgmBtn" aria-label="おんがく">♪</button>
 
 <div id="result" class="panel hide">
   <h1 id="resTitle"></h1>
@@ -96,10 +102,102 @@ function resize(){
   cv.height = Math.max(1, Math.round(r.height * dpr));
   viewH = W * cv.height / cv.width;
   S = Math.min((W - 16) / (BX1 - BX0), (viewH - 164) / (BY1 - BY0));
-  ox = (W - (BX1 - BX0) * S) / 2; oy = 42 + ((viewH - 164) - (BY1 - BY0) * S) / 2;
+  ox = (W - (BX1 - BX0) * S) / 2; oy = 46 + ((viewH - 164) - (BY1 - BY0) * S) / 2;
+  buildBg();
 }
 window.addEventListener('resize', resize);
 const sx = x => ox + (x - BX0) * S, sy = y => oy + (BY1 - y) * S;
+
+// ---- 背景（ジャングルの屋台）。動かないので、画面の大きさが変わったときだけ描く ----
+const bgCv = document.createElement('canvas');
+function buildBg(){
+  bgCv.width = cv.width; bgCv.height = cv.height;
+  const c = bgCv.getContext('2d'), sc = cv.width / W;
+  c.setTransform(sc, 0, 0, sc, 0, 0);
+  let seed = 20261009; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+  const leaf = (x, y, len, wid, ang, col, rib) => {
+    c.save(); c.translate(x, y); c.rotate(ang);
+    c.beginPath(); c.moveTo(0, 0); c.quadraticCurveTo(len * .45, -wid, len, 0); c.quadraticCurveTo(len * .45, wid, 0, 0);
+    c.fillStyle = col; c.fill();
+    c.strokeStyle = rib; c.lineWidth = 1; c.beginPath(); c.moveTo(0, 0); c.lineTo(len * .9, 0); c.stroke();
+    c.restore();
+  };
+  const fan = (x, y, n, len, a0, a1, cols, rib) => {
+    for (let i = 0; i < n; i++) { const a = a0 + (a1 - a0) * (i + .5) / n + (rnd() - .5) * .15; leaf(x, y, len * (.8 + rnd() * .35), len * .2, a, cols[i % cols.length], rib); }
+  };
+  const flower = (x, y, r, col) => {
+    c.fillStyle = col; for (let i = 0; i < 5; i++) { c.beginPath(); c.arc(x + Math.cos(i * 1.257) * r * .6, y + Math.sin(i * 1.257) * r * .6, r * .55, 0, 6.3); c.fill(); }
+    c.fillStyle = '#ffe066'; c.beginPath(); c.arc(x, y, r * .35, 0, 6.3); c.fill();
+  };
+  const plank = (x, y, w, h) => {
+    const g = c.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, '#9a5a2a'); g.addColorStop(.12, '#8a4d22'); g.addColorStop(1, '#5e3215');
+    c.fillStyle = g; c.fillRect(x, y, w, h);
+    c.strokeStyle = 'rgba(40,18,5,.35)'; c.lineWidth = 1;
+    for (let i = 0; i < h / 7; i++) { const yy = y + 4 + i * 7 + rnd() * 3; c.beginPath(); c.moveTo(x, yy); c.bezierCurveTo(x + w * .3, yy + rnd() * 4 - 2, x + w * .7, yy + rnd() * 4 - 2, x + w, yy); c.stroke(); }
+  };
+
+  // 水（板のまわりは、水の絵がかかれた箱になっている）
+  const wg = c.createLinearGradient(0, 0, 0, viewH);
+  wg.addColorStop(0, '#1b93ad'); wg.addColorStop(.6, '#1a86a3'); wg.addColorStop(1, '#136b85');
+  c.fillStyle = wg; c.fillRect(0, 0, W, viewH);
+  c.strokeStyle = 'rgba(255,255,255,.16)'; c.lineWidth = 1.5; c.lineCap = 'round';
+  for (let i = 0; i < 46; i++) { const x = rnd() * W, y = 50 + rnd() * (viewH - 120), w = 14 + rnd() * 22; c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + w / 2, y - 4, x + w, y); c.stroke(); }
+  // ハスの葉と花
+  [[-25,16,7],[26,12,6],[-27,44,5],[27,62,7],[-26,98,7],[25,112,6],[-22,124,5],[21,26,4]].forEach((l, i) => {
+    const x = sx(l[0]), y = sy(l[1]), r = l[2] * S * .9;
+    c.fillStyle = 'rgba(0,40,50,.25)'; c.beginPath(); c.arc(x + 2, y + 3, r, 0, 6.3); c.fill();
+    c.fillStyle = i % 2 ? '#3fa45a' : '#2f9150'; c.beginPath(); c.moveTo(x, y); c.arc(x, y, r, .4 + i, 6.0 + i); c.fill();
+    c.strokeStyle = 'rgba(20,90,50,.6)'; c.lineWidth = 1;
+    for (let k = 0; k < 5; k++) { const a = 1 + i + k * 1.1; c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * r * .85, y + Math.sin(a) * r * .85); c.stroke(); }
+    if (i % 3 === 0) flower(x + r * .5, y - r * .4, r * .38, '#ff9ec4');
+  });
+
+  // 左右の木のわくと、そこから出る葉・つる
+  const fw = 13;
+  [[0, 1], [W - fw, -1]].forEach(([x, dir]) => {
+    const g = c.createLinearGradient(x, 0, x + fw, 0);
+    g.addColorStop(0, dir > 0 ? '#5a2f13' : '#8a4d22'); g.addColorStop(.5, '#9a5a2a'); g.addColorStop(1, dir > 0 ? '#8a4d22' : '#5a2f13');
+    c.fillStyle = g; c.fillRect(x, 0, fw, viewH);
+    c.fillStyle = '#7a4420';
+    const ex = dir > 0 ? fw : W - fw;
+    for (let y = 20; y < viewH; y += 34) { c.beginPath(); c.arc(ex, y, 7, 0, 6.3); c.fill(); }
+    c.strokeStyle = '#2c6b2f'; c.lineWidth = 2.5; c.beginPath(); c.moveTo(ex + dir * 4, 40);
+    for (let y = 40; y < viewH - 70; y += 40) c.quadraticCurveTo(ex + dir * (14 + rnd() * 8), y + 20, ex + dir * 4, y + 40);
+    c.stroke();
+    for (let y = 70; y < viewH - 90; y += 46 + rnd() * 20) {
+      const a0 = dir > 0 ? -.9 : Math.PI - .9, a1 = dir > 0 ? .9 : Math.PI + .9;
+      fan(ex + dir * 2, y, 4, 24 + rnd() * 10, a0, a1, ['#2f8f3e', '#3fa64a', '#27793a'], 'rgba(15,70,30,.6)');
+      if (rnd() < .45) flower(ex + dir * (10 + rnd() * 8), y + 8, 5, rnd() < .5 ? '#ff6b5a' : '#ffb347');
+    }
+  });
+
+  // 奥のジャングル（ゴールのまわり）
+  const gx = sx((GOAL_X0 + GOAL_X1) / 2), gy = sy(GOAL_Y), top = 40, bottom = gy + 4 * S;
+  const jg = c.createLinearGradient(0, top, 0, bottom);
+  jg.addColorStop(0, '#0d3b22'); jg.addColorStop(1, '#17592f');
+  c.fillStyle = jg; c.fillRect(0, top, W, Math.max(10, bottom - top - 2 * S));
+  c.fillStyle = '#6a3d1c'; c.fillRect(gx - 62, top, 15, bottom - top - 2 * S); c.fillRect(gx + 50, top, 12, bottom - top - 2 * S);   // 木の幹
+  for (let x = -10; x < W + 20; x += 26) fan(x + rnd() * 10, top - 4 + rnd() * 8, 6, 34 + rnd() * 12, .25, Math.PI - .25, ['#1e6f33', '#195f2c', '#237a38'], 'rgba(8,50,22,.6)');
+  for (let x = 6; x < W; x += 30) {
+    if (Math.abs(x - gx) < 26) continue;
+    fan(x + rnd() * 8, bottom - 2 * S + rnd() * 4, 6, 26 + rnd() * 12, -Math.PI + .3, -.3, ['#2f9a44', '#3bb04f', '#278a3c'], 'rgba(15,80,35,.6)');
+  }
+  // ゴールの入り口（暗いあな）と、それをかこむ葉
+  c.fillStyle = '#03120a'; c.beginPath(); c.ellipse(gx, gy - 3 * S, (GOAL_X1 - GOAL_X0) * .62 * S, 6.5 * S, 0, 0, 6.3); c.fill();
+  fan(gx - (GOAL_X1 - GOAL_X0) * .7 * S, gy + S, 5, 30, -Math.PI * .5 - .5, -Math.PI * .5 + .7, ['#3bb04f', '#2f9a44', '#48c25c'], 'rgba(15,80,35,.6)');
+  fan(gx + (GOAL_X1 - GOAL_X0) * .7 * S, gy + S, 5, 30, -Math.PI * .5 - .7, -Math.PI * .5 + .5, ['#3bb04f', '#2f9a44', '#48c25c'], 'rgba(15,80,35,.6)');
+  flower(gx - 44, top + 16, 6, '#ff6b5a'); flower(gx + 40, top + 22, 5, '#ffb347'); flower(40, top + 26, 5, '#ff8fb8'); flower(W - 44, top + 14, 6, '#ff6b5a');
+
+  // 上の看板と、手前のカウンター（木）
+  plank(0, 0, W, 40);
+  c.fillStyle = 'rgba(0,0,0,.25)'; c.fillRect(0, 40, W, 3);
+  plank(0, viewH - 70, W, 70);
+  c.fillStyle = '#b8743a'; c.fillRect(0, viewH - 70, W, 3);
+  c.fillStyle = 'rgba(0,0,0,.3)'; c.fillRect(0, viewH - 74, W, 4);
+  c.fillStyle = '#d9a441';
+  [[10, 8], [W - 10, 8], [10, 32], [W - 10, 32], [12, viewH - 58], [W - 12, viewH - 58], [12, viewH - 12], [W - 12, viewH - 12]].forEach(p => { c.beginPath(); c.arc(p[0], p[1], 2.5, 0, 6.3); c.fill(); });
+}
 
 // ---- 入力 ----
 const input = {tilt:0, gotTilt:false, key:0, touch:0, hold:0, override:null};
@@ -151,9 +249,52 @@ cv.addEventListener('pointermove', e => { if (placing && T.state === 'ready') pl
 }));
 
 // ---- 音 ----
-let ac = null;
+// BGM とジングルは tools/music.py で作ったオリジナル曲。効果音はその場で合成する
+let ac = null, master = null, bgmGain = null, bgmSrc = null, rollGain = null, rollFilt = null, noiseBuf = null;
+const BGM_LOOP = [58.18182, 116.36364], BGM_VOL = .5;
+const bufs = {};
+let bgmOn = true;
+try { bgmOn = localStorage.getItem('katamuki-bgm') !== 'off'; } catch(e){}
 function audioOn(){
-  try { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch(e){}
+  try {
+    if (!ac) {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      master = ac.createGain(); master.gain.value = .9; master.connect(ac.destination);
+      bgmGain = ac.createGain(); bgmGain.gain.value = bgmOn ? BGM_VOL : 0; bgmGain.connect(master);
+      noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+      const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      // ボールが板の上を転がる音（速さで大きさと高さが変わる）
+      const src = ac.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+      rollFilt = ac.createBiquadFilter(); rollFilt.type = 'bandpass'; rollFilt.frequency.value = 300; rollFilt.Q.value = .8;
+      rollGain = ac.createGain(); rollGain.gain.value = 0;
+      src.connect(rollFilt); rollFilt.connect(rollGain); rollGain.connect(master); src.start();
+      ['bgm','goal','miss'].forEach(n => fetch('assets/' + n + '.mp3').then(r => r.arrayBuffer()).then(b => ac.decodeAudioData(b))
+        .then(b => { bufs[n] = b; if (n === 'bgm') startBgm(); }).catch(()=>{}));
+    }
+    if (ac.state === 'suspended') ac.resume();
+  } catch(e){}
+}
+function startBgm(){
+  if (!ac || bgmSrc || !bufs.bgm) return;
+  bgmSrc = ac.createBufferSource(); bgmSrc.buffer = bufs.bgm; bgmSrc.loop = true;
+  bgmSrc.loopStart = BGM_LOOP[0]; bgmSrc.loopEnd = BGM_LOOP[1];
+  bgmSrc.connect(bgmGain); bgmSrc.start();
+}
+function setBgm(on){
+  bgmOn = on;
+  try { localStorage.setItem('katamuki-bgm', on ? 'on' : 'off'); } catch(e){}
+  if (bgmGain) bgmGain.gain.setTargetAtTime(on ? BGM_VOL : 0, ac.currentTime, .1);
+}
+function playBuf(n, vol){
+  if (!ac || !bufs[n]) return false;
+  const s = ac.createBufferSource(), g = ac.createGain();
+  s.buffer = bufs[n]; g.gain.value = vol; s.connect(g); g.connect(master); s.start();
+  if (bgmOn) {   // ジングルの間は BGM を小さくする
+    const t = ac.currentTime;
+    bgmGain.gain.setTargetAtTime(BGM_VOL * .25, t, .05);
+    bgmGain.gain.setTargetAtTime(BGM_VOL, t + Math.max(.3, bufs[n].duration - .8), .4);
+  }
+  return true;
 }
 function tone(f0, f1, dur, type, vol, delay){
   if (!ac) return;
@@ -164,15 +305,34 @@ function tone(f0, f1, dur, type, vol, delay){
   o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
   g.gain.setValueAtTime(vol || .2, t);
   g.gain.exponentialRampToValueAtTime(.001, t + dur);
-  o.connect(g); g.connect(ac.destination);
+  o.connect(g); g.connect(master);
   o.start(t); o.stop(t + dur + .02);
 }
+function noise(dur, type, f0, f1, vol, delay){
+  if (!ac) return;
+  const t = ac.currentTime + (delay || 0);
+  const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  s.buffer = noiseBuf; f.type = type; f.Q.value = 1;
+  f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  s.connect(f); f.connect(g); g.connect(master);
+  s.start(t, Math.random()); s.stop(t + dur + .02);
+}
 const sfx = {
-  go(){ tone(700, 900, .12, 'triangle', .15); },
-  fall(){ tone(420, 60, .6, 'sawtooth', .14); },
-  hole(){ tone(300, 50, .5, 'square', .12); },
-  rail(v){ tone(900, 500, .05, 'triangle', clamp(v / 120, .03, .25)); },
-  goal(){ [523,659,784,1047].forEach((f,i) => tone(f, f, .25, 'triangle', .22, i*.13)); },
+  go(){ tone(520, 780, .09, 'sine', .12); },
+  // 木のガードに当たる「コツッ」
+  rail(v){ const k = clamp(v / 90, .1, 1); tone(820, 520, .045, 'triangle', .22 * k); tone(300, 180, .07, 'sine', .22 * k); noise(.03, 'highpass', 2500, 2500, .12 * k); },
+  // 穴に「ポコン」と落ちて、下で「ゴトン」
+  hole(){ tone(420, 110, .22, 'sine', .3); tone(150, 70, .25, 'sine', .3, .24); noise(.08, 'lowpass', 400, 200, .2, .24); playBuf('miss', .7); },
+  // 板のふちから水へ「ポチャン」
+  fall(){ noise(.45, 'bandpass', 900, 2600, .3, .12); tone(240, 520, .16, 'sine', .16, .16); playBuf('miss', .7); },
+  goal(){ if (!playBuf('goal', .9)) [523,659,784,1047].forEach((f,i) => tone(f, f, .25, 'triangle', .22, i*.13)); },
+  roll(speed){
+    if (!rollGain) return;
+    const t = ac.currentTime;
+    rollGain.gain.setTargetAtTime(clamp(speed / 90, 0, 1) * .14, t, .05);
+    rollFilt.frequency.setTargetAtTime(220 + speed * 6, t, .05);
+  },
 };
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -233,6 +393,7 @@ function step(dt){
 
 function update(dt){
   T.railCool -= dt;
+  sfx.roll(T.state === 'roll' ? Math.hypot(T.vx, T.vy) : 0);
   T.roll += (targetRoll(dt) - T.roll) * Math.min(1, dt / ROLL_LAG);
   if (T.state === 'ready') {
     if (input.key && !placing) { T.startX = clamp(T.startX + input.key * 8 * dt, START_X_MIN, START_X_MAX); setBallAtStart(); }
@@ -257,25 +418,11 @@ function path(pts){ ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(sx(p[0
 function draw(){
   const sc = cv.width / W;
   ctx.setTransform(sc, 0, 0, sc, 0, 0);
-  // まわりの水とハスの葉
-  const bg = ctx.createLinearGradient(0, 0, 0, viewH);
-  bg.addColorStop(0, '#0b5a63'); bg.addColorStop(1, '#083c47');
-  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, viewH);
-  ctx.fillStyle = 'rgba(70,160,90,.45)';
-  [[-22,18,7],[25,10,6],[-24,92,7],[26,56,6],[22,116,6],[-22,128,5]].forEach(l => {
-    ctx.beginPath(); ctx.moveTo(sx(l[0]), sy(l[1])); ctx.arc(sx(l[0]), sy(l[1]), l[2] * S, .5, 6.0); ctx.fill();
-  });
-
-  // ゴールのしげみ
-  const gx = sx((GOAL_X0 + GOAL_X1) / 2), gy = sy(GOAL_Y + 6);
-  ctx.fillStyle = '#1f7a3a';
-  for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.arc(gx + i * 3.4 * S, gy - Math.abs(i) * .4 * S, 4.6 * S, 0, 6.3); ctx.fill(); }
-  ctx.fillStyle = '#2fa04c';
-  for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.arc(gx + i * 3.4 * S + S, gy - 1.6 * S, 3 * S, 0, 6.3); ctx.fill(); }
-  ctx.fillStyle = '#04140b'; ctx.beginPath(); ctx.ellipse(gx, gy + 1.5 * S, (GOAL_X1 - GOAL_X0) / 2 * S, 4.5 * S, 0, 0, 6.3); ctx.fill();
+  ctx.drawImage(bgCv, 0, 0, W, viewH);
 
   // 台（かげ→板→さざ波）
-  ctx.save(); ctx.translate(4, 6); path(POLY); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill(); ctx.restore();
+  ctx.save(); ctx.translate(5, 9); path(POLY); ctx.fillStyle = 'rgba(0,25,35,.4)'; ctx.fill(); ctx.restore();
+  ctx.save(); ctx.translate(0, 3); path(POLY); ctx.fillStyle = '#1f6f8c'; ctx.fill(); ctx.restore();   // 板の厚み
   path(POLY);
   const bd = ctx.createLinearGradient(0, sy(0), 0, sy(125));
   bd.addColorStop(0, '#49b5d6'); bd.addColorStop(1, '#6fd0e4');
@@ -339,30 +486,33 @@ function text(str, x, y, size, col, align){
 function hud(){
   if (T.state === 'title') return;
   // のこりのボール
-  text('ボール', 10, 28, 16, '#fff');
+  text('ボール', 20, 27, 16, '#fff');
   for (let i = 0; i < BALLS; i++) {
-    const x = 78 + i * 24, done = i < T.results.length;
+    const x = 88 + i * 24, done = i < T.results.length;
     ctx.fillStyle = done ? (T.results[i] ? '#ffd84a' : 'rgba(255,255,255,.25)') : BALL_COLORS[i];
-    ctx.beginPath(); ctx.arc(x, 22, 8, 0, 6.3); ctx.fill();
-    if (i === T.ball && !done) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, 22, 10.5, 0, 6.3); ctx.stroke(); }
-    if (done && T.results[i]) text('★', x, 27, 13, '#b45b00', 'center');
+    ctx.beginPath(); ctx.arc(x, 21, 8, 0, 6.3); ctx.fill();
+    if (i === T.ball && !done) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(x, 21, 10.5, 0, 6.3); ctx.stroke(); }
+    if (done && T.results[i]) text('★', x, 26, 13, '#b45b00', 'center');
   }
-  text('せいこう ' + T.wins, W - 10, 28, 16, '#ffd84a', 'right');
+  text('せいこう ' + T.wins, W - 20, 27, 16, '#ffd84a', 'right');
 
   // ハンドル（台の傾きを見せる）
-  const hx = W / 2, hy = viewH - 38, hr = 24;
+  const hx = W / 2, hy = viewH - 36, hr = 24;
   ctx.save(); ctx.translate(hx, hy); ctx.rotate(T.roll / ROLL_MAX * .9);
-  ctx.strokeStyle = '#7a4a1e'; ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(0, 0, hr, 0, 6.3); ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(1, 3, hr, 0, 6.3); ctx.stroke();
+  ctx.strokeStyle = '#3a1e0c'; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(0, 0, hr, 0, 6.3); ctx.stroke();
+  ctx.strokeStyle = '#c98a4b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, hr + 2, 0, 6.3); ctx.stroke();
+  ctx.strokeStyle = '#3a1e0c';
   ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-hr, 0); ctx.lineTo(hr, 0); ctx.moveTo(0, 0); ctx.lineTo(0, hr); ctx.stroke();
   ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(0, -hr, 5, 0, 6.3); ctx.fill();
   ctx.restore();
   text('左', hx - 52, hy + 6, 15, '#fff', 'center'); text('右', hx + 52, hy + 6, 15, '#fff', 'center');
 
   if (T.state === 'ready') {
-    text('ボールを おく ばしょを きめて', W / 2, viewH - 96, 15, '#fff', 'center');
-    text('ゆびを はなすと スタート', W / 2, viewH - 76, 15, '#ffd84a', 'center');
+    text('ボールを おく ばしょを きめて', W / 2, viewH - 100, 15, '#fff', 'center');
+    text('ゆびを はなすと スタート', W / 2, viewH - 80, 15, '#ffd84a', 'center');
   } else if (T.state === 'roll' && !input.gotTilt && T.time < 4) {
-    text('かたむきが つかえないときは 画面の左右を おす', W / 2, viewH - 76, 13, '#fff', 'center');
+    text('かたむきが つかえないときは 画面の左右を おす', W / 2, viewH - 80, 13, '#fff', 'center');
   }
   if (T.state === 'end') {
     const m = T.endKind === 'goal' ? ['ゴール！', '#ffd84a'] : T.endKind === 'hole' ? ['おとしあな！', '#ff8a8a'] : ['おちた！', '#ff8a8a'];
@@ -381,6 +531,8 @@ function showResult(){
 function begin(){ audioOn(); askTilt(); newGame(); }
 $('startBtn').addEventListener('click', begin);
 $('againBtn').addEventListener('click', begin);
+$('bgmBtn').classList.toggle('off', !bgmOn);
+$('bgmBtn').addEventListener('click', () => { audioOn(); setBgm(!bgmOn); $('bgmBtn').classList.toggle('off', !bgmOn); });
 
 // ---- ループ ----
 let last = 0;
