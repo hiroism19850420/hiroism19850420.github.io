@@ -22,9 +22,11 @@
   #res{font-size:clamp(20px,5.4vw,36px);font-weight:700;line-height:1.5}
   .modes{display:flex;gap:10px}
   .modes button.on{background:#8ff0ff;box-shadow:0 5px 0 #3c9db0}
-  #pad{position:absolute;left:0;right:0;bottom:64px;display:none;justify-content:center;gap:10px;padding:0 10px}
+  #pad{position:absolute;left:0;right:0;bottom:64px;display:none;justify-content:center;flex-wrap:wrap;gap:8px;padding:0 10px}
   #pad.show{display:flex}
-  #pad button{font-size:clamp(14px,3.6vw,18px);padding:13px 20px;background:#fff;box-shadow:0 4px 0 #8a93b8}
+  #pad button{font-size:clamp(13px,3.3vw,17px);padding:11px 15px;background:#fff;box-shadow:0 4px 0 #8a93b8}
+  #keys{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+  .hide{display:none !important}
   #pad button.on{background:#8ff0ff}
 </style>
 <script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
@@ -35,12 +37,23 @@
 <div id="pad">
   <button id="pStep">🐾 そろり（1ぽ）</button>
   <button id="pCrouch">🙇 しゃがむ</button>
+  <button id="pBig" class="c2">🦵 またぐ</button>
+  <button id="pLL" class="c2">← かたむけ</button>
+  <button id="pLR" class="c2">かたむけ →</button>
+  <button id="pHands" class="c2">🙌</button>
+  <span id="keys"></span>
 </div>
 
 <div id="title" class="panel">
   <h1>そろり！にげろ！<br>怪盗ヌパン！</h1>
-  <h2>だい1しょう　しのびこむ</h2>
-  <div class="how">
+  <div class="modes"><button id="cOne" class="sub on">1しょう しのびこむ</button><button id="cTwo" class="sub">2しょう たからの へや</button></div>
+  <div class="how hide" id="how2">
+    <div>🐾 <b>ゆっくり 足ぶみ</b> … そろり そろりと すすむ（はやいと 音の センサーに ひっかかる）</div>
+    <div>🔴 <b>赤外線は ツグミの 言うとおりに</b> … 足を 高く上げて またぐ／しゃがむ／体を 右・左に かたむける</div>
+    <div>🔢 <b>金庫の 番号を 声で 言う</b> … 聞きとれないときは、右手か 左手を 上げて えらぶ</div>
+    <div>🙌 <b>りょう手を 上げる</b> … たからを つかむ</div>
+  </div>
+  <div class="how" id="how1">
     <div>🐾 <b>その場で ゆっくり 足ぶみ</b> … そろり そろりと 前へ すすむ</div>
     <div>👂 <b>けいびいんの 足音が 止まったら</b> … ふりむく あいず。ぴたっと 止まる</div>
     <div>💨 <b>はやく 足ぶみすると</b> … 足音で 気づかれる</div>
@@ -50,15 +63,16 @@
   <button id="bCam">カメラで あそぶ</button>
   <button id="bNoCam" class="sub">カメラなしで ためす（ボタン）</button>
   <div id="msg"></div>
-  <div class="note">頭から ひざの下まで うつるように、はなれて 立ってください。音を 出して あそびます。<br>カメラは この たんまつの中で つかいます。えいぞうは どこにも おくりません。</div>
+  <div class="note">頭から ひざの下まで うつるように、はなれて 立ってください。音を 出して あそびます。<br>カメラは この たんまつの中で つかいます。えいぞうは どこにも おくりません。2しょうの 番号の 聞きとりには、ブラウザの 音声にんしきを つかいます。</div>
 </div>
 
 <div id="clear" class="panel hide">
-  <h1>だい1しょう クリア！</h1>
+  <h1 id="clrTitle">だい1しょう クリア！</h1>
   <div id="res"></div>
   <div id="best"></div>
-  <div class="note">つづき（たからの へや）は じゅんび中です。</div>
-  <button id="bRetry">もういちど</button>
+  <div class="note" id="clrNote"></div>
+  <button id="bNext">つぎへ（たからの へや）</button>
+  <button id="bRetry" class="sub">もういちど</button>
   <button id="bBack" class="sub">タイトルへ</button>
 </div>
 
@@ -80,12 +94,20 @@ const GUARD_PACE   = 0.52;  // けいびいんの 足音の間（秒）
 const HIDE_HOLD    = 3;     // しゃがんで かくれている 秒数
 const BACK_HIDE    = 5;     // かくれて やりすごしたとき もどされる 歩数
 const BACK_FAIL    = 12;    // かくれられなかったとき もどされる 歩数
+// 2しょう（たからの へや）
+const BIG_STEP     = 0.6;  // 足の差が これを こえたら「大きく またいだ」
+const LEAN_IN      = 0.35;  // 肩の まん中が こしの まん中から これだけ 横に ずれたら「かたむけた」
+const GATE_HOLD    = 1.5;   // しゃがむ・かたむける を つづける 秒数
+const GATE_GAP     = 4;     // 赤外線と 赤外線の間の 歩数
+const GATE_GIVEUP  = 3;     // 同じ 赤外線で これだけ しっぱいしたら、通してあげる
+const DIGIT_WAIT   = 8;     // 番号の 声を 待つ 秒数。すぎたら 手あげの 二択に かえる
 // むずかしさ。goal＝ゴールまでの歩数、loudGap＝これより はやい 足ぶみは 大きな足音（秒）、warn＝足音が止まってから ふりむくまで（秒）、
 // moveSpeed＝ふりむき中に これより はやく 動くと あやしまれる（肩はば／秒）、caught＝動きつづけて 見つかるまで（秒）、
-// back・look＝むこう向き・こっち向きの 長さ（秒、最短と最長）、hide＝見つかってから しゃがむまでの ゆうよ（秒）、call＝相棒が「とまれ」と 言うか
+// back・look＝むこう向き・こっち向きの 長さ（秒、最短と最長）、hide＝見つかってから しゃがむまでの ゆうよ（秒）、call＝相棒が「とまれ」と 言うか、
+// gates＝2しょうの 赤外線の数、gateTime＝赤外線 1つに かけられる 秒数
 const DIFF = {
-  easy: { goal: 50, loudGap: 0.30, warn: 0.9, moveSpeed: 1.3, caught: 0.55, back: [4, 7],   look: [2, 3], hide: 5,   call: true },
-  hard: { goal: 80, loudGap: 0.40, warn: 0.5, moveSpeed: 0.9, caught: 0.3,  back: [2.5, 6], look: [2, 4], hide: 3.5, call: false }
+  easy: { goal: 50, loudGap: 0.30, warn: 0.9, moveSpeed: 1.3, caught: 0.55, back: [4, 7],   look: [2, 3], hide: 5,   call: true,  gates: 5, gateTime: 9 },
+  hard: { goal: 80, loudGap: 0.40, warn: 0.5, moveSpeed: 0.9, caught: 0.3,  back: [2.5, 6], look: [2, 4], hide: 3.5, call: false, gates: 8, gateTime: 6 }
 };
 const DEBUG = new URLSearchParams(location.search).has('debug');   // アドレスの後ろに ?debug を つけると、判定の数字を 画面に出す
 
@@ -108,16 +130,24 @@ const S = {
   prog: 0, scroll: 0, sus: 0, found: 0, streak: 0, half: false, idle: 0, loudHint: false,
   body: false, full: false, crouch: false, crouchA: 0, move: 0, padCrouch: false,
   stepAt: -9, stepSide: 0, loudAt: -9, guardStepT: 0, guardFoot: 0,
-  lines: [], caption: null, fx: [], dbg: '', retreatMsg: ''
+  lines: [], caption: null, fx: [], dbg: '', retreatMsg: '',
+  // 2しょう。phase：walk（すすむ）→ gate（赤外線）→ zap（ふれた）… → safe（金庫）→ open → grab（つかむ）→ sneeze（くしゃみ）→ clear
+  chapter: 1, startCh: 1, cont: false, code: [1, 2, 3], gates: [], gateI: 0, gateZ: 0, goal2: 0, hold: 0, badT: 0, miss: 0, zapBack: 'walk',
+  digitI: 0, wrong: 0, ask: null, took: false, sn: 0, lean: 0, leanA: 0, handL: false, handR: false, padLean: 0, padHands: false
 };
 const body = { unit: 0, thigh: 0 };
-const gait = { f: 0, base: 0, up: false, side: 0 };
+const gait = { f: 0, base: 0, up: false, side: 0, big: false };
 const track = {};   // 関節ごとの 前の位置（動きの速さを 出すため）
 window.__game = { S, body, gait };
 
 const rand = ([a, b]) => a + Math.random() * (b - a);
-const running = () => ['back', 'warn', 'look', 'found', 'hiding', 'retreat'].includes(S.phase);
-function setPhase(p, t = 0){ S.phase = p; S.t = t; }
+const running = () => ['back', 'warn', 'look', 'found', 'hiding', 'retreat', 'walk', 'gate', 'zap', 'safe', 'open', 'grab', 'sneeze'].includes(S.phase);
+function setPhase(p, t = 0){ S.phase = p; S.t = t; syncPad(); }
+// カメラなしの ボタンは、その しょう・その 場面で 使うものだけ 出す
+function syncPad(){
+  document.querySelectorAll('#pad .c2').forEach(b => b.classList.toggle('hide', S.chapter !== 2));
+  document.getElementById('keys').classList.toggle('hide', S.phase !== 'safe');
+}
 
 // ---------- 音 ----------
 let ac = null, master = null, noiseBuf = null;
@@ -148,6 +178,12 @@ const sfx = {
   turn:   () => noise(0.18, 0.2, 'bandpass', 800, 2400, 2),
   safe:   () => { tone(660, 0.1, 'sine', 0.06); tone(880, 0.16, 'sine', 0.06, 0, 0.09); },
   found:  () => { arp([880, 660, 880, 660, 880, 660], 0.13, 0.12, 'square', 0.1); tone(70, 0.8, 'sine', 0.3, -20); },
+  zap:    () => { tone(140, 0.35, 'sawtooth', 0.14, 40); tone(147, 0.35, 'sawtooth', 0.14, 40); noise(0.3, 0.2, 'highpass', 3000); },
+  dial:   () => { noise(0.03, 0.3, 'bandpass', 3000, 0, 6); tone(1320, 0.12, 'sine', 0.08, 0, 0.05); },
+  buzz:   () => { tone(120, 0.3, 'square', 0.1); tone(127, 0.3, 'square', 0.1); },
+  open:   () => { tone(70, 0.9, 'sawtooth', 0.12, 60); noise(0.8, 0.15, 'lowpass', 600, 200); arp([523, 659, 784], 0.1, 0.25, 'triangle', 0.07); },
+  gem:    () => arp([1047, 1319, 1568, 2093], 0.07, 0.4, 'sine', 0.07),
+  sneeze: () => { noise(0.12, 0.2, 'bandpass', 900, 2500, 2); noise(0.45, 0.7, 'bandpass', 2600, 700, 0.8, 0.14); tone(420, 0.3, 'sawtooth', 0.12, -250, 0.14); },
   hide:   () => noise(0.25, 0.2, 'lowpass', 1500, 300),
   phew:   () => arp([523, 440, 392], 0.12, 0.25, 'triangle', 0.07),
   start:  () => arp([392, 494, 587], 0.1, 0.2, 'triangle', 0.06),
@@ -176,7 +212,7 @@ function bgm(name){
 
 // ---------- 無線の声 ----------
 // who：tsugumi（相棒）／ guard（けいびいん）。話している とちゅうは、同じか もっと 大事な ことだけ わりこむ。
-const WHO = { tsugumi: { name: 'ツグミ', rate: 1.1, pitch: 1.3 }, guard: { name: 'けいびいん', rate: 0.9, pitch: 0.4 } };
+const WHO = { tsugumi: { name: 'ツグミ', rate: 1.1, pitch: 1.3 }, guard: { name: 'けいびいん', rate: 0.9, pitch: 0.4 }, benigata: { name: 'ベニガタ警部', rate: 1.05, pitch: 0.6 } };
 const VOICE = { until: 0, pri: 0 };
 function say(text, pri = 1, who = 'tsugumi'){
   if (S.now < VOICE.until && pri < VOICE.pri) return false;
@@ -237,10 +273,15 @@ function onPose(lm, dt){
     ratio = thigh / body.thigh;
     S.crouch = ratio < (S.crouch ? CROUCH_OUT : CROUCH_IN);
   } else S.crouch = false;
-  S.dbg = `うごき ${S.move.toFixed(2)}（${DIFF[S.diff].moveSpeed} より上で あやしまれる）　足の差 ${(gait.f - gait.base).toFixed(2)}（${STEP_TH} で 1ぽ）　もも ${ratio.toFixed(2)}（${CROUCH_IN} より下で しゃがみ）　${S.full ? '' : 'ひざが 見えない'}`;
+  // かたむき：肩の まん中が こしの まん中から 横に ずれる（＋が 本人の 右）。手あげ：手首が 鼻より 上
+  const lw = P(15), rw = P(16), nose = P(0);
+  S.lean = lh.v > 0.5 && rh.v > 0.5 ? ((ls.x + rs.x) - (lh.x + rh.x)) / 2 / u : 0;
+  S.handL = lw.v > 0.4 && lw.y < nose.y; S.handR = rw.v > 0.4 && rw.y < nose.y;
+  S.dbg = `かたむき ${S.lean.toFixed(2)}（±${LEAN_IN} で かたむけた）　大また ${BIG_STEP}　手 ${S.handL ? '左' : ''}${S.handR ? '右' : ''}　うごき ${S.move.toFixed(2)}（${DIFF[S.diff].moveSpeed} より上で あやしまれる）　足の差 ${(gait.f - gait.base).toFixed(2)}（${STEP_TH} で 1ぽ）　もも ${ratio.toFixed(2)}（${CROUCH_IN} より下で しゃがみ）　${S.full ? '' : 'ひざが 見えない'}`;
 }
 function clearPose(){
   S.body = false; S.full = false; S.crouch = false; S.move = 0; gait.up = false;
+  S.lean = 0; S.handL = S.handR = false;
   for (const k in track) delete track[k];
 }
 // 足を 上げた しゅんかんを 1ぽと 数える。左右を かえても、同じ足を 上げ下げしても 数える。
@@ -248,9 +289,11 @@ function feedStep(f, dt){
   gait.f += (f - gait.f) * 0.6;
   gait.base += (gait.f - gait.base) * Math.min(1, dt / 2);   // 立ち方の かたより（片ひざが 高く うつる 等）を ゆっくり 打ち消す
   const g = gait.f - gait.base, a = Math.abs(g), sd = Math.sign(g);
-  if (!gait.up){ if (a > STEP_TH){ gait.up = true; gait.side = sd; step(); } }
-  else if (a < STEP_TH * 0.5) gait.up = false;
-  else if (sd !== gait.side && a > STEP_TH){ gait.side = sd; step(); }
+  if (!gait.up){ if (a > STEP_TH){ gait.up = true; gait.side = sd; gait.big = false; step(); } }
+  else if (a < STEP_TH * 0.5){ gait.up = false; if (!gait.big) smallStep(); }
+  else if (sd !== gait.side && a > STEP_TH){ if (!gait.big) smallStep(); gait.side = sd; gait.big = false; step(); }
+  // 上げた足が 高いところまで 行ったら「大また」。行かずに 下ろしたら「小また」
+  if (gait.up && !gait.big && a > BIG_STEP){ gait.big = true; bigStep(); }
 }
 
 // ---------- 進行 ----------
@@ -259,7 +302,15 @@ function step(){
   if (gap < STEP_MIN_GAP) return;
   S.stepAt = S.now; S.stepSide ^= 1; S.idle = 0;
   const D = DIFF[S.diff];
-  if (S.phase === 'back' || S.phase === 'warn'){
+  if (S.phase === 'walk'){
+    S.prog++;
+    if (gap < D.loudGap){
+      S.sus = Math.min(1, S.sus + LOUD_SUS * 1.5); S.loudAt = S.now; sfx.loud();
+      if (S.sus >= 1){ S.sus = 0; zap('おとの センサーだ。そろり そろりと あるけ'); return; }
+    } else sfx.tip();
+    if (S.gateI < S.gates.length && S.prog >= (S.gateI + 1) * GATE_GAP) enterGate();
+    else if (S.prog >= S.goal2) enterSafe();
+  } else if (S.phase === 'back' || S.phase === 'warn'){
     S.prog++;
     if (gap < D.loudGap){
       S.sus = Math.min(LOUD_MAX, S.sus + LOUD_SUS); S.loudAt = S.now; sfx.loud();   // 足音だけでは 見つからない
@@ -285,7 +336,8 @@ function update(dt){
   S.scroll += (S.prog - S.scroll) * Math.min(1, dt * 6);
   for (const f of S.fx) f.t += dt;
   S.fx = S.fx.filter(f => f.t < f.life);
-  if (S.mode === 'nocam'){ S.body = S.full = true; S.crouch = S.padCrouch; S.move = 0; }
+  S.leanA += (Math.max(-0.7, Math.min(0.7, S.lean)) - S.leanA) * Math.min(1, dt * 10);
+  if (S.mode === 'nocam'){ S.body = S.full = true; S.crouch = S.padCrouch; S.move = 0; S.lean = S.padLean * 0.6; S.handL = S.handR = S.padHands; }
   if (S.lines.length && S.now >= VOICE.until){ const l = S.lines.shift(); say(l[1], 9, l[0]); }
   const D = DIFF[S.diff];
 
@@ -295,7 +347,10 @@ function update(dt){
     return;
   }
   if (S.phase === 'intro'){
-    if (!S.lines.length && S.now >= VOICE.until + 0.3){ setPhase('back', rand(D.back)); bgm('sneak'); sfx.start(); }
+    if (!S.lines.length && S.now >= VOICE.until + 0.3){
+      if (S.chapter === 2) setPhase('walk'); else setPhase('back', rand(D.back));
+      bgm('sneak'); sfx.start();
+    }
     return;
   }
   if (!running() || !S.body) return;   // 体が うつっていない間は 時間を 止める
@@ -306,7 +361,8 @@ function update(dt){
     S.sus = Math.max(0, S.sus - dt * 0.12);
     S.guardStepT -= dt;
     if (S.guardStepT <= 0){ S.guardStepT = GUARD_PACE; S.guardFoot ^= 1; sfx.guard(S.guardFoot); }
-    if (!S.half && S.prog >= D.goal / 2){ S.half = true; say('はんぶん きた。あと すこしだ', 2); }
+    // 半分で 金庫の 番号を 言う（2しょうで 使う）。言い終わるまで けいびいんは ふりむかない
+    if (!S.half && S.prog >= D.goal / 2){ S.half = true; say(`はんぶん きた。きんこの ばんごうは、${codeYomi()} だ。おぼえておけ`, 4); S.t = Math.max(S.t, 8); }
     if (S.idle > 7){ S.idle = 0; say('いまだ。そろり そろりと すすめ', 1); }
     if (S.prog >= D.goal){ clear(); return; }
     if (S.t <= 0 || S.sus >= TURN_SUS){
@@ -340,11 +396,179 @@ function update(dt){
       setPhase('back', rand(D.back)); S.guardStepT = 0.3; S.idle = 0;
       say('よし、もういちど そろり そろりだ', 2);
     }
+  } else updateVault(dt, D);
+}
+
+// ---------- 2しょう：たからの へや ----------
+const YOMI = ['ゼロ', 'いち', 'に', 'さん', 'よん', 'ご', 'ろく', 'なな', 'はち', 'きゅう'];
+const codeYomi = () => S.code.map(d => YOMI[d]).join('、');
+const GATES = {
+  low:   { say: 'ひくい せんだ。あしを たかく あげて、おおきく またげ', big: '足を 高く上げて またげ！' },
+  high:  { say: 'たかい せんだ。しゃがんで くぐれ', big: 'しゃがんで くぐれ！' },
+  leanR: { say: 'ななめの せんだ。みぎに からだを かたむけろ', big: 'みぎに かたむけ！ →' },
+  leanL: { say: 'ななめの せんだ。ひだりに からだを かたむけろ', big: '← ひだりに かたむけ！' }
+};
+function setupVault(){
+  const D = DIFF[S.diff], kinds = Object.keys(GATES), gates = [];
+  for (let i = 0; i < D.gates; i++){ let k; do k = kinds[Math.floor(Math.random() * kinds.length)]; while (k === gates[i - 1]); gates.push(k); }
+  Object.assign(S, { chapter: 2, elapsed: 0, prog: 0, scroll: 0, sus: 0, gates, gateI: 0, gateZ: 0, goal2: (D.gates + 1) * GATE_GAP, hold: 0, badT: 0, miss: 0,
+    digitI: 0, wrong: 0, ask: null, took: false, sn: 0, idle: 0, padLean: 0, padHands: false, padCrouch: false });
+}
+// 1しょうから つづけて 来たときは、番号を もう 言わない
+const vaultLines = () => S.cont
+  ? [['tsugumi', 'たからの へやだ。せきがいせんに さわるな'], ['tsugumi', 'わたしの いうとおりに うごけ']]
+  : [['tsugumi', 'こちら ツグミ。たからの へやに ついたな'], ['tsugumi', `きんこの ばんごうは、${codeYomi()} だ。おぼえておけ`], ['tsugumi', 'せきがいせんに さわるな。わたしの いうとおりに うごけ']];
+function enterGate(){
+  setPhase('gate', DIFF[S.diff].gateTime); S.hold = 0; S.badT = 0; S.gateZ = 0; S.gateAt = S.now; sfx.hm();
+  say(GATES[S.gates[S.gateI]].say, 4);
+}
+function passGate(){
+  sfx.safe(); S.gateI++; S.prog = S.gateI * GATE_GAP + 1; S.hold = 0; S.idle = 0;
+  setPhase('walk');
+  if (S.gateI >= S.gates.length) say('さいごだ。きんこは めの まえだ', 3);
+  else if (S.gateI % 2 === 0) say('いいぞ、その ちょうしだ', 1);
+}
+function zap(msg){
+  S.miss++; S.zapBack = S.phase; if (S.phase === 'gate') S.gateZ++;
+  sfx.zap(); S.fx.push({ kind: 'flash', col: '255,60,60', t: 0, life: 0.4 });
+  say(msg, 5); setPhase('zap', 1.4);
+}
+// ひくい線を 小またで ふむと ふれる。ただし、線の前に 着いた 1ぽと、説明を 聞いている間の 足ぶみは 数えない
+function smallStep(){ if (S.phase === 'gate' && S.gates[S.gateI] === 'low' && S.stepAt > S.gateAt && S.now >= VOICE.until) zap('ひくい！ もっと あしを あげろ'); }
+function bigStep(){ if (S.phase === 'gate' && S.gates[S.gateI] === 'low') passGate(); }
+function enterSafe(){
+  setPhase('safe'); S.digitI = 0; S.wrong = 0; S.ask = null; sfx.hm();
+  say('きんこだ。ばんごうを おもいだせ', 4);
+}
+// 番号は 1けたずつ 聞く。まず 声。聞きとれなければ、右手か 左手を 上げて えらぶ 二択に かえる
+function askDigit(){
+  const voice = S.mode === 'cam' && !recDead;
+  S.ask = { mode: voice ? 'voice' : S.mode === 'cam' ? 'hands' : 'pad', t: DIGIT_WAIT, hold: 0, armed: false };
+  if (voice) say(`${S.digitI + 1}つめの すうじは？ こえで いえ`, 4);
+  else if (S.mode === 'cam') toHands(`${S.digitI + 1}つめ。`);
+  else say(`${S.digitI + 1}つめの すうじは？`, 4);
+}
+function toHands(head = ''){
+  const c = S.code[S.digitI], right = Math.random() < 0.5;
+  let w; do w = 1 + Math.floor(Math.random() * 9); while (w === c);
+  Object.assign(S.ask, { mode: 'hands', r: right ? c : w, l: right ? w : c, hold: 0, armed: false });
+  listen(false);
+  say(`${head}みぎてなら ${YOMI[S.ask.r]}、ひだりてなら ${YOMI[S.ask.l]}。てを あげろ`, 4);
+}
+function nextDigit(quiet){
+  S.digitI++; S.wrong = 0; S.ask = null;
+  if (S.digitI < S.code.length) return;
+  listen(false); setPhase('open', 1.8); sfx.open();
+  if (!quiet) say('あいた！', 5);
+}
+function answer(d){
+  if (S.phase !== 'safe' || S.digitI >= S.code.length) return false;
+  const c = S.code[S.digitI];
+  if (d === c){ sfx.dial(); nextDigit(); return true; }
+  S.miss++; S.wrong++; sfx.buzz();
+  if (S.wrong >= 2){ say(`ちがう。こたえは ${YOMI[c]} だ`, 5); nextDigit(true); }
+  else { say('ちがう。よく おもいだせ', 5); S.ask = null; }
+  return false;
+}
+// 聞きとった ことばから 数字を ぬき出す（3、三、さん、サン の どれでも）
+const KANJI = '〇一二三四五六七八九';
+const KANA = [['きゅう', 9], ['きゅー', 9], ['なな', 7], ['しち', 7], ['はち', 8], ['ろく', 6], ['よん', 4], ['さん', 3], ['いち', 1], ['ご', 5], ['に', 2], ['く', 9], ['し', 4]];
+function digitsIn(str){
+  let s = str.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+  s = s.replace(/[\s、。，,.・！!？?]/g, '');
+  const parse = short => {
+    const out = []; let t = s, rest = 0;
+    while (t.length){
+      const ki = KANJI.indexOf(t[0]), k = KANA.find(([w]) => (short || w.length > 1) && t.startsWith(w));
+      if (/[0-9]/.test(t[0])){ out.push(+t[0]); t = t.slice(1); }
+      else if (ki >= 0){ out.push(ki); t = t.slice(1); }
+      else if (k){ out.push(k[1]); t = t.slice(k[0].length); }
+      else { rest++; t = t.slice(1); }
+    }
+    return { out, rest };
+  };
+  // 「に」「ご」など 1文字の 読みは、ほかの ことばが まじっていない ときだけ 数字として あつかう（「こんにちは」の「に」を ひろわない）
+  const a = parse(true);
+  return a.rest ? parse(false).out : a.out;
+}
+// 「さん、なな、に」と つづけて 言っても、合っている間は 順に 入る
+function hear(str){ for (const d of digitsIn(str)) if (!answer(d)) break; }
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recOn = false, recDead = !SR, recAt = -9;
+function listen(on){
+  if (recDead) return;
+  if (!on){ if (recOn){ try { rec.abort(); } catch (e) {} } return; }
+  if (recOn || S.now - recAt < 0.6) return;
+  if (!rec){
+    rec = new SR(); rec.lang = 'ja-JP'; rec.continuous = false; rec.interimResults = false; rec.maxAlternatives = 3;
+    rec.onresult = ev => {
+      // 候補の うち、数字が 入っている 最初の ものを 使う
+      for (let i = ev.resultIndex; i < ev.results.length; i++) for (let j = 0; j < ev.results[i].length; j++){
+        const t = ev.results[i][j].transcript;
+        if (digitsIn(t).length){ hear(t); break; }
+      }
+    };
+    rec.onend = () => { recOn = false; };
+    rec.onerror = ev => { if (['not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported', 'network'].includes(ev.error)) recDead = true; };
+  }
+  recAt = S.now;
+  try { rec.start(); recOn = true; } catch (e) {}
+}
+function updateVault(dt, D){
+  if (S.phase === 'walk'){
+    S.idle += dt; S.sus = Math.max(0, S.sus - dt * 0.12);
+    if (S.idle > 7){ S.idle = 0; say('そろり そろりと すすめ', 1); }
+  } else if (S.phase === 'gate'){
+    const k = S.gates[S.gateI];
+    if (S.now >= VOICE.until) S.t -= dt;   // 説明を 言い終わってから 時間を 数える
+    const ok = k === 'high' ? S.crouch : k === 'leanR' ? S.lean > LEAN_IN : k === 'leanL' ? S.lean < -LEAN_IN : false;
+    const bad = (k === 'leanR' && S.lean < -LEAN_IN) || (k === 'leanL' && S.lean > LEAN_IN);
+    S.hold = ok ? S.hold + dt : Math.max(0, S.hold - dt * 2);
+    S.badT = bad ? S.badT + dt : 0;
+    if (S.hold >= GATE_HOLD) passGate();
+    else if (S.badT > 0.8) zap('ぎゃくだ！');
+    else if (S.t <= 0) zap('じかんぎれだ。いそげ');
+  } else if (S.phase === 'zap'){
+    S.t -= dt;
+    if (S.t > 0) return;
+    if (S.zapBack !== 'gate') setPhase('walk');
+    else if (S.gateZ >= GATE_GIVEUP){ say('センサーが こわれた。いまの うちだ', 5); passGate(); }
+    else { const z = S.gateZ; setPhase('gate', D.gateTime); S.hold = 0; S.badT = 0; S.gateZ = z; }
+  } else if (S.phase === 'safe'){
+    const A = S.ask, quiet = S.now >= VOICE.until;
+    if (!A){ if (quiet) askDigit(); return; }
+    if (A.mode === 'voice'){
+      listen(quiet);
+      if (quiet) A.t -= dt;
+      if (A.t <= 0 || recDead) toHands();
+    } else if (A.mode === 'hands'){
+      const pick = S.handR && !S.handL ? 'r' : S.handL && !S.handR ? 'l' : '';
+      if (!pick){ A.armed = true; A.hold = 0; }
+      else if (A.armed && quiet){ A.hold += dt; if (A.hold > 0.4){ A.armed = false; answer(A[pick]); } }
+    }
+  } else if (S.phase === 'open'){
+    S.t -= dt;
+    if (S.t <= 0){ setPhase('grab'); say('つきの しずくだ！ りょうてを あげて つかめ', 5); }
+  } else if (S.phase === 'grab'){
+    if (S.handL && S.handR){ S.took = true; sfx.gem(); setPhase('sneeze'); S.sn = 0; say('やった！ しずかに でるぞ', 5); }
+  } else if (S.phase === 'sneeze'){
+    // たからを 手にした とたん、くしゃみが 出て けいほうが 鳴る
+    S.t += dt;
+    if (S.sn === 0 && S.t > 4.2){
+      S.sn = 1; sfx.sneeze(); sfx.found(); bgm('chase');
+      S.fx.push({ kind: 'flash', col: '255,80,80', t: 0, life: 0.6 });
+    } else if (S.sn === 1 && S.t > 5.6){ S.sn = 2; say('ばか！ けいほうが なったぞ！', 6); }
+    else if (S.sn === 2 && S.t > 8.2){ S.sn = 3; say('ヌパーン！ たいほだー！', 9, 'benigata'); }
+    else if (S.sn === 3 && S.t > 11.5) clear();
   }
 }
 function begin(){
   Object.assign(S, { elapsed: 0, prog: 0, scroll: 0, sus: 0, found: 0, streak: 0, half: false, idle: 0, loudHint: false,
-    stepAt: -9, loudAt: -9, guardStepT: 0, lines: [], caption: null, fx: [], retreatMsg: '', padCrouch: false });
+    stepAt: -9, loudAt: -9, guardStepT: 0, lines: [], caption: null, fx: [], retreatMsg: '', padCrouch: false, miss: 0, chapter: S.startCh, cont: false });
+  // 金庫の 番号（1〜9 の ちがう数字 3つ）
+  const pool = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  S.code = [0, 0, 0].map(() => pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  if (S.chapter === 2) setupVault();
   VOICE.until = 0; VOICE.pri = 0;
   $('title').classList.add('hide'); $('clear').classList.add('hide');
   $('pad').classList.toggle('show', S.mode === 'nocam');
@@ -355,7 +579,7 @@ function begin(){
 function intro(){
   setPhase('intro');
   VOICE.until = 0;
-  S.lines = [
+  S.lines = S.chapter === 2 ? vaultLines() : [
     ['tsugumi', 'こちら あいぼうの ツグミ。ヌパン、きこえるか'],
     ['tsugumi', 'けいびいんの うしろを、そろり そろりと すすめ'],
     ['tsugumi', 'あしおとが とまったら、ふりむく あいずだ。ぴたっと とまれ']
@@ -369,13 +593,17 @@ function skipIntro(){
 }
 const mmss = s => `${Math.floor(s / 60)}ふん ${Math.floor(s % 60)}びょう`;
 function clear(){
-  setPhase('clear'); sfx.clear(); bgm(null);
-  say('よくやった、ヌパン。たからの へやは すぐ そこだ', 9);
-  const rank = S.found === 0 ? '🌙 かんぺき！ だれにも 気づかれなかった' : S.found <= 2 ? '⭐ おみごと！' : '💦 ドタバタ どろぼう';
-  const key = 'kaitouNupanBest1_' + S.diff;   // さいこう記録は むずかしさ ごと
+  const c2 = S.chapter === 2, n = c2 ? S.miss : S.found;
+  setPhase('clear'); sfx.clear();
+  if (!c2){ bgm(null); say('よくやった、ヌパン。たからの へやは すぐ そこだ', 9); }
+  const rank = n === 0 ? (c2 ? '🌙 かんぺき！ センサーに 1ども ふれなかった' : '🌙 かんぺき！ だれにも 気づかれなかった') : n <= 2 ? '⭐ おみごと！' : '💦 ドタバタ どろぼう';
+  const key = `kaitouNupanBest${S.chapter}_${S.diff}`;   // さいこう記録は しょうと むずかしさ ごと
   let best = S.elapsed;
   try { const b = +localStorage.getItem(key); if (b > 0) best = Math.min(best, b); localStorage.setItem(key, best); } catch (e) {}
-  $('res').innerHTML = `${S.diff === 'hard' ? 'むずかしい' : 'かんたん'}<br>タイム ${mmss(S.elapsed)}<br>見つかった ${S.found}かい<br>${rank}`;
+  $('res').innerHTML = `${S.diff === 'hard' ? 'むずかしい' : 'かんたん'}<br>タイム ${mmss(S.elapsed)}<br>${c2 ? 'センサー・まちがい' : '見つかった'} ${n}かい<br>${rank}`;
+  $('clrTitle').textContent = `だい${S.chapter}しょう クリア！`;
+  $('clrNote').textContent = c2 ? 'けいほうが 鳴った！ つづき（にげる）は じゅんび中です。' : '';
+  $('bNext').classList.toggle('hide', c2);
   $('best').textContent = 'さいこう記録 ' + mmss(best);
   $('pad').classList.remove('show'); $('clear').classList.remove('hide');
 }
@@ -503,22 +731,70 @@ function drawGuard(x, gy, u){
   if (S.phase === 'found') label('！', x, cy - u * 1.1 - Math.abs(Math.sin(S.now * 12)) * u * 0.15, Math.round(u * 1.1), '#ff6a6a');
   if (S.phase === 'hiding') label('？？', x, cy - u * 1.1, Math.round(u * 0.7), '#ffe35a');
 }
+function drawGem(x, y, r){
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r * 3.5);
+  g.addColorStop(0, `rgba(150,225,255,${0.5 + 0.15 * Math.sin(S.now * 4)})`); g.addColorStop(1, 'rgba(150,225,255,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 3.5, 0, 6.28); ctx.fill();
+  ctx.fillStyle = '#7fd8ff'; ctx.beginPath(); ctx.moveTo(x, y - r * 1.5); ctx.bezierCurveTo(x + r * 1.5, y, x + r, y + r, x, y + r); ctx.bezierCurveTo(x - r, y + r, x - r * 1.5, y, x, y - r * 1.5); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.ellipse(x - r * 0.3, y + r * 0.1, r * 0.18, r * 0.35, 0.4, 0, 6.28); ctx.fill();
+}
+function drawVault(tx, gy, u, px){
+  // 赤外線（まだ 通っていないもの）
+  ctx.lineCap = 'round';
+  S.gates.forEach((k, i) => {
+    const x = tx + ((i + 1) * GATE_GAP - S.scroll) * px + u * 1.3;
+    if (i < S.gateI || x > W + u * 2) return;
+    const on = 0.6 + 0.4 * Math.sin(S.now * 9 + i);
+    const beam = (x1, y1, x2, y2) => [[`rgba(255,60,60,${0.25 * on})`, u * 0.24], [`rgba(255,130,130,${on})`, u * 0.06]].forEach(([c, w]) => {
+      ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    });
+    ctx.fillStyle = '#6a7090'; ctx.fillRect(x - u * 0.14, gy - u * 4.0, u * 0.28, u * 0.28); ctx.fillRect(x - u * 0.14, gy - u * 0.04, u * 0.28, u * 0.14);
+    if (k === 'low') [0.3, 0.6].forEach(h => beam(x - u * 0.6, gy - u * h - u * 0.08, x + u * 0.6, gy - u * h + u * 0.08));
+    else if (k === 'high') [1.5, 2.0, 2.5, 3.0, 3.5].forEach(h => beam(x - u * 0.6, gy - u * h - u * 0.08, x + u * 0.6, gy - u * h + u * 0.08));
+    else { const s = k === 'leanR' ? 1 : -1; [0, 0.7].forEach(o => beam(x - s * u * 0.9 + o * u, gy - u * 3.7, x + s * u * 0.5 + o * u, gy - u * 0.15)); }
+  });
+  // 金庫
+  const x = tx + (S.goal2 - S.scroll) * px + u * 3.3;
+  if (x > W + u * 3) return;
+  const opened = ['open', 'grab', 'sneeze', 'clear'].includes(S.phase), top = gy - u * 3.3;
+  ctx.fillStyle = '#5d6780'; ctx.beginPath(); ctx.roundRect(x - u * 1.5, top, u * 3, u * 3.3, u * 0.2); ctx.fill();
+  ctx.fillStyle = opened ? '#141833' : '#98a3b8'; ctx.beginPath(); ctx.roundRect(x - u * 1.25, top + u * 0.25, u * 2.5, u * 2.8, u * 0.12); ctx.fill();
+  if (opened){
+    if (!S.took) drawGem(x, top + u * 1.7, u * 0.4);
+    ctx.fillStyle = '#98a3b8'; ctx.fillRect(x + u * 1.25, top + u * 0.25, u * 0.3, u * 2.8);   // ひらいた とびら
+  } else {
+    ctx.strokeStyle = '#3d4560'; ctx.lineWidth = u * 0.1; ctx.beginPath(); ctx.arc(x, top + u * 1.9, u * 0.6, 0, 6.28); ctx.stroke();
+    const a = S.digitI * 2.1 + (S.phase === 'safe' ? Math.sin(S.now * 2) * 0.2 : 0);
+    ctx.beginPath(); ctx.moveTo(x, top + u * 1.9); ctx.lineTo(x + Math.cos(a) * u * 0.5, top + u * 1.9 + Math.sin(a) * u * 0.5); ctx.stroke();
+    // 番号の まど
+    ctx.fillStyle = '#141833'; ctx.fillRect(x - u * 0.95, top + u * 0.45, u * 1.9, u * 0.7);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = `700 ${Math.round(u * 0.5)}px sans-serif`; ctx.fillStyle = '#7dffa0';
+    ctx.fillText(S.code.map((d, i) => i < S.digitI ? d : '＿').join(' '), x, top + u * 0.82);
+  }
+}
 function draw(){
   ctx.setTransform(cv.width / W || 1, 0, 0, cv.height / H || 1, 0, 0);
   const u = Math.min(W / 9, H / 8.5), gy = H * 0.74, px = u * 0.9;   // px＝1ぽで ながれる長さ
   const D = DIFF[S.diff], tx = W * 0.26, gx = Math.min(W * 0.74, tx + u * 5);
+  const c2 = S.chapter === 2, goal = c2 ? S.goal2 : D.goal;
   drawRoom(u, gy, px);
-  const doorX = gx + (D.goal - S.scroll) * px + u * 1.5;
-  if (doorX < W + u * 2) drawDoor(doorX, gy, u);
-  if (S.phase !== 'clear') drawGuard(gx, gy, u);
+  if (c2) drawVault(tx, gy, u, px);
+  else {
+    const doorX = gx + (D.goal - S.scroll) * px + u * 1.5;
+    if (doorX < W + u * 2) drawDoor(doorX, gy, u);
+    if (S.phase !== 'clear') drawGuard(gx, gy, u);
+  }
+  ctx.save(); ctx.translate(tx, gy); ctx.rotate(c2 ? S.leanA * 0.45 : 0); ctx.translate(-tx, -gy);
   drawThief(tx, gy, u);
+  ctx.restore();
+  if (c2 && S.took) drawGem(tx + u * 0.85, gy - u * 2.7, u * 0.28);
   for (const f of S.fx) if (f.kind === 'flash'){ ctx.fillStyle = `rgba(${f.col},${(1 - f.t / f.life) * 0.5})`; ctx.fillRect(0, 0, W, H); }
   if (S.phase === 'look'){ ctx.strokeStyle = 'rgba(255,90,90,.55)'; ctx.lineWidth = 14; ctx.strokeRect(0, 0, W, H); }
   if (S.phase === 'title' || S.phase === 'clear') return;
 
   // 上：ゴールまでの 道のりと「けはい」
   ctx.textBaseline = 'middle';
-  const bx = 44, bw = W - 88, by = 22, pr = Math.min(1, S.scroll / D.goal);
+  const bx = 44, bw = W - 88, by = 22, pr = Math.min(1, S.scroll / goal);
   ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(bx, by - 5, bw, 10);
   ctx.fillStyle = '#8ff0ff'; ctx.fillRect(bx, by - 5, bw * pr, 10);
   ctx.font = '22px sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
@@ -527,8 +803,8 @@ function draw(){
   ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(sx, sy, sw, 12);
   ctx.fillStyle = S.sus > 0.6 ? '#ff6a6a' : S.sus > 0.3 ? '#ffb35a' : '#b6ffb0'; ctx.fillRect(sx, sy, sw * S.sus, 12);
   ctx.fillStyle = '#fff'; ctx.fillRect(sx + sw * TURN_SUS, sy - 2, 2, 16);
-  ctx.textAlign = 'right'; label('けはい', sx - 8, sy + 6, 15, '#fff');
-  ctx.textAlign = 'left'; label(`見つかった ${S.found}`, sx + sw + 8, sy + 6, 15, '#fff');
+  ctx.textAlign = 'right'; label(c2 ? '足音' : 'けはい', sx - 8, sy + 6, 15, '#fff');
+  ctx.textAlign = 'left'; label(c2 ? `センサー ${S.miss}` : `見つかった ${S.found}`, sx + sw + 8, sy + 6, 15, '#fff');
 
   // まん中：いま すること
   ctx.textAlign = 'center';
@@ -543,7 +819,26 @@ function draw(){
   else if (S.phase === 'found'){ big = `しゃがんで かくれろ！ ${Math.ceil(S.t)}`; col = '#ff6a6a'; size = Math.round(u * 0.8); }
   else if (S.phase === 'hiding'){ big = S.crouch ? `そのまま… ${Math.ceil(S.t)}` : 'しゃがんで！'; col = '#ffe35a'; }
   else if (S.phase === 'retreat'){ big = S.retreatMsg; col = '#cfe0ff'; }
+  else if (S.phase === 'walk'){ big = S.now - S.loudAt < 0.8 ? '足音が 大きい！' : 'そろり そろり…'; col = S.now - S.loudAt < 0.8 ? '#ffb35a' : '#8ff0ff'; }
+  else if (S.phase === 'gate'){ big = GATES[S.gates[S.gateI]].big; col = '#ffe35a'; size = Math.round(u * 0.8); }
+  else if (S.phase === 'zap'){ big = 'ビビビッ！'; col = '#ff6a6a'; size = Math.round(u * 1.1); }
+  else if (S.phase === 'safe'){
+    const A = S.ask, n = S.digitI + 1; col = '#ffe35a'; size = Math.round(u * 0.6);
+    big = !A ? '金庫だ！' : A.mode === 'voice' ? `${n}つめの 数字を 声で 言って！` : A.mode === 'hands' ? `${n}つめ　左手 → ${A.l}　　右手 → ${A.r}` : `${n}つめの 数字を おして！`;
+  }
+  else if (S.phase === 'open'){ big = 'カチャッ… あいた！'; col = '#b6ffb0'; }
+  else if (S.phase === 'grab'){ big = '🙌 りょう手を 上げて つかめ！'; col = '#ffe35a'; }
+  else if (S.phase === 'sneeze'){
+    big = S.sn >= 1 ? 'ハクション！！' : S.t > 2.6 ? 'は… は…' : 'やった！'; col = S.sn >= 1 ? '#ff6a6a' : '#b6ffb0'; size = Math.round(u * (S.sn >= 1 ? 1.3 : 0.8));
+  }
   if (big) label(big, W / 2, H * 0.2, size, col);
+  if (S.phase === 'gate'){
+    // 上：ポーズを つづけた長さ。下：のこり時間
+    const w = Math.min(300, W * 0.6), x = (W - w) / 2, y = H * 0.2 + size * 0.8;
+    ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(x, y, w, 12); ctx.fillRect(x, y + 16, w, 5);
+    ctx.fillStyle = '#b6ffb0'; ctx.fillRect(x, y, w * Math.min(1, S.hold / GATE_HOLD), 12);
+    ctx.fillStyle = '#ffb35a'; ctx.fillRect(x, y + 16, w * Math.max(0, S.t / D.gateTime), 5);
+  }
   if (cam && S.body && !S.full && running()) label('ひざが うつっていません。もう少し さがってね', W / 2, H * 0.2 + size, 16, '#ffd0d0');
   if (S.phase === 'intro') label('がめんを タップで とばす', W / 2, H * 0.2 + size, 15, '#fff');
 
@@ -571,7 +866,7 @@ function frame(ts){
   }
   update(dt); draw();
 }
-Object.assign(window.__game, { tick: frame, onPose, step, caught, sfx, VOICE, DIFF });   // テスト用：手動で1コマ進める／関節データを直接わたす
+Object.assign(window.__game, { tick: frame, onPose, step, caught, sfx, VOICE, DIFF, answer, hear, digitsIn, bigStep, smallStep });   // テスト用：手動で1コマ進める／関節データを直接わたす
 const loop = ts => { frame(ts); requestAnimationFrame(loop); };
 requestAnimationFrame(loop);
 
@@ -619,21 +914,53 @@ function setDiff(k){
 }
 $('mEasy').onclick = () => setDiff('easy'); $('mHard').onclick = () => setDiff('hard');
 try { if (localStorage.getItem('kaitouNupanDiff') === 'hard') setDiff('hard'); } catch (e) {}
-$('bBack').onclick = () => { $('clear').classList.add('hide'); $('title').classList.remove('hide'); setPhase('title'); };
+$('bBack').onclick = () => { $('clear').classList.add('hide'); $('title').classList.remove('hide'); bgm(null); setPhase('title'); };
+function setCh(n){
+  S.startCh = n;
+  $('cOne').classList.toggle('on', n === 1); $('cTwo').classList.toggle('on', n === 2);
+  $('how1').classList.toggle('hide', n !== 1); $('how2').classList.toggle('hide', n !== 2);
+}
+$('cOne').onclick = () => setCh(1); $('cTwo').onclick = () => setCh(2);
+// 1しょうの クリアから つづけて 2しょうへ（金庫の 番号は 1しょうで 聞いたもの）
+$('bNext').onclick = () => {
+  setupVault(); S.cont = true;
+  $('clear').classList.add('hide'); $('pad').classList.toggle('show', S.mode === 'nocam');
+  intro();
+};
 
 // ---------- カメラなしの操作 ----------
 // 「そろり」ボタン・スペース＝1ぽ、「しゃがむ」ボタン・↓＝おしている間 しゃがむ
 cv.addEventListener('pointerdown', () => { skipIntro(); });
-$('pStep').addEventListener('pointerdown', e => { e.preventDefault(); if (!skipIntro()) step(); });
+$('pStep').addEventListener('pointerdown', e => { e.preventDefault(); if (!skipIntro()){ step(); if (S.phase === 'gate') smallStep(); } });
 const pc = $('pCrouch');
 pc.addEventListener('pointerdown', e => { e.preventDefault(); S.padCrouch = true; pc.classList.add('on'); });
 ['pointerup', 'pointerleave', 'pointercancel'].forEach(n => pc.addEventListener(n, () => { S.padCrouch = false; pc.classList.remove('on'); }));
+// 2しょう：「またぐ」・↑＝大また、「かたむけ」・←→＝おしている間 かたむける、🙌・H＝りょう手、数字＝金庫の 番号
+function holdBtn(id, on, off){
+  const b = $(id);
+  b.addEventListener('pointerdown', e => { e.preventDefault(); on(); b.classList.add('on'); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(n => b.addEventListener(n, () => { if (b.classList.contains('on')){ off(); b.classList.remove('on'); } }));
+}
+const stride = () => { step(); bigStep(); };
+$('pBig').addEventListener('pointerdown', e => { e.preventDefault(); stride(); });
+holdBtn('pLL', () => { S.padLean = -1; }, () => { S.padLean = 0; });
+holdBtn('pLR', () => { S.padLean = 1; }, () => { S.padLean = 0; });
+holdBtn('pHands', () => { S.padHands = true; }, () => { S.padHands = false; });
+for (let d = 1; d <= 9; d++){
+  const b = document.createElement('button'); b.textContent = d;
+  b.addEventListener('pointerdown', e => { e.preventDefault(); answer(d); });
+  $('keys').appendChild(b);
+}
+syncPad();
+const HOLD = { ArrowDown: v => { S.padCrouch = v; }, ArrowLeft: v => { S.padLean = v ? -1 : 0; }, ArrowRight: v => { S.padLean = v ? 1 : 0; }, KeyH: v => { S.padHands = v; } };
 addEventListener('keydown', e => {
   if (S.mode !== 'nocam' || e.repeat) return;
-  if (e.code === 'Space'){ e.preventDefault(); if (!skipIntro()) step(); }
-  if (e.code === 'ArrowDown') S.padCrouch = true;
+  if (e.code === 'Space'){ e.preventDefault(); if (!skipIntro()){ step(); if (S.phase === 'gate') smallStep(); } }
+  if (e.code === 'ArrowUp') stride();
+  if (HOLD[e.code]) HOLD[e.code](true);
+  if (/^Digit[1-9]$/.test(e.code)) answer(+e.code.slice(5));
 });
-addEventListener('keyup', e => { if (e.code === 'ArrowDown') S.padCrouch = false; });
+addEventListener('keyup', e => { if (HOLD[e.code]) HOLD[e.code](false); });
 </script>
 </body>
 </html>
