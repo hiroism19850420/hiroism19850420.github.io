@@ -41,12 +41,10 @@
 'use strict';
 
 // ============ 台と物理の数値（長さは cm、角度は度） ============
-// 公式の寸法は公開されていないので、写真からの見積もり。ここを直せば調整できる
+// 公式の寸法は公開されていない。台の形は再現品の寸法図から、角度や転がり方は見積もり
 const BALL_R = 3.5;        // ボールの半径
-const HOLE_R = 4.2;        // 落とし穴の半径（ボールがぴったり入る大きさ）
-const LANE_HW = 10;        // 道の幅の半分
+const HOLE_R = 3.7;        // 落とし穴の半径（ボールがぴったり入る大きさ）
 const RAIL_R = 0.8;        // ガード（細い棒）の太さの半分
-const RAIL_INSET = 1.5;    // 道のふちからガードの中心までの距離
 const PITCH = 8;           // 台が奥へ下がっている角度（固定）
 const ROLL_MAX = 8;        // ハンドルを回しきったときの左右の傾き（PITCH 以下にしておくと手前へ戻らない）
 const PHONE_GAIN = 0.5;    // スマホの傾き → 台の傾き（スマホ16度で回しきり）
@@ -58,43 +56,25 @@ const RAIL_BOUNCE = 0.2;    // ガードに当たったときのはね返り
 const RAIL_RUB = 0.2;      // ガードにこすっている間の減速（軽いのであまり止まらない）
 const BALLS = 4;
 
-// 道の中心線。手前（y=0）から奥へ、右奥→左奥→右奥→左奥のジグザグ
-const PTS = [[0,0],[20,34],[0,66],[22,96],[8,124]];
-// ガード：[区間, 側(+1=進行方向の左, -1=右), 始まり, 終わり]（区間の長さを1とした位置）
-const RAILS = [
-  [0, 1,-0.10, 0.85], [0,-1,-0.10, 0.70],
-  [1, 1, 0.20, 0.75],
-  [2, 1,-0.18, 0.70], [2,-1, 0.30, 0.90],
-  [3,-1,-0.18, 0.60], [3, 1, 0.20, 0.60],
+// 台の形（上から見た図）。x=中心からの左右（右が＋）、y=手前からの奥行き
+// ジャングルカーニバルを自作で再現した人の寸法図（奥行き 35・25・25・20・20cm、
+// 中心からの幅 18・23・23・13cm）から起こした
+const POLY = [
+  [-10,0],[-3,36],[-23,60],[-1,84],[-13,99],[-13,115],[-6.5,115],[-6.5,125],   // 左側を手前から奥へ
+  [3.5,125],[4,105],[23,85],[4,60],[5,54],[18,35],[10,0],                       // 右側を奥から手前へ
 ];
-const HOLE_T = 0.80, HOLE_LAT = 2.5;   // 落とし穴：最後の区間のどこか／中心から左へどれだけ
-const GOAL_HW = 6.5;                   // ゴールの口の幅の半分
-const START_T = 0.06, START_LAT_MAX = LANE_HW - RAIL_INSET - RAIL_R - BALL_R - 0.2;
+// ガード（細い棒）の両端
+const RAIL_SEGS = [
+  [[-9,1],[-2.5,33.5]], [[9,1],[16.5,33.5]],          // スタートの道の左右
+  [[-3,38],[-17.5,55.5]],                             // 2本目（左奥へ）の左。右は空いている
+  [[-15.5,67],[-4.5,78.5]], [[1,60.5],[18,81.5]],     // 3本目（右奥へ）の左右
+  [[0,87],[-11,96]], [[11.5,94.5],[0,106]],           // 4本目（左奥へ）の左右。右のガードは穴のほうを向いている
+];
+const HOLE = [-8.4, 109];              // 落とし穴の中心
+const GOAL_X0 = -6.5, GOAL_X1 = 3.5, GOAL_Y = 125;   // ゴールの出口（奥に突き出た細い板の先）
+const START_Y = 4, START_X_MIN = -4.0, START_X_MAX = 4.6;   // ボールを置ける範囲
 const BALL_COLORS = ['#f6f5ee','#f6f5ee','#f6f5ee','#f6f5ee'];   // 本物と同じ白
 
-// ---- 台の形を作る ----
-const segs = [];
-for (let i = 0; i < PTS.length - 1; i++) {
-  const a = PTS[i], b = PTS[i+1], dx = b[0]-a[0], dy = b[1]-a[1], len = Math.hypot(dx, dy);
-  segs.push({a, b, len, d:[dx/len, dy/len], n:[-dy/len, dx/len]});   // n は進行方向の左
-}
-function segPoint(i, t, lat){ const s = segs[i]; return [s.a[0] + s.d[0]*s.len*t + s.n[0]*lat, s.a[1] + s.d[1]*s.len*t + s.n[1]*lat]; }
-function outline(){
-  const L = [], R = [];
-  for (let i = 0; i < PTS.length; i++) {
-    const p = PTS[i], s0 = segs[Math.max(0, i-1)], s1 = segs[Math.min(segs.length-1, i)];
-    let mx = s0.n[0] + s1.n[0], my = s0.n[1] + s1.n[1]; const ml = Math.hypot(mx, my); mx /= ml; my /= ml;
-    const k = LANE_HW / (mx*s0.n[0] + my*s0.n[1]);
-    let bx = 0, by = 0;
-    if (i === 0) { bx = -s1.d[0]*5; by = -s1.d[1]*5; }   // スタートの手前を少しのばす
-    L.push([p[0] + mx*k + bx, p[1] + my*k + by]); R.push([p[0] - mx*k + bx, p[1] - my*k + by]);
-  }
-  return L.concat(R.reverse());
-}
-const POLY = outline();
-const RAIL_SEGS = RAILS.map(r => { const lat = r[1] * (LANE_HW - RAIL_INSET); return [segPoint(r[0], r[2], lat), segPoint(r[0], r[3], lat)]; });
-RAIL_SEGS.push([segPoint(0, -0.10, LANE_HW - RAIL_INSET), segPoint(0, -0.10, -(LANE_HW - RAIL_INSET))]);   // 手前の止め
-const HOLE = segPoint(3, HOLE_T, HOLE_LAT);
 function inPoly(x, y){
   let c = false;
   for (let i = 0, j = POLY.length - 1; i < POLY.length; j = i++) {
@@ -108,15 +88,15 @@ const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
 const W = 360; let viewH = 640, S = 4, ox = 0, oy = 0;
 const BX0 = Math.min(...POLY.map(p => p[0])) - 6, BX1 = Math.max(...POLY.map(p => p[0])) + 6;
-const BY0 = -9, BY1 = 140;
+const BY0 = -6, BY1 = 139;
 function resize(){
   const r = cv.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   cv.width = Math.max(1, Math.round(r.width * dpr));
   cv.height = Math.max(1, Math.round(r.height * dpr));
   viewH = W * cv.height / cv.width;
-  S = Math.min((W - 16) / (BX1 - BX0), (viewH - 120) / (BY1 - BY0));
-  ox = (W - (BX1 - BX0) * S) / 2; oy = 44 + ((viewH - 120) - (BY1 - BY0) * S) / 2;
+  S = Math.min((W - 16) / (BX1 - BX0), (viewH - 164) / (BY1 - BY0));
+  ox = (W - (BX1 - BX0) * S) / 2; oy = 42 + ((viewH - 164) - (BY1 - BY0) * S) / 2;
 }
 window.addEventListener('resize', resize);
 const sx = x => ox + (x - BX0) * S, sy = y => oy + (BY1 - y) * S;
@@ -157,8 +137,7 @@ let placing = false;
 function pointerX(e){ const r = cv.getBoundingClientRect(); return (e.clientX - r.left) / r.width * W; }
 function placeAt(px){
   // 指の位置を、スタートの線の上の左右位置に直す
-  const s = segs[0], wx = BX0 + (px - ox) / S, c = segPoint(0, START_T, 0);
-  T.startLat = clamp((wx - c[0]) / s.n[0], -START_LAT_MAX, START_LAT_MAX);
+  T.startX = clamp(BX0 + (px - ox) / S, START_X_MIN, START_X_MAX);
   setBallAtStart();
 }
 cv.addEventListener('pointerdown', e => {
@@ -200,11 +179,11 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
 // ---- ゲームの状態 ----
 const T = {
-  state:'title', x:0, y:0, vx:0, vy:0, roll:0, startLat:START_LAT_MAX,
+  state:'title', x:0, y:0, vx:0, vy:0, roll:0, startX:START_X_MIN,
   ball:0, wins:0, results:[], endT:0, endKind:'', railCool:0, time:0,
 };
-function setBallAtStart(){ const p = segPoint(0, START_T, T.startLat); T.x = p[0]; T.y = p[1]; T.vx = T.vy = 0; }
-function newGame(){ T.ball = 0; T.wins = 0; T.results = []; T.startLat = START_LAT_MAX; nextBall(); show(null); }
+function setBallAtStart(){ T.x = T.startX; T.y = START_Y; T.vx = T.vy = 0; }
+function newGame(){ T.ball = 0; T.wins = 0; T.results = []; T.startX = START_X_MIN; nextBall(); show(null); }
 function nextBall(){ T.state = 'ready'; T.time = 0; setBallAtStart(); }
 function release(){ if (T.state !== 'ready') return; T.state = 'roll'; sfx.go(); }
 function finish(kind){
@@ -248,9 +227,7 @@ function step(dt){
   // 落とし穴・ゴール・ふちから落ちる
   if (Math.hypot(T.x - HOLE[0], T.y - HOLE[1]) < HOLE_R * .9) return finish('hole');
   if (!inPoly(T.x, T.y)) {
-    const s = segs[3], rx = T.x - s.a[0], ry = T.y - s.a[1];
-    const along = (rx*s.d[0] + ry*s.d[1]) / s.len, lat = rx*s.n[0] + ry*s.n[1];
-    return finish(along >= 1 && Math.abs(lat) <= GOAL_HW ? 'goal' : 'fall');
+    return finish(T.y >= GOAL_Y - .5 && T.x >= GOAL_X0 && T.x <= GOAL_X1 ? 'goal' : 'fall');
   }
 }
 
@@ -258,14 +235,14 @@ function update(dt){
   T.railCool -= dt;
   T.roll += (targetRoll(dt) - T.roll) * Math.min(1, dt / ROLL_LAG);
   if (T.state === 'ready') {
-    if (input.key && !placing) { T.startLat = clamp(T.startLat - input.key * 8 * dt * (segs[0].n[0] < 0 ? 1 : -1), -START_LAT_MAX, START_LAT_MAX); setBallAtStart(); }
+    if (input.key && !placing) { T.startX = clamp(T.startX + input.key * 8 * dt, START_X_MIN, START_X_MAX); setBallAtStart(); }
   } else if (T.state === 'roll') {
     T.time += dt;
     const n = Math.max(1, Math.ceil(dt / (1/240)));
     for (let i = 0; i < n && T.state === 'roll'; i++) step(dt / n);
   } else if (T.state === 'end') {
     T.endT += dt;
-    if (T.endKind === 'goal') { const s = segs[3]; T.x += s.d[0] * 25 * dt; T.y += s.d[1] * 25 * dt; }
+    if (T.endKind === 'goal') T.y += 25 * dt;
     else if (T.endKind === 'hole') { T.x += (HOLE[0] - T.x) * Math.min(1, dt * 10); T.y += (HOLE[1] - T.y) * Math.min(1, dt * 10); }
     else { T.x += T.vx * dt * .5; T.y += T.vy * dt * .5; }
     if (T.endT > 1.5) {
@@ -285,31 +262,28 @@ function draw(){
   bg.addColorStop(0, '#0b5a63'); bg.addColorStop(1, '#083c47');
   ctx.fillStyle = bg; ctx.fillRect(0, 0, W, viewH);
   ctx.fillStyle = 'rgba(70,160,90,.45)';
-  [[-8,20,7],[44,8,6],[-6,84,8],[46,58,7],[40,112,6],[-4,118,6]].forEach(l => {
+  [[-22,18,7],[25,10,6],[-24,92,7],[26,56,6],[22,116,6],[-22,128,5]].forEach(l => {
     ctx.beginPath(); ctx.moveTo(sx(l[0]), sy(l[1])); ctx.arc(sx(l[0]), sy(l[1]), l[2] * S, .5, 6.0); ctx.fill();
   });
 
   // ゴールのしげみ
-  const s3 = segs[3], gx = sx(PTS[4][0] + s3.d[0] * 7), gy = sy(PTS[4][1] + s3.d[1] * 7);
+  const gx = sx((GOAL_X0 + GOAL_X1) / 2), gy = sy(GOAL_Y + 6);
   ctx.fillStyle = '#1f7a3a';
   for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.arc(gx + i * 3.4 * S, gy - Math.abs(i) * .4 * S, 4.6 * S, 0, 6.3); ctx.fill(); }
   ctx.fillStyle = '#2fa04c';
   for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.arc(gx + i * 3.4 * S + S, gy - 1.6 * S, 3 * S, 0, 6.3); ctx.fill(); }
-  ctx.fillStyle = '#04140b'; ctx.beginPath(); ctx.ellipse(gx, gy + .5 * S, GOAL_HW * S, 4.2 * S, Math.atan2(-s3.d[1], s3.d[0]) + Math.PI / 2, 0, 6.3); ctx.fill();
+  ctx.fillStyle = '#04140b'; ctx.beginPath(); ctx.ellipse(gx, gy + 1.5 * S, (GOAL_X1 - GOAL_X0) / 2 * S, 4.5 * S, 0, 0, 6.3); ctx.fill();
 
   // 台（かげ→板→さざ波）
   ctx.save(); ctx.translate(4, 6); path(POLY); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill(); ctx.restore();
-  // ゴールへ出る小さな板
-  const tab = [segPoint(3, 1 - .02, GOAL_HW), segPoint(3, 1 + 4 / s3.len, GOAL_HW), segPoint(3, 1 + 4 / s3.len, -GOAL_HW), segPoint(3, 1 - .02, -GOAL_HW)];
-  path(tab); ctx.fillStyle = '#5cc3df'; ctx.fill();
   path(POLY);
-  const bd = ctx.createLinearGradient(0, sy(0), 0, sy(124));
+  const bd = ctx.createLinearGradient(0, sy(0), 0, sy(125));
   bd.addColorStop(0, '#49b5d6'); bd.addColorStop(1, '#6fd0e4');
   ctx.fillStyle = bd; ctx.fill();
   ctx.strokeStyle = '#2b8fb0'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
   ctx.save(); path(POLY); ctx.clip();
   ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.2;
-  [[0,66],[22,96],[17,104]].forEach(p => { for (let r = 2; r <= 8; r += 2) { ctx.beginPath(); ctx.ellipse(sx(p[0]), sy(p[1]), r * S, r * S * .8, 0, 0, 6.3); ctx.stroke(); } });
+  [[-12,60],[14,84],[-4,108]].forEach(p => { for (let r = 2; r <= 8; r += 2) { ctx.beginPath(); ctx.ellipse(sx(p[0]), sy(p[1]), r * S, r * S * .8, 0, 0, 6.3); ctx.stroke(); } });
   // 傾いている側を少し暗くする
   const lean = T.roll / ROLL_MAX;
   if (Math.abs(lean) > .02) {
@@ -418,7 +392,7 @@ function frame(t){
 resize(); draw();
 requestAnimationFrame(frame);
 
-window.KB = {T, input, update, draw, begin, release, setBallAtStart, START_LAT_MAX};  // 確認用
+window.KB = {T, input, update, draw, begin, release, setBallAtStart, START_X_MIN, START_X_MAX};  // 確認用
 })();
 </script>
 </body>
