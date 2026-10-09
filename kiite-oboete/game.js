@@ -3,6 +3,7 @@
   const Q = new URLSearchParams(location.search);
   const MOCK = Q.has('mock');          // 自動テスト・動画づくり用: 声の入出力を差し替える
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const ANDROID = /Android/i.test(navigator.userAgent);
   const $ = s => document.querySelector(s);
   const sleep = ms => new Promise(r => setTimeout(r, MOCK && window.__fast ? Math.min(ms, 2) : ms));
   const LOG = window.__log = [];
@@ -260,16 +261,36 @@
   // ================= 耳(音声認識) =================
   let waiter = null, queue = [], lastAct = 0;
   function deliver(x) { if (waiter) waiter(x); else queue.push(x); }
+  // Android では、スタートのタップの中で先にマイクの許可をもらっておく
+  // (読み上げのあとで初めて音声認識を始めると、許可の画面が出ないまま止まることがある)。
+  // つかんだマイクはすぐ放す(つかんだままだと音声認識に音が届かない)
+  let micPrime = null, micErr = '';
+  function primeMic() {
+    if (micPrime || MOCK || !ANDROID || !SR || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    micErr = '';
+    micPrime = navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(st => { st.getTracks().forEach(t => t.stop()); }, e => { micErr = e.name || 'error'; micPrime = null; });
+  }
   const Ear = {
-    rec: null, on: false, endP: null,
+    rec: null, on: false, endP: null, fails: 0, going: false,
     start() {
       queue = []; lastAct = 0;
       if (this.on) return;
       this.on = true; this._go();
     },
-    _go() {
-      if (!this.on || MOCK || !SR) return;
+    async _go() {
+      if (!this.on || MOCK || !SR || this.going) return;
+      if (micPrime) {
+        this.going = true; await micPrime; this.going = false;
+        if (!this.on || this.rec) return;
+      }
+      if (micErr === 'NotAllowedError' || micErr === 'SecurityError') { this.on = false; micDenied(micErr); return; }
+      // 読み上げが終わりきる前に始めると、Android では始まらないことがある
+      if (ANDROID && window.speechSynthesis && speechSynthesis.speaking) { setTimeout(() => this._go(), 200); return; }
       const rec = this.rec = new SR();
+      let started = false;
+      const watch = setTimeout(() => { if (this.rec === rec && !started) micTrouble('no-start'); }, 4000);
+      rec.onstart = () => { started = true; this.fails = 0; clearTimeout(watch); };
       rec.lang = 'ja-JP'; rec.continuous = false; rec.interimResults = true; rec.maxAlternatives = 5;
       rec.onresult = e => {
         const r = e.results[e.results.length - 1];
@@ -280,12 +301,15 @@
         } else setHeard(r[0].transcript);
       };
       rec.onerror = e => {
-        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { this.on = false; micDenied(); }
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { this.on = false; micDenied(e.error); }
+        else if (e.error !== 'no-speech' && e.error !== 'aborted') { this.fails++; micTrouble(e.error); }
       };
       rec.onend = () => {
+        clearTimeout(watch);
         if (this.rec === rec) this.rec = null;
         if (this.endP) { this.endP(); this.endP = null; }
-        if (this.on) setTimeout(() => { if (this.on && !this.rec) this._go(); }, 150);
+        // うまくいかないときは 間をあけて やりなおす
+        if (this.on) setTimeout(() => { if (this.on && !this.rec) this._go(); }, this.fails ? 800 : 150);
       };
       try { rec.start(); } catch (e) { this.rec = null; setTimeout(() => this._go(), 400); }
     },
@@ -400,9 +424,22 @@
   async function wakeLock() {
     try { if ('wakeLock' in navigator && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) {}
   }
-  function micDenied() {
+  function micDenied(code) {
     setOrb('pause', 'マイクが使えません');
-    setHeard('ブラウザの設定でマイクを許可してください');
+    setHeard(code === 'service-not-allowed'
+      ? 'このブラウザでは声の聞き取りが使えません。Chrome で開いてください(アプリの中の画面では使えません)'
+      : 'ブラウザの設定でマイクを許可してください');
+    $('#dbg').hidden = false;
+  }
+  // 許可はあるのに聞き取れないとき。原因を画面に出して、文字入力でも続けられるようにする
+  const MIC_MSG = {
+    'audio-capture': 'マイクが見つからないか、ほかのアプリが使っています',
+    'network': 'ネットにつながっていないと聞き取れません',
+    'language-not-supported': 'この端末に日本語の聞き取りが入っていません',
+    'no-start': '声の聞き取りが始まりません。Chrome で開いているか確かめてください',
+  };
+  function micTrouble(code) {
+    setHeard((MIC_MSG[code] || '声の聞き取りでエラーが出ました') + '(' + code + ')');
     $('#dbg').hidden = false;
   }
 
@@ -591,6 +628,7 @@
   async function startGame() {
     if (G.running) return;
     G.running = true;
+    primeMic();
     if (!MOCK) {
       try { const AC = window.AudioContext || window.webkitAudioContext; synth = synth || makeSynth(new AC()); } catch (e) {}
       try { speechSynthesis.cancel(); } catch (e) {}
