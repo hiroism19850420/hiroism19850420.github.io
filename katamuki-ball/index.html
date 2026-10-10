@@ -103,10 +103,27 @@ function resize(){
   viewH = W * cv.height / cv.width;
   S = Math.min((W - 16) / (BX1 - BX0), (viewH - 164) / (BY1 - BY0));
   ox = (W - (BX1 - BX0) * S) / 2; oy = 46 + ((viewH - 164) - (BY1 - BY0) * S) / 2;
-  buildBg();
+  setCam(); buildBg();
 }
 window.addEventListener('resize', resize);
-const sx = x => ox + (x - BX0) * S, sy = y => oy + (BY1 - y) * S;
+
+// ---- 見え方：台を 手前から 見る（手前が 大きく、奥へ 行くほど 小さく なる） ----
+// NEAR_S：手前のはしでの 大きさ（長さ1 が 画面の 何ピクセルか）、FAR_RATIO：手前が 奥の 何倍に 見えるか（大きいほど 遠近が 強い）、
+// TILT_SHOW：台の かたむきを 何倍に 強めて 見せるか
+const NEAR_S = 12, FAR_RATIO = 3, FAR_Y = 125, TILT_SHOW = 1.3;
+const CAM_D = FAR_Y / (FAR_RATIO - 1), CAM_F = NEAR_S * CAM_D;
+let camH = 44, horizon = 0, pjRoll = 0;
+function setCam(){
+  const yn = viewH - 96, yf = Math.min(150, viewH * .26);   // 手前のはし・奥のはしが 来る 画面の高さ
+  camH = (yn - yf) / (NEAR_S - NEAR_S / FAR_RATIO); horizon = yf - camH * NEAR_S / FAR_RATIO;
+}
+// 台の上の点 (x, y) と 高さ z → 画面の位置 [X, Y] と、その場所での 大きさ s
+function PJ(x, y, z = 0){
+  const s = CAM_F / (Math.max(-CAM_D * .7, y) + CAM_D);
+  z -= x * Math.tan(pjRoll * Math.PI / 180);
+  return [W / 2 + x * s, horizon + (camH - z) * s, s];
+}
+const flat = y => camH / (Math.max(-CAM_D * .7, y) + CAM_D);   // 台の上の 円が たてに つぶれて 見える わりあい
 
 // ---- 背景（ジャングルの屋台）。動かないので、画面の大きさが変わったときだけ描く ----
 const bgCv = document.createElement('canvas');
@@ -114,6 +131,7 @@ function buildBg(){
   bgCv.width = cv.width; bgCv.height = cv.height;
   const c = bgCv.getContext('2d'), sc = cv.width / W;
   c.setTransform(sc, 0, 0, sc, 0, 0);
+  pjRoll = 0;
   let seed = 20261009; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
   const leaf = (x, y, len, wid, ang, col, rib) => {
     c.save(); c.translate(x, y); c.rotate(ang);
@@ -145,7 +163,7 @@ function buildBg(){
   for (let i = 0; i < 46; i++) { const x = rnd() * W, y = 50 + rnd() * (viewH - 120), w = 14 + rnd() * 22; c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + w / 2, y - 4, x + w, y); c.stroke(); }
   // ハスの葉と花
   [[-25,16,7],[26,12,6],[-27,44,5],[27,62,7],[-26,98,7],[25,112,6],[-22,124,5],[21,26,4]].forEach((l, i) => {
-    const x = sx(l[0]), y = sy(l[1]), r = l[2] * S * .9;
+    const [x, y, ls] = PJ(l[0] * .72, l[1]), r = l[2] * ls * .9;
     c.fillStyle = 'rgba(0,40,50,.25)'; c.beginPath(); c.arc(x + 2, y + 3, r, 0, 6.3); c.fill();
     c.fillStyle = i % 2 ? '#3fa45a' : '#2f9150'; c.beginPath(); c.moveTo(x, y); c.arc(x, y, r, .4 + i, 6.0 + i); c.fill();
     c.strokeStyle = 'rgba(20,90,50,.6)'; c.lineWidth = 1;
@@ -173,7 +191,7 @@ function buildBg(){
   });
 
   // 奥のジャングル（ゴールのまわり）
-  const gx = sx((GOAL_X0 + GOAL_X1) / 2), gy = sy(GOAL_Y), top = 40, bottom = gy + 4 * S;
+  const [gx, gy, S] = PJ((GOAL_X0 + GOAL_X1) / 2, GOAL_Y), top = 40, bottom = gy + 4 * S;   // この先の S は 奥のはしでの 大きさ
   const jg = c.createLinearGradient(0, top, 0, bottom);
   jg.addColorStop(0, '#0d3b22'); jg.addColorStop(1, '#17592f');
   c.fillStyle = jg; c.fillRect(0, top, W, Math.max(10, bottom - top - 2 * S));
@@ -235,7 +253,7 @@ let placing = false;
 function pointerX(e){ const r = cv.getBoundingClientRect(); return (e.clientX - r.left) / r.width * W; }
 function placeAt(px){
   // 指の位置を、スタートの線の上の左右位置に直す
-  T.startX = clamp(BX0 + (px - ox) / S, START_X_MIN, START_X_MAX);
+  T.startX = clamp((px - W / 2) / PJ(0, START_Y)[2], START_X_MIN, START_X_MAX);
   setBallAtStart();
 }
 cv.addEventListener('pointerdown', e => {
@@ -432,27 +450,28 @@ function update(dt){
 }
 
 // ---- 描画 ----
-function path(pts){ ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(sx(p[0]), sy(p[1])) : ctx.moveTo(sx(p[0]), sy(p[1]))); ctx.closePath(); }
+function path(pts){ ctx.beginPath(); pts.forEach((p, i) => { const q = PJ(p[0], p[1]); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }); ctx.closePath(); }
 function draw(){
   const sc = cv.width / W;
   ctx.setTransform(sc, 0, 0, sc, 0, 0);
   ctx.drawImage(bgCv, 0, 0, W, viewH);
+  pjRoll = T.roll * TILT_SHOW;   // 台が かたむくと、かたむいた側が 下がって 見える
 
   // 台（かげ→板→さざ波）
-  ctx.save(); ctx.translate(5, 9); path(POLY); ctx.fillStyle = 'rgba(0,25,35,.4)'; ctx.fill(); ctx.restore();
-  ctx.save(); ctx.translate(0, 3); path(POLY); ctx.fillStyle = '#1f6f8c'; ctx.fill(); ctx.restore();   // 板の厚み
+  ctx.save(); ctx.translate(4, 16); path(POLY); ctx.fillStyle = 'rgba(0,25,35,.4)'; ctx.fill(); ctx.restore();
+  ctx.save(); ctx.translate(0, 7); path(POLY); ctx.fillStyle = '#1f6f8c'; ctx.fill(); ctx.restore();   // 板の厚み
   path(POLY);
-  const bd = ctx.createLinearGradient(0, sy(0), 0, sy(125));
+  const bd = ctx.createLinearGradient(0, PJ(0, 0)[1], 0, PJ(0, 125)[1]);
   bd.addColorStop(0, '#49b5d6'); bd.addColorStop(1, '#6fd0e4');
   ctx.fillStyle = bd; ctx.fill();
   ctx.strokeStyle = '#2b8fb0'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
   ctx.save(); path(POLY); ctx.clip();
   ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.2;
-  [[-12,60],[14,84],[-4,108]].forEach(p => { for (let r = 2; r <= 8; r += 2) { ctx.beginPath(); ctx.ellipse(sx(p[0]), sy(p[1]), r * S, r * S * .8, 0, 0, 6.3); ctx.stroke(); } });
+  [[-12,60],[14,84],[-4,108]].forEach(p => { const q = PJ(p[0], p[1]); for (let r = 2; r <= 8; r += 2) { ctx.beginPath(); ctx.ellipse(q[0], q[1], r * q[2], r * q[2] * flat(p[1]), 0, 0, 6.3); ctx.stroke(); } });
   // 傾いている側を少し暗くする
   const lean = T.roll / ROLL_MAX;
   if (Math.abs(lean) > .02) {
-    const sh = ctx.createLinearGradient(sx(BX0), 0, sx(BX1), 0);
+    const sh = ctx.createLinearGradient(W / 2 - 150, 0, W / 2 + 150, 0);
     sh.addColorStop(lean > 0 ? 0 : 1, 'rgba(255,255,255,' + (.18 * Math.abs(lean)) + ')');
     sh.addColorStop(lean > 0 ? 1 : 0, 'rgba(0,30,60,' + (.3 * Math.abs(lean)) + ')');
     ctx.fillStyle = sh; ctx.fillRect(0, 0, W, viewH);
@@ -460,37 +479,54 @@ function draw(){
   ctx.restore();
 
   // 落とし穴
-  const hg = ctx.createRadialGradient(sx(HOLE[0]), sy(HOLE[1]) + 2, 1, sx(HOLE[0]), sy(HOLE[1]), HOLE_R * S);
-  hg.addColorStop(0, '#000'); hg.addColorStop(.85, '#06202a'); hg.addColorStop(1, '#2b8fb0');
-  ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(sx(HOLE[0]), sy(HOLE[1]), HOLE_R * S, 0, 6.3); ctx.fill();
-
-  // ガード
-  ctx.lineCap = 'round';
-  RAIL_SEGS.forEach(r => {
-    ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = RAIL_R * 2 * S;
-    ctx.beginPath(); ctx.moveTo(sx(r[0][0]) + 2, sy(r[0][1]) + 3); ctx.lineTo(sx(r[1][0]) + 2, sy(r[1][1]) + 3); ctx.stroke();
-    ctx.strokeStyle = '#c9f2dd';
-    ctx.beginPath(); ctx.moveTo(sx(r[0][0]), sy(r[0][1])); ctx.lineTo(sx(r[1][0]), sy(r[1][1])); ctx.stroke();
-  });
-  ctx.lineCap = 'butt';
-
-  // ボール
-  let br = BALL_R * S, alpha = 1;
-  if (T.state === 'end') {
-    if (T.endKind === 'goal') br *= Math.max(0, 1 - T.endT / .5);
-    else if (T.endKind === 'hole') br *= Math.max(0, 1 - T.endT / .5);
-    else { br *= Math.max(.55, 1 - T.endT * .6); alpha = Math.max(0, 1 - T.endT / .8); }
+  const HR = HOLE_R;
+  if (HR) {
+    const [hx, hy, hs] = PJ(HOLE[0], HOLE[1]), hf = flat(HOLE[1]);
+    const hg = ctx.createRadialGradient(hx, hy + 2, 1, hx, hy, Math.max(1, HR * hs));
+    hg.addColorStop(0, '#000'); hg.addColorStop(.85, '#06202a'); hg.addColorStop(1, '#2b8fb0');
+    ctx.save(); ctx.translate(hx, hy); ctx.scale(1, hf); ctx.translate(-hx, -hy);
+    ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(hx, hy, HR * hs, 0, 6.3); ctx.fill(); ctx.restore();
   }
+
+  // ガード（高さのある 棒）。ボールより 奥の ものを 先に、手前の ものを 後に かく
+  const RAIL_H = 2.4;
+  const drawRail = r => {
+    const a = PJ(r[0][0], r[0][1]), b = PJ(r[1][0], r[1][1]), at = PJ(r[0][0], r[0][1], RAIL_H), bt = PJ(r[1][0], r[1][1], RAIL_H);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = RAIL_R * 2 * (a[2] + b[2]) / 2;
+    ctx.beginPath(); ctx.moveTo(a[0] + 2, a[1] + 3); ctx.lineTo(b[0] + 2, b[1] + 3); ctx.stroke();
+    ctx.fillStyle = '#7fc4a6'; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.lineTo(bt[0], bt[1]); ctx.lineTo(at[0], at[1]); ctx.closePath(); ctx.fill();
+    // 棒は 近いほど 太く 見える
+    const n = 6; ctx.strokeStyle = '#c9f2dd';
+    for (let i = 0; i < n; i++) {
+      const k0 = i / n, k1 = (i + 1) / n, s = at[2] + (bt[2] - at[2]) * (k0 + k1) / 2;
+      ctx.lineWidth = RAIL_R * 2 * s;
+      ctx.beginPath(); ctx.moveTo(at[0] + (bt[0] - at[0]) * k0, at[1] + (bt[1] - at[1]) * k0); ctx.lineTo(at[0] + (bt[0] - at[0]) * k1, at[1] + (bt[1] - at[1]) * k1); ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+  };
+  const railY = r => (r[0][1] + r[1][1]) / 2;
+  const rs = [...RAIL_SEGS].sort((p, q) => railY(q) - railY(p));
+  rs.filter(r => railY(r) >= T.y).forEach(drawRail);
+
+  // ボール（奥へ 行くほど 小さく なる）
+  let shrink = 1, alpha = 1;
+  if (T.state === 'end') {
+    if (T.endKind === 'goal') shrink = Math.max(0, 1 - T.endT / .5);
+    else if (T.endKind === 'hole') shrink = Math.max(0, 1 - T.endT / .5);
+    else { shrink = Math.max(.55, 1 - T.endT * .6); alpha = Math.max(0, 1 - T.endT / .8); }
+  }
+  const [bx, gy0, bs] = PJ(T.x, T.y), br = BALL_R * bs * shrink, by = gy0 - br * (T.state === 'end' && T.endKind !== 'goal' ? .3 : 1);
   if (T.state !== 'title' && T.state !== 'result' && br > .5 && alpha > 0) {
-    const bx = sx(T.x), by = sy(T.y);
     ctx.globalAlpha = alpha;
-    if (T.state !== 'end') { ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(bx + 3, by + 4, br, br * .85, 0, 0, 6.3); ctx.fill(); }
+    if (T.state !== 'end') { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(bx + br * .12, gy0, br * 1.02, br * Math.min(.75, flat(T.y) * .9), 0, 0, 6.3); ctx.fill(); }
     const g2 = ctx.createRadialGradient(bx - br * .35, by - br * .4, br * .1, bx, by, br);
     g2.addColorStop(0, '#fff'); g2.addColorStop(.35, BALL_COLORS[T.ball % BALL_COLORS.length]); g2.addColorStop(1, 'rgba(60,80,110,.5)');
     ctx.fillStyle = BALL_COLORS[T.ball % BALL_COLORS.length]; ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.3); ctx.fill();
     ctx.fillStyle = g2; ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.3); ctx.fill();
     ctx.globalAlpha = 1;
   }
+  rs.filter(r => railY(r) < T.y).forEach(drawRail);
   hud();
 }
 
