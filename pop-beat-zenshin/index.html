@@ -676,7 +676,8 @@ const ZSET=[[6,2,0],[6,2,7,1,5,3],[6,2,7,1,5,3,0,4]];   // EASY は 左・右・
 const ZGAP=[0.6,0.45,0.33];                               // ノーツどうしの最短間隔（秒）。体は指より おそいので まびく
 const ZLEAD=1.5;                                          // メーターが 中心から外がわまで のびる秒数（HI-SPEED 2.5 のとき）
 const HIT_R=1.3,REARM_R=1.0,REACH=1.8;                    // 手が 胸から HIT_R より外に出たら パンチ／REARM_R より内に もどすと 次を打てる／REACH＝外がわの円に とどく うでの長さ
-const UP_EASY=1.35,SIDE_SLACK=0.3;                        // 上へのパンチを どれだけ 近くで みとめるか／上下に打つとき 引く 左右のずれ
+const UP_EASY=2.0,SIDE_SLACK=0.3;                         // 上・ななめ上は あごの高さまで 手を上げれば とどいた ことにする（大きいほど 低くてよい）／上下に打つとき 引く 左右のずれ
+const DIR_WIDE=68;                                        // 打った向きが ノーツの向きから これ（度）以内なら その ノーツに 当たったことにする
 const ZCOL=['#f5f5f5','#ffd83a','#ff4058','#ff8a3a','#c77dff','#44dd6e','#3b9dff','#5fe3e3'];
 const ZNAME=['上','右上','右','右下','下','左下','左','左上'];
 function zenChart(s,d){
@@ -692,15 +693,18 @@ Body.on('pose',()=>{
     z.x=h.px+(i?0.5:-0.5);z.y=h.py;
     // 上は うでが 画面から出やすいので、おでこの高さまで 上げれば とどいた ことにする（UP_EASY 倍して はかる）
     const r=Math.hypot(z.x,z.y),rh=Math.hypot(z.x,z.y<0?z.y*UP_EASY:z.y);
-    if(r<REARM_R)z.armed=true;
+    if(rh<REARM_R)z.armed=true;
     else if(z.armed&&rh>=HIT_R){
       z.armed=false;
       // 手は 肩の ま上・ま下に 出るので、上下に打つときは 肩はばの分だけ 左右のずれを 引いてから 方向を決める
       const ax=Math.abs(z.y)>0.5?Math.sign(z.x)*Math.max(0,Math.abs(z.x)-SIDE_SLACK):z.x;
       const deg=Math.atan2(z.y,ax)*180/Math.PI+90;
-      // いまの むずかしさで 出てくる方向のうち、いちばん近い方向に する
-      let best=0,bd=999;
-      for(const d of ZSET[diff]){const e=Math.abs(((deg-d*45)%360+540)%360-180);if(e<bd){bd=e;best=d;}}
+      const off=d=>Math.abs(((deg-d*45)%360+540)%360-180);
+      // いま 来ている ノーツの うち、打った向きに 近いものが あれば それに 当てる（向きが 少し ずれていても よい）
+      let best=-1,bd=DIR_WIDE;
+      if(state==='play'){const now=songTime()-zenLag;for(const n of notes){if(n.t-now>WIN.BAD)break;if(n.j||now-n.t>WIN.BAD)continue;const e=off(n.l);if(e<bd){bd=e;best=n.l;}}}
+      // なければ、いまの むずかしさで 出てくる方向のうち、いちばん近い方向に する
+      if(best<0){bd=999;for(const d of ZSET[diff]){const e=off(d);if(e<bd){bd=e;best=d;}}}
       press(best);
     }
   });
@@ -757,7 +761,7 @@ function drawPlayZen(tm){
   if(now<0)txt(now<-0.8?'はなれて かまえて '+Math.ceil(-now):'GO!!',cx,cy,now<-0.8?30:56,'#ffe23a','center','#2a0a3a',10);
 }
 Body.gate({title:'POP BEAT STAGE',corner:'tr',lines:['まん中から <b>8つの方向</b>に メーターが のびる','外がわの 丸に とどいた しゅんかんに、<b>その方向へ パンチ</b>','青い丸＝左手、赤い丸＝右手。どちらの手でも OK','打ったら こぶしを 胸に もどす（もどすと 次が 打てる）','EASY は <b>左・右・上</b> だけ、NORMAL は6方向、HYPER は8方向','👏 手を たたく … えらんだ曲を はじめる・けっかから もどる'],
- onStart:m=>{if(m==='cam'){nb=9;setLanes();zenLag=Body.cfg.LAG;Object.assign(WIN,{COOL:0.07,GREAT:0.13,GOOD:0.19,BAD:0.26});state='select';}}});
+ onStart:m=>{if(m==='cam'){nb=9;setLanes();zenLag=Body.cfg.LAG;Object.assign(WIN,{COOL:0.11,GREAT:0.2,GOOD:0.3,BAD:0.42});state='select';}}});   // 体で打つので タイミングの はばを 広くしてある
 window.__game={press,startGame,zen(v){zenTest=v;},get state(){return state;},get st(){return st;},get notes(){return notes;},set diff(v){diff=v;}};
 loop();
 </script>
