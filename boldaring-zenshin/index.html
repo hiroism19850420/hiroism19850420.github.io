@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>つかめ！ホールド！てっぺんだ！ ぜんしん版</title>
+<style>
+html,body{margin:0;height:100%;background:#333;display:flex;justify-content:center;align-items:center;font-family:sans-serif}
+canvas{max-width:100vw;max-height:100vh;touch-action:none}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<canvas id="c" width="480" height="720"></canvas>
+<script src="body.js"></script>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const W=480,H=720,BTN_Y=600,MAT_Y=560,CX=W/2,GAP=80,START_H=170;
+const TYPES=[
+  {c:'#e33',d:'#a11',l:'#f99',keys:['1','z','j']},
+  {c:'#3b3',d:'#172',l:'#9e9',keys:['2','x','k']},
+  {c:'#36e',d:'#138',l:'#9bf',keys:['3','c','l']}
+];
+const GOLD={c:'#fb2',d:'#c80',l:'#fe9'},GRAY={c:'#ddd',d:'#999',l:'#fff'};
+const ICON_PTS=[1,0.8,1.1,0.9,1.05,0.85,1,0.9];
+let state='title',stage=1,lives=3,score=0,best=0,overAt=0;
+let route=[],cur=0,camH=0,effects=[],chalk=[];
+let timeLeft=0,timeMax=1,stun=0,phaseT=0,pressed=[0,0,0];
+let charge=0,fallD=0,fallV=0,landed=false,shakeT=0;
+let hands=[{x:0,h:0,tx:0,th:0},{x:0,h:0,tx:0,th:0}];   // 0=左手 1=右手
+
+function sy(h){return MAT_Y-(h-camH);}                  // 壁の高さ → 画面のY座標
+
+// ---------- ルート（ホールドの配置） ----------
+function lungeNeed(){return Math.min(25,8+stage);}
+function makeRoute(n){
+  const r=[];let h=START_H,prev=-1;
+  for(let i=0;i<n;i++){
+    let type='normal';
+    if(i===0)type='start';
+    else if(i===n-1)type='top';
+    else if(stage>=2&&i%6===5)type='lunge';
+    if(i>0)h+=type==='lunge'?GAP*2:GAP;
+    const side=i%2;
+    let x;
+    if(type==='start'||type==='top')x=CX+(Math.random()-0.5)*30;
+    else if(type==='lunge')x=CX+(Math.random()-0.5)*60;
+    else x=CX+(side?1:-1)*(35+Math.random()*55);
+    let c=Math.floor(Math.random()*3);
+    if(c===prev&&Math.random()<0.5)c=(c+1+Math.floor(Math.random()*2))%3;
+    prev=c;
+    const pts=[];for(let k=0;k<8;k++)pts.push(0.75+Math.random()*0.45);
+    r.push({type,x,h,c,side,pts,rot:Math.random()*6});
+  }
+  return r;
+}
+
+function startStage(){
+  const n=8+stage*4;                                      // ホールド数は上限なしで増える
+  route=makeRoute(n);cur=0;
+  const lunges=route.filter(o=>o.type==='lunge').length;
+  const rate=Math.min(5,1.2+stage*0.3);                   // 1秒あたりに必要なホールド数（上限5）
+  timeMax=timeLeft=Math.ceil(((n-1)/rate+lunges*lungeNeed()/6)*10)/10;
+  const s=route[0];
+  hands=[{x:s.x-14,h:s.h,tx:s.x-14,th:s.h},{x:s.x+14,h:s.h,tx:s.x+14,th:s.h}];
+  camH=0;charge=0;fallD=0;fallV=0;landed=false;stun=0;shakeT=0;chalk=[];
+  state='ready';readyT=0;cdStep=0;
+}
+function newGame(){stage=1;lives=3;score=0;effects=[];startStage();}
+
+// ---------- 効果音 ----------
+let actx=null,noiseBuf=null;
+function initAudio(){
+  if(!actx){
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)return;
+    actx=new AC();
+    noiseBuf=actx.createBuffer(1,Math.floor(actx.sampleRate*0.3),actx.sampleRate);
+    const d=noiseBuf.getChannelData(0);
+    for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+  }
+  if(actx.state==='suspended')actx.resume();
+}
+function playGrab(){           // パシッ（チョークの手でつかむ音）
+  if(!actx)return;
+  const t=actx.currentTime;
+  const n=actx.createBufferSource();n.buffer=noiseBuf;
+  const lp=actx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=1800;
+  const g=actx.createGain();g.gain.setValueAtTime(0.7,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.08);
+  n.connect(lp);lp.connect(g);g.connect(actx.destination);n.start(t);n.stop(t+0.09);
+  const o=actx.createOscillator();o.type='sine';
+  o.frequency.setValueAtTime(260,t);o.frequency.exponentialRampToValueAtTime(90,t+0.08);
+  const g2=actx.createGain();g2.gain.setValueAtTime(0.4,t);g2.gain.exponentialRampToValueAtTime(0.001,t+0.1);
+  o.connect(g2);g2.connect(actx.destination);o.start(t);o.stop(t+0.11);
+}
+function playTick(p){          // ランジのため（連打のたびに音が上がる）
+  if(!actx)return;
+  const t=actx.currentTime;
+  const o=actx.createOscillator();o.type='square';o.frequency.value=300+p*900;
+  const g=actx.createGain();g.gain.setValueAtTime(0.07,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.05);
+  o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+0.06);
+}
+function playLunge(){          // ヒュッ → パシッ
+  if(!actx)return;
+  const t=actx.currentTime;
+  const n=actx.createBufferSource();n.buffer=noiseBuf;
+  const bp=actx.createBiquadFilter();bp.type='bandpass';bp.Q.value=2;
+  bp.frequency.setValueAtTime(400,t);bp.frequency.exponentialRampToValueAtTime(3500,t+0.25);
+  const g=actx.createGain();g.gain.setValueAtTime(0.0001,t);g.gain.linearRampToValueAtTime(0.5,t+0.05);g.gain.linearRampToValueAtTime(0.0001,t+0.28);
+  n.connect(bp);bp.connect(g);g.connect(actx.destination);n.start(t);n.stop(t+0.3);
+  setTimeout(playGrab,230);
+}
+function playBuzz(){           // ブッブー
+  if(!actx)return;
+  const t=actx.currentTime;
+  const o=actx.createOscillator();o.type='square';o.frequency.value=110;
+  const g=actx.createGain();g.gain.setValueAtTime(0.12,t);g.gain.setValueAtTime(0.12,t+0.22);g.gain.linearRampToValueAtTime(0.0001,t+0.3);
+  o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+0.31);
+}
+function playThud(){           // マットにドスン
+  if(!actx)return;
+  const t=actx.currentTime;
+  const o=actx.createOscillator();o.type='sine';
+  o.frequency.setValueAtTime(130,t);o.frequency.exponentialRampToValueAtTime(40,t+0.3);
+  const g=actx.createGain();g.gain.setValueAtTime(0.9,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.35);
+  o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+0.36);
+  const n=actx.createBufferSource();n.buffer=noiseBuf;
+  const lp=actx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=500;
+  const g2=actx.createGain();g2.gain.setValueAtTime(0.8,t);g2.gain.exponentialRampToValueAtTime(0.001,t+0.2);
+  n.connect(lp);lp.connect(g2);g2.connect(actx.destination);n.start(t);n.stop(t+0.21);
+}
+function playClear(){
+  if(!actx)return;
+  const t=actx.currentTime;
+  [523,659,784,1047,784,1047].forEach((f,i)=>{
+    const o=actx.createOscillator();o.type='triangle';o.frequency.value=f;
+    const g=actx.createGain();const s=t+i*0.1;
+    g.gain.setValueAtTime(0.25,s);g.gain.exponentialRampToValueAtTime(0.001,s+(i===5?0.6:0.25));
+    o.connect(g);g.connect(actx.destination);o.start(s);o.stop(s+0.65);
+  });
+}
+function playFail(){
+  if(!actx)return;
+  const t=actx.currentTime;
+  const o=actx.createOscillator();o.type='triangle';
+  o.frequency.setValueAtTime(440,t);o.frequency.linearRampToValueAtTime(110,t+0.7);
+  const g=actx.createGain();g.gain.setValueAtTime(0.25,t);g.gain.linearRampToValueAtTime(0.0001,t+0.75);
+  o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+0.76);
+}
+
+// ---------- カウントダウン ----------
+const CD_INTRO=0.8,CD_STEP=0.8;
+let readyT=0,cdStep=0;
+function playCount(go){           // ポッ（3・2・1）／ポーン（スタート）
+  if(!actx)return;
+  const t=actx.currentTime,f=go?880:440,len=go?0.9:0.32;
+  [['square',0.10],['triangle',0.25]].forEach(([type,vol])=>{
+    const o=actx.createOscillator();o.type=type;o.frequency.value=f;
+    const g=actx.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(vol,t+0.01);
+    g.gain.setValueAtTime(vol,t+len*0.7);
+    g.gain.linearRampToValueAtTime(0.0001,t+len);
+    o.connect(g);g.connect(actx.destination);
+    o.start(t);o.stop(t+len+0.02);
+  });
+}
+
+// ---------- 描画の道具 ----------
+function circle(x,y,r){ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fill();}
+function oval(x,y,rx,ry,rot=0){ctx.beginPath();ctx.ellipse(x,y,rx,ry,rot,0,Math.PI*2);ctx.fill();}
+function rr(x,y,w,h,r){
+  r=Math.min(r,h/2,w/2);
+  ctx.beginPath();ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+}
+function bigText(t,x,y,size,color,rot=0,sc=1){
+  ctx.save();ctx.translate(x,y);ctx.rotate(rot);ctx.scale(sc,sc);
+  ctx.font=`900 ${size}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+  ctx.strokeStyle='#222';ctx.lineWidth=size/3.5;ctx.strokeText(t,0,0);
+  ctx.strokeStyle='#fff';ctx.lineWidth=size/7;ctx.strokeText(t,0,0);
+  ctx.fillStyle=color;ctx.fillText(t,0,0);
+  ctx.restore();
+}
+function fx(x,y,text,color,size,life=0.7){
+  x=Math.max(100,Math.min(W-100,x));
+  effects.push({x,y,text,color,size,life,max:life,rot:(Math.random()-0.5)*0.3});
+}
+function puff(x,h){               // チョークの粉
+  for(let k=0;k<10;k++)chalk.push({x,h,vx:(Math.random()-0.5)*120,vh:20+Math.random()*60,r:3+Math.random()*3,t:0});
+}
+
+// ---------- ホールド ----------
+function holdShape(x,y,r,col,pts,rot){
+  ctx.save();ctx.translate(x,y);ctx.rotate(rot);
+  const path=()=>{ctx.beginPath();pts.forEach((p,k)=>{const a=k/pts.length*Math.PI*2;ctx.lineTo(Math.cos(a)*r*p,Math.sin(a)*r*p*0.8);});ctx.closePath();};
+  ctx.save();ctx.translate(0,3);ctx.fillStyle='rgba(0,0,0,0.25)';path();ctx.fill();ctx.restore();
+  ctx.fillStyle=col.d;path();ctx.fill();
+  ctx.save();ctx.translate(-r*0.08,-r*0.1);ctx.scale(0.85,0.8);ctx.fillStyle=col.c;path();ctx.fill();ctx.restore();
+  ctx.fillStyle=col.l;oval(-r*0.3,-r*0.3,r*0.25,r*0.12,-0.5);
+  ctx.restore();
+  ctx.fillStyle='#444';circle(x,y,2.5);
+}
+function drawHolds(now){
+  route.forEach((o,i)=>{
+    const y=sy(o.h);
+    if(y<-50||y>BTN_Y+50)return;
+    const col=o.type==='lunge'?GOLD:o.type==='start'?GRAY:TYPES[o.c];
+    const r=o.type==='normal'?17:22;
+    if(i===cur+1&&(state==='play'||state==='ready')){
+      ctx.strokeStyle='rgba(255,255,255,'+(0.5+0.5*Math.sin(now/90))+')';
+      ctx.lineWidth=4;ctx.beginPath();ctx.arc(o.x,y,r+10,0,Math.PI*2);ctx.stroke();
+    }
+    holdShape(o.x,y,r,col,o.pts,o.rot);
+    if(o.type==='start'||o.type==='top'){
+      ctx.fillStyle='#fff';ctx.fillRect(o.x-18,y+22,36,14);
+      ctx.fillStyle='#222';ctx.font='bold 11px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(o.type==='start'?'S':'TOP',o.x,y+29);
+    }
+  });
+}
+
+// ---------- 壁とマット ----------
+function drawWall(){
+  ctx.fillStyle='#9aa3b2';ctx.fillRect(0,0,W,BTN_Y);
+  const top=camH+MAT_Y;
+  ctx.strokeStyle='#838c9b';ctx.lineWidth=2;
+  for(let hh=Math.floor(camH/160)*160;hh<=top+160;hh+=160){
+    const y=sy(hh);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+  }
+  for(const x of [160,320]){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,BTN_Y);ctx.stroke();}
+  ctx.fillStyle='#6f7888';
+  for(let hh=Math.floor(camH/40)*40;hh<=top+40;hh+=40){
+    const y=sy(hh);for(let x=20;x<W;x+=40)circle(x,y,2);
+  }
+}
+function drawMat(){
+  const y=sy(0);
+  if(y>=BTN_Y)return;
+  ctx.fillStyle='#2659b8';ctx.fillRect(0,y,W,BTN_Y-y);
+  ctx.fillStyle='#3a70d0';ctx.fillRect(0,y,W,5);
+  ctx.fillStyle='#1d4690';
+  for(let x=120;x<W;x+=120)ctx.fillRect(x-1,y,2,BTN_Y-y);
+}
+
+// ---------- クライマー（後ろ姿） ----------
+function drawClimber(){
+  const L={x:hands[0].x,h:hands[0].h-fallD},R={x:hands[1].x,h:hands[1].h-fallD};
+  const avg=(L.h+R.h)/2;
+  let bx=(L.x+R.x)/2;
+  if(shakeT>0&&state!=='fail')bx+=Math.sin(shakeT*70)*5;
+  const shY=sy(avg-55),hipY=sy(avg-110),ftY=sy(avg-165),knY=(hipY+ftY)/2;
+  ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.strokeStyle='#345';ctx.lineWidth=11;                          // 脚
+  ctx.beginPath();ctx.moveTo(bx-7,hipY);ctx.lineTo(bx-24,knY);ctx.lineTo(bx-16,ftY);
+  ctx.moveTo(bx+7,hipY);ctx.lineTo(bx+24,knY);ctx.lineTo(bx+16,ftY);ctx.stroke();
+  ctx.fillStyle='#e60';oval(bx-19,ftY+2,10,5);oval(bx+19,ftY+2,10,5);  // クライミングシューズ
+  ctx.strokeStyle='#2a9';ctx.lineWidth=24;                          // 胴体
+  ctx.beginPath();ctx.moveTo(bx,shY+6);ctx.lineTo(bx,hipY-4);ctx.stroke();
+  ctx.fillStyle='#d33';rr(bx+8,hipY-8,12,14,3);ctx.fill();           // チョークバッグ
+  ctx.fillStyle='#fff';ctx.fillRect(bx+8,hipY-8,12,3);
+  ctx.strokeStyle='#fc9';ctx.lineWidth=8;                           // 腕
+  ctx.beginPath();ctx.moveTo(bx-11,shY+4);ctx.lineTo(L.x,sy(L.h)+6);
+  ctx.moveTo(bx+11,shY+4);ctx.lineTo(R.x,sy(R.h)+6);ctx.stroke();
+  ctx.fillStyle='#fff';circle(L.x,sy(L.h)+4,7);circle(R.x,sy(R.h)+4,7); // チョークで白い手
+  const hy=shY-20;                                                  // 頭（後ろ姿）
+  ctx.fillStyle='#fc9';circle(bx-16,hy+2,4);circle(bx+16,hy+2,4);
+  ctx.fillStyle='#432';circle(bx,hy,16);
+  ctx.fillStyle='#fc3';ctx.fillRect(bx-16,hy-6,32,5);
+  ctx.fillStyle='#432';oval(bx,hy+17,5,7);
+}
+
+// ---------- ボタン（元コードと同じ大きさ・位置） ----------
+function drawButtons(){
+  ctx.fillStyle='#6b4226';ctx.fillRect(0,BTN_Y,W,H-BTN_Y);
+  ctx.fillStyle='#4e2f1a';ctx.fillRect(0,BTN_Y,W,6);
+  const nx=route[cur+1],lunge=state==='play'&&nx&&nx.type==='lunge';
+  TYPES.forEach((t,i)=>{
+    const x=W/6+i*W/3,y=BTN_Y+62,p=pressed[i]>0,dy=p?6:0;
+    ctx.globalAlpha=stun>0?0.5:1;
+    ctx.fillStyle='#2a1a0e';circle(x,y+8,46);
+    ctx.fillStyle=p?t.d:t.c;circle(x,y+dy,46);
+    ctx.fillStyle='rgba(255,255,255,0.85)';circle(x,y+dy,30);
+    holdShape(x,y+dy,20,t,ICON_PTS,0);
+    if(lunge){ctx.strokeStyle=GOLD.c;ctx.lineWidth=5;ctx.beginPath();ctx.arc(x,y+dy,50,0,Math.PI*2);ctx.stroke();}
+    ctx.globalAlpha=1;
+  });
+}
+
+// ---------- ゲーム処理 ----------
+function press(i){
+  pressed[i]=0.12;
+  if(state!=='play'||stun>0)return;
+  const nx=route[cur+1];
+  if(!nx)return;
+  if(nx.type==='lunge'){                                            // どのボタンでも連打でため
+    charge+=1;playTick(charge/lungeNeed());
+    if(charge>=lungeNeed()){
+      charge=0;cur++;
+      hands[0].tx=nx.x-14;hands[0].th=nx.h;hands[1].tx=nx.x+14;hands[1].th=nx.h;
+      playLunge();score+=5;puff(nx.x,nx.h);
+      fx(CX,250,'ランジ成功!','#fb2',40,0.8);
+    }
+    return;
+  }
+  if(nx.c===i){
+    cur++;score++;playGrab();puff(nx.x,nx.h);
+    if(nx.type==='top'){                                            // TOPは両手で保持
+      hands[0].tx=nx.x-14;hands[0].th=nx.h;hands[1].tx=nx.x+14;hands[1].th=nx.h;
+      const bonus=Math.ceil(timeLeft)*5;score+=bonus;
+      state='clear';phaseT=2.4;playClear();
+      fx(CX,230,'完登!','#fc3',64,1.8);
+      fx(CX,300,'タイムボーナス +'+bonus,'#fff',26,1.8);
+    }else{
+      const hd=hands[nx.side];hd.tx=nx.x;hd.th=nx.h;
+      fx(nx.x,sy(nx.h)-34,'ガシッ!',TYPES[i].c,24,0.4);
+    }
+  }else{
+    stun=0.4;shakeT=0.4;playBuzz();
+    fx(CX,420,'ズルッ!','#999',32,0.5);
+  }
+}
+
+function update(dt){
+  for(let i=0;i<3;i++)pressed[i]=Math.max(0,pressed[i]-dt);
+  stun=Math.max(0,stun-dt);shakeT=Math.max(0,shakeT-dt);
+  effects.forEach(f=>{f.life-=dt;f.y-=30*dt;});
+  effects=effects.filter(f=>f.life>0);
+  chalk.forEach(p=>{p.t+=dt;p.x+=p.vx*dt;p.h+=p.vh*dt;p.vh-=60*dt;});
+  chalk=chalk.filter(p=>p.t<0.6);
+  const k=Math.min(1,dt*18);
+  hands.forEach(hd=>{hd.x+=(hd.tx-hd.x)*k;hd.h+=(hd.th-hd.h)*k;});
+
+  if(state==='fail'&&!landed){                                      // マットへ落下
+    const feet=(hands[0].h+hands[1].h)/2-165;
+    fallV+=1800*dt;fallD+=fallV*dt;
+    if(fallD>=feet){fallD=Math.max(0,feet);landed=true;playThud();shakeT=0.3;}
+  }
+  const avgH=(hands[0].h+hands[1].h)/2-fallD;
+  const topH=Math.max(hands[0].h,hands[1].h)-fallD;
+  const target=Math.max(0,(state==='fail'?avgH:topH)-250);
+  camH+=(target-camH)*Math.min(1,dt*(state==='fail'?10:6));
+
+  if(state==='ready'){
+    readyT+=dt;
+    const step=Math.floor((readyT-CD_INTRO)/CD_STEP)+1;
+    if(readyT>=CD_INTRO&&step>cdStep){
+      cdStep=step;
+      if(cdStep>=4){state='play';playCount(true);fx(CX,320,'スタート!','#fff',52,0.7);}
+      else playCount(false);
+    }
+  }else if(state==='play'){
+    const nx=route[cur+1];
+    if(nx&&nx.type==='lunge')charge=Math.max(0,charge-dt*4);        // 手を止めるとためが減る
+    timeLeft-=dt;
+    if(timeLeft<=0){
+      timeLeft=0;state='fail';phaseT=2.4;lives--;fallV=0;fallD=0;landed=false;playFail();
+      fx(CX,250,'時間切れ…','#aaa',44,1.4);
+    }
+  }else if(state==='clear'||state==='fail'){
+    phaseT-=dt;
+    if(phaseT<=0){
+      if(state==='clear'){stage++;startStage();}
+      else if(lives<=0){state='over';best=Math.max(best,score);overAt=performance.now();}
+      else startStage();
+    }
+  }
+}
+
+function draw(){
+  const now=performance.now();
+  ctx.save();
+  if(state==='fail'&&shakeT>0)ctx.translate((Math.random()-0.5)*10,(Math.random()-0.5)*10);
+  drawWall();drawMat();drawHolds(now);drawClimber();
+  chalk.forEach(p=>{ctx.globalAlpha=Math.max(0,1-p.t/0.6)*0.8;ctx.fillStyle='#fff';circle(p.x,sy(p.h),p.r*(1+p.t*2));});
+  ctx.globalAlpha=1;
+  ctx.restore();
+  drawButtons();
+
+  for(const f of effects){
+    const a=f.max-f.life,sc=a<0.08?0.5+a/0.08*0.8:Math.max(1,1.3-(a-0.08));
+    ctx.globalAlpha=Math.min(1,f.life/0.2);
+    bigText(f.text,f.x,f.y,f.size,f.color,f.rot,sc);
+    ctx.globalAlpha=1;
+  }
+
+  bigText('点数 '+score,80,30,22,'#fc3');
+  bigText('♥'.repeat(Math.max(0,lives)),W-60,30,24,'#f45');
+  if(state!=='title'&&state!=='over'){
+    bigText('ステージ '+stage,W/2,30,20,'#fff');
+    ctx.fillStyle='#555';rr(40,54,400,14,7);ctx.fill();
+    const ratio=timeLeft/timeMax;
+    if(ratio>0.02){ctx.fillStyle=ratio<0.3?'#f44':'#4c4';rr(40,54,400*ratio,14,7);ctx.fill();}
+    bigText('のこり '+(route.length-1-cur),80,98,22,'#fff');
+    bigText(timeLeft.toFixed(1)+'秒',W-70,98,22,'#fff');
+    const m=(Math.max(hands[0].th,hands[1].th)-START_H)/200;
+    bigText('高さ '+m.toFixed(1)+'m',W/2,98,20,'#fff');
+  }
+  const nx=route[cur+1];
+  if(state==='play'&&nx&&nx.type==='lunge'){
+    const p=charge/lungeNeed();
+    bigText('ランジ! 連打!',CX,140,30,'#fb2',0,1+Math.sin(now/60)*0.05);
+    ctx.fillStyle='#555';rr(140,165,200,14,7);ctx.fill();
+    if(p>0.02){ctx.fillStyle='#fb2';rr(140,165,200*p,14,7);ctx.fill();}
+  }
+  if(state==='ready'){
+    if(cdStep===0){
+      bigText('ステージ '+stage,W/2,250,48,'#fc3');
+      bigText('よーい…',W/2,320,40,'#fff');
+    }else{
+      const a=(readyT-CD_INTRO)-(cdStep-1)*CD_STEP;
+      const sc=a<0.1?1.6-a*6:1;
+      bigText('ステージ '+stage,W/2,190,30,'#fff');
+      bigText(String(4-cdStep),W/2,300,120,['#f44','#fc3','#4c4'][cdStep-1],0,sc);
+    }
+  }
+
+  if(state==='title'||state==='over'){
+    ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(0,0,W,H);
+    const wob=Math.sin(now/200)*0.05;
+    if(state==='title'){
+      bigText('つかめ！',W/2,150,56,'#e33',-0.08+wob);
+      bigText('ホールド！',W/2,225,56,'#3b3',0.06-wob);
+      bigText('てっぺんだ！',W/2,305,58,'#36e',-0.04+wob);
+    }else{
+      bigText('マットに ドスン…',W/2,170,40,'#fc3',wob);
+      bigText('ステージ '+stage+' まで到達',W/2,235,28,'#fff');
+      bigText('点数 '+score,W/2,280,36,'#fff');
+      bigText('ベスト '+best,W/2,325,26,'#fff');
+    }
+    ctx.fillStyle='#fff';ctx.font='18px sans-serif';ctx.textAlign='center';ctx.textBaseline='alphabetic';
+    const camT=Body.mode==='cam';
+    ctx.fillText(camT?'光るホールドが 左なら左手、右なら右手を 上へ のばせ！':'光るホールドと同じ色のボタンでつかめ！',W/2,380);
+    ctx.fillText(camT?'金色のホールドは ジャンプで ランジ！':'金色のホールドはどのボタンでも連打でランジ！',W/2,408);
+    ctx.fillText(camT?'てっぺんは どちらの手でも OK':'キー: 1 2 3 / Z X C / J K L',W/2,436);
+    bigText(camT?'手を たたいて スタート':'スペース か タップでスタート',W/2,485,24,'#fff');
+  }
+}
+
+function canStart(){return state==='title'||(state==='over'&&performance.now()-overAt>800);}
+
+addEventListener('keydown',e=>{
+  initAudio();
+  if(state==='title'||state==='over'){
+    if((e.key===' '||e.key==='Enter')&&canStart()){e.preventDefault();newGame();}
+    return;
+  }
+  if(e.repeat)return;                                               // 長押しでの自動連打を防止
+  const k=e.key.toLowerCase();
+  TYPES.forEach((t,i)=>{if(t.keys.includes(k))press(i);});
+});
+
+cv.addEventListener('pointerdown',ev=>{
+  initAudio();
+  if(state==='title'||state==='over'){if(canStart())newGame();return;}
+  const r=cv.getBoundingClientRect();
+  const x=(ev.clientX-r.left)*W/r.width,y=(ev.clientY-r.top)*H/r.height;
+  if(y>BTN_Y)press(Math.min(2,Math.floor(x/(W/3))));
+});
+
+startStage();state='title';                                          // タイトル画面の背景用
+let last=performance.now();
+function loop(now){
+  const dt=Math.min(0.05,(now-last)/1000);last=now;
+  update(dt);draw();requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ---------- ぜんしん版：ホールドのある がわの手を 上へ のばす＝つかむ、ジャンプ＝ランジ ----------
+const TIME_X=1.6;                                                    // 体は指より おそいので、時間を のばす
+const cam=()=>Body.mode==='cam';
+function reach(hand){                                                // hand: 0=左手 1=右手
+  if(state!=='play')return;
+  const nx=route[cur+1];if(!nx||nx.type==='lunge')return;
+  press(nx.type==='top'||nx.side===hand?nx.c:(nx.c+1)%3);
+}
+Body.on('swing',e=>{if(cam()&&e.dy<-0.3)reach(e.i);});
+Body.on('jump',()=>{
+  if(!cam()||state!=='play'||stun>0)return;
+  const nx=route[cur+1];if(nx&&nx.type==='lunge'){charge=lungeNeed()-1;press(0);}
+});
+Body.on('clap',()=>{if(cam()&&(state==='title'||state==='over')&&canStart()){initAudio();newGame();}});
+const startStage0=startStage;
+startStage=function(){startStage0();if(cam())timeMax=timeLeft=timeMax*TIME_X;};
+const draw0=draw;
+draw=function(){
+  draw0();
+  if(!cam()||state!=='play')return;
+  const nx=route[cur+1];if(!nx)return;
+  const t=nx.type==='lunge'?'ジャンプ！':nx.type==='top'?'手を のばせ！':nx.side?'右手 →':'← 左手';
+  bigText(t,nx.type==='normal'?(nx.side?W-90:90):CX,sy(nx.h)-44,30,'#fff');
+};
+Body.gate({title:'つかめ！ホールド！てっぺんだ！',corner:'tr',lines:['🧗 光るホールドが <b>左</b>にあれば <b>左手</b>を 上へ のばす','🧗 <b>右</b>にあれば <b>右手</b>を 上へ のばす','🦘 金色のホールドは <b>ジャンプ</b>で ランジ','ちがう手を のばすと ズルッと すべる','👏 手を たたく … スタート・もういちど']});
+window.__game={press,reach,get state(){return state;},get cur(){return cur;},get route(){return route;}};
+</script>
+</body>
+</html>
