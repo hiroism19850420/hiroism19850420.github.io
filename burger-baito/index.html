@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>キャッチ！かさねて！バーガーバイト！</title>
+<style>
+html,body{margin:0;height:100%;background:#333;display:flex;justify-content:center;align-items:center;font-family:sans-serif}
+canvas{max-width:100vw;max-height:100vh;touch-action:none}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<canvas id="c" width="480" height="720"></canvas>
+<script src="body.js"></script>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const W=480,H=720,LANE_X=[80,240,400],PLATE_Y=590,IW=120;
+
+// ---------- 調整する数値 ----------
+const FALL_FIRST=2.6;     // ステージ1で、具が上から皿まで落ちる秒数
+const FALL_STEP=0.14;     // ステージが1つ進むごとに これだけ速くなる
+const FALL_MIN=1.1;       // いちばん速いときの秒数
+const CAM_SLOW=1.25;      // カメラで遊ぶときは これだけ ゆっくり（手は指より おそい）
+const NEXT_WAIT=0.35;     // のせてから 次の具が出るまでの秒数
+const HAND_OUT=0.7;       // 両手のまん中が 体のまん中から これだけ横に出たら 左／右の列（肩はば単位）
+const HAND_BACK=0.45;     // これより内がわに もどしたら まん中の列
+
+// ---------- 具 ----------
+const ING={
+  bunB:{name:'バンズ',h:18},patty:{name:'バーガー',h:16},lettuce:{name:'レタス',h:10},tomato:{name:'トマト',h:11},
+  cheese:{name:'チーズ',h:8},egg:{name:'たまご',h:12},bacon:{name:'ベーコン',h:8},onion:{name:'オニオン',h:9},bunT:{name:'バンズ',h:30}
+};
+// ステージごとの重ねる順（下から）。7からは 自動で 1つずつ増える
+const RECIPES=[
+  ['patty'],
+  ['lettuce','patty','lettuce'],
+  ['tomato','cheese'],
+  ['patty','cheese','lettuce','tomato'],
+  ['lettuce','patty','cheese','patty','lettuce'],
+  ['tomato','egg','bacon','cheese','patty','lettuce']
+];
+const FILL=['patty','lettuce','tomato','cheese','egg','bacon','onion'];
+function recipeOf(st){
+  let mid=RECIPES[st-1];
+  if(!mid){mid=[];const n=Math.min(14,st);for(let i=0;i<n;i++){let t;do{t=FILL[Math.floor(Math.random()*FILL.length)];}while(t===mid[i-1]);mid.push(t);}}
+  return ['bunB',...mid,'bunT'];
+}
+
+let state='title',stage=1,lives=3,score=0,best=0,overAt=0;
+let recipe=[],idx=0,stack=[],item=null,waitT=0,phaseT=0,lane=1,px=LANE_X[1],lastLane=-1,sameN=0,effects=[],face='normal',faceT=0;
+try{best=+(localStorage.getItem('burgerBaitoBest')||0);}catch(e){}
+
+const cam=()=>Body.mode==='cam';
+const fallDur=()=>Math.max(FALL_MIN,FALL_FIRST-(stage-1)*FALL_STEP)*(cam()?CAM_SLOW:1);
+const stackH=()=>stack.reduce((s,t)=>s+ING[t].h,0);
+
+function startStage(){recipe=recipeOf(stage);idx=0;stack=[];item=null;waitT=1.0;state='play';face='normal';}
+function newGame(){stage=1;lives=3;score=0;effects=[];startStage();startBgm();}
+function spawn(){
+  let l;do{l=Math.floor(Math.random()*3);}while(l===lastLane&&sameN>=1);
+  sameN=l===lastLane?sameN+1:0;lastLane=l;
+  item={type:recipe[idx],lane:l,y:-30,missed:false};
+  playFall(fallDur());
+}
+
+// ---------- 効果音 ----------
+let actx=null;
+function initAudio(){if(!actx){try{actx=new(window.AudioContext||window.webkitAudioContext)();}catch(e){}}if(actx&&actx.state==='suspended')actx.resume();}
+function tone(f,dur,type='sine',vol=0.15,f2=0,at=0){
+  if(!actx)return;const t=actx.currentTime+at,o=actx.createOscillator(),g=actx.createGain();
+  o.type=type;o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+dur);
+  g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.001,t+dur);o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+dur);
+}
+// キャッチ：ポポン♪（重ねるほど 高くなる）
+const playCatch=n=>{const f=392*Math.pow(2,Math.min(n,12)/12);tone(f,0.09,'triangle',0.22);tone(f*1.5,0.16,'triangle',0.2,0,0.07);tone(180,0.08,'sine',0.2,90);};
+// 落ちてくる間の ヒュー（高い音から だんだん下がる）。うけるか 落とすと 止まる
+let fallSnd=null;
+function playFall(dur){
+  stopFall();if(!actx)return;
+  const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain(),lfo=actx.createOscillator(),lg=actx.createGain();
+  o.type='sine';o.frequency.setValueAtTime(1500,t);o.frequency.exponentialRampToValueAtTime(420,t+dur);
+  lfo.frequency.value=7;lg.gain.value=18;lfo.connect(lg);lg.connect(o.frequency);
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.07,t+0.08);g.gain.setValueAtTime(0.07,t+dur*0.8);g.gain.exponentialRampToValueAtTime(0.0001,t+dur+0.3);
+  o.connect(g);g.connect(actx.destination);o.start(t);lfo.start(t);o.stop(t+dur+0.35);lfo.stop(t+dur+0.35);
+  fallSnd={o,g};
+}
+function stopFall(){
+  if(!fallSnd||!actx)return;const t=actx.currentTime;
+  try{fallSnd.g.gain.cancelScheduledValues(t);fallSnd.g.gain.setValueAtTime(Math.max(0.0001,fallSnd.g.gain.value),t);fallSnd.g.gain.exponentialRampToValueAtTime(0.0001,t+0.05);fallSnd.o.stop(t+0.07);}catch(e){}
+  fallSnd=null;
+}
+// のほほんとした BGM（その場で音を作る。ゆっくりの 木琴ふうメロディ＋ポロンと鳴る和音＋ベース）
+const BGM_VOL=0.5,BGM_STEP=60/92/2;
+const MEL=[64,0,67,0,69,67,64,0, 62,0,64,0,60,0,0,0, 65,0,69,0,72,69,65,0, 67,0,64,0,62,0,0,0,
+           64,0,67,0,69,67,64,0, 62,0,64,0,67,0,0,0, 65,0,64,0,62,0,60,0, 62,0,59,0,60,0,0,0];
+const CHORD=[[48,52,55],[43,50,55],[41,53,57],[43,50,55],[48,52,55],[43,50,55],[41,53,57],[48,52,55]];   // 1小節ごと：C G F G C G F C
+const mtof=m=>440*Math.pow(2,(m-69)/12);
+let bgm={on:false,next:0,step:0,timer:null,gain:null};
+function bgmNote(t,m,dur,type,vol){
+  const o=actx.createOscillator(),g=actx.createGain();o.type=type;o.frequency.value=mtof(m);
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+0.012);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g);g.connect(bgm.gain);o.start(t);o.stop(t+dur+0.02);
+}
+function bgmTick(){
+  if(!bgm.on||!actx)return;
+  while(bgm.next<actx.currentTime+0.25){
+    const i=bgm.step%MEL.length,bar=Math.floor(i/8),b=i%8,t=bgm.next,ch=CHORD[bar];
+    if(MEL[i]){bgmNote(t,MEL[i]+12,0.45,'sine',0.16);bgmNote(t,MEL[i]+24,0.12,'sine',0.04);}
+    if(b===0||b===4)bgmNote(t,ch[0]-12,0.5,'triangle',0.2);
+    if(b===2||b===6)ch.forEach((m,k)=>bgmNote(t+k*0.025,m+12,0.3,'triangle',0.05));
+    bgm.next+=BGM_STEP;bgm.step++;
+  }
+}
+function startBgm(){
+  if(!actx||bgm.on)return;
+  if(!bgm.gain){bgm.gain=actx.createGain();bgm.gain.connect(actx.destination);}
+  bgm.gain.gain.value=BGM_VOL;bgm.on=true;bgm.step=0;bgm.next=actx.currentTime+0.1;bgm.timer=setInterval(bgmTick,80);bgmTick();
+}
+function stopBgm(){bgm.on=false;clearInterval(bgm.timer);if(bgm.gain&&actx)bgm.gain.gain.setTargetAtTime(0,actx.currentTime,0.15);}
+const playMiss=()=>{tone(200,0.35,'sawtooth',0.15,70);};
+const playClear=()=>[523,659,784,1047].forEach((f,i)=>tone(f,0.25,'square',0.1,0,i*0.11));
+const playOver=()=>[392,330,262,196].forEach((f,i)=>tone(f,0.35,'sawtooth',0.1,0,i*0.22));
+const playMove=()=>tone(700,0.04,'square',0.04);
+
+// ---------- 描画の部品 ----------
+function rr(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function bigText(t,x,y,size,color){
+  ctx.font='bold '+size+'px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
+  ctx.lineWidth=size*0.22;ctx.strokeStyle='#3a2410';ctx.strokeText(t,x,y);ctx.fillStyle=color;ctx.fillText(t,x,y);
+}
+function fx(x,y,text,color,size,life=0.8){effects.push({x,y,text,color,size,t:0,life});}
+// 具を 下のはしが (x,y) になるように描く
+function drawIng(type,x,y,w){
+  const h=ING[type].h*w/IW,l=x-w/2;
+  ctx.lineWidth=2;ctx.strokeStyle='rgba(60,30,10,.55)';
+  if(type==='bunB'){ctx.fillStyle='#e8a94f';rr(l,y-h,w,h,h*0.45);ctx.fill();ctx.stroke();ctx.fillStyle='#f7d9a0';ctx.fillRect(l+6,y-h+2,w-12,3);}
+  else if(type==='bunT'){ctx.fillStyle='#e8a94f';ctx.beginPath();ctx.moveTo(l,y);ctx.bezierCurveTo(l,y-h*1.35,l+w,y-h*1.35,l+w,y);ctx.closePath();ctx.fill();ctx.stroke();
+    ctx.fillStyle='#fff3d0';[[-.28,.45],[0,.7],[.26,.5],[-.1,.3],[.14,.28]].forEach(p=>{ctx.beginPath();ctx.ellipse(x+p[0]*w,y-h*p[1],w*0.028,w*0.016,0.5,0,7);ctx.fill();});}
+  else if(type==='patty'){ctx.fillStyle='#6b3a1e';rr(l+3,y-h,w-6,h,h*0.5);ctx.fill();ctx.stroke();ctx.fillStyle='#8a5330';ctx.fillRect(l+12,y-h+3,w-24,3);}
+  else if(type==='lettuce'){ctx.fillStyle='#5cc24a';ctx.beginPath();ctx.moveTo(l-4,y-h*0.4);for(let i=0;i<=8;i++)ctx.lineTo(l-4+(w+8)*i/8,y-(i%2?h:h*0.35));for(let i=8;i>=0;i--)ctx.lineTo(l-4+(w+8)*i/8,y-(i%2?h*0.3:0));ctx.closePath();ctx.fill();ctx.stroke();}
+  else if(type==='tomato'){ctx.fillStyle='#e23b2e';rr(l+8,y-h,w-16,h,h*0.5);ctx.fill();ctx.stroke();ctx.fillStyle='#ff8a70';for(let i=0;i<4;i++)ctx.fillRect(l+20+i*(w-40)/3.6,y-h+3,8,3);}
+  else if(type==='cheese'){ctx.fillStyle='#ffd23a';ctx.beginPath();ctx.moveTo(l-2,y-h);ctx.lineTo(l+w+2,y-h);ctx.lineTo(l+w+2,y);ctx.lineTo(l+w*0.8,y);ctx.lineTo(l+w*0.72,y+h*0.9);ctx.lineTo(l+w*0.64,y);ctx.lineTo(l+w*0.2,y);ctx.lineTo(l+w*0.12,y+h*0.9);ctx.lineTo(l-2,y);ctx.closePath();ctx.fill();ctx.stroke();}
+  else if(type==='egg'){ctx.fillStyle='#fff';ctx.beginPath();ctx.ellipse(x,y-h/2,w*0.47,h/2,0,0,7);ctx.fill();ctx.stroke();ctx.fillStyle='#ffb820';ctx.beginPath();ctx.ellipse(x+w*0.05,y-h*0.6,w*0.14,h*0.42,0,0,7);ctx.fill();}
+  else if(type==='bacon'){ctx.fillStyle='#c9483a';rr(l+2,y-h,w-4,h,3);ctx.fill();ctx.stroke();ctx.fillStyle='#f3c1a8';ctx.fillRect(l+6,y-h*0.62,w-12,h*0.24);}
+  else if(type==='onion'){ctx.fillStyle='#f1e3f5';rr(l+10,y-h,w-20,h,h*0.5);ctx.fill();ctx.stroke();ctx.strokeStyle='#b58ac4';ctx.beginPath();ctx.ellipse(x,y-h/2,w*0.25,h*0.22,0,0,7);ctx.stroke();}
+}
+function drawStackAt(list,x,y,w){let yy=y;for(const t of list){drawIng(t,x,yy,w);yy-=ING[t].h*w/IW;}}
+function drawBaito(x){
+  // 体
+  ctx.fillStyle='#e8402a';rr(x-46,662,92,80,20);ctx.fill();
+  ctx.fillStyle='#fff';ctx.fillRect(x-14,662,28,60);
+  // うで（皿を下から ささえる）
+  ctx.strokeStyle='#f6c9a0';ctx.lineWidth=14;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(x-40,676);ctx.lineTo(x-58,PLATE_Y+18);ctx.moveTo(x+40,676);ctx.lineTo(x+58,PLATE_Y+18);ctx.stroke();
+  // 顔
+  ctx.fillStyle='#f6c9a0';ctx.beginPath();ctx.arc(x,640,30,0,7);ctx.fill();
+  ctx.fillStyle='#e8402a';ctx.beginPath();ctx.arc(x,632,31,Math.PI,0);ctx.fill();ctx.fillRect(x-34,628,68,7);
+  ctx.fillStyle='#fff';ctx.font='bold 13px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('B',x,618);
+  ctx.fillStyle='#3a2410';
+  if(face==='sad'){ctx.fillRect(x-14,644,8,3);ctx.fillRect(x+6,644,8,3);ctx.beginPath();ctx.arc(x,662,7,Math.PI,0);ctx.lineWidth=3;ctx.strokeStyle='#3a2410';ctx.stroke();}
+  else{ctx.beginPath();ctx.arc(x-10,646,3.5,0,7);ctx.arc(x+10,646,3.5,0,7);ctx.fill();ctx.beginPath();ctx.arc(x,653,face==='happy'?9:6,0,Math.PI);ctx.lineWidth=3;ctx.strokeStyle='#3a2410';ctx.stroke();}
+  // 皿
+  ctx.fillStyle='#fff';ctx.strokeStyle='#9aa';ctx.lineWidth=2;ctx.beginPath();ctx.ellipse(x,PLATE_Y+6,82,11,0,0,7);ctx.fill();ctx.stroke();
+}
+
+// ---------- ゲーム処理 ----------
+function setLane(l){l=Math.max(0,Math.min(2,l));if(l!==lane){lane=l;playMove();}}
+function update(dt){
+  px+=(LANE_X[lane]-px)*Math.min(1,dt*18);
+  effects.forEach(e=>e.t+=dt);effects=effects.filter(e=>e.t<e.life);
+  if(faceT>0){faceT-=dt;if(faceT<=0)face='normal';}
+  if(state==='clear'){phaseT-=dt;if(phaseT<=0){stage++;startStage();}return;}
+  if(state!=='play')return;
+  if(!item){waitT-=dt;if(waitT<=0)spawn();return;}
+  item.y+=PLATE_Y/fallDur()*dt;
+  const top=PLATE_Y-stackH();
+  if(!item.missed&&item.y>=top){
+    if(item.lane===lane){
+      stack.push(item.type);idx++;score+=10;stopFall();playCatch(stack.length);
+      fx(LANE_X[lane],top-30,ING[item.type].name+'!','#fff',24,0.5);
+      item=null;
+      if(idx>=recipe.length){
+        const bonus=stage*50;score+=bonus;state='clear';phaseT=2.0;face='happy';faceT=2;playClear();
+        fx(W/2,250,'できあがり!','#ffd23a',48,1.8);fx(W/2,310,'ボーナス +'+bonus,'#fff',26,1.8);
+      }else waitT=NEXT_WAIT;
+    }else item.missed=true;
+  }
+  if(item&&item.missed&&item.y>H-70){
+    fx(LANE_X[item.lane],H-110,'ベチャッ','#ccc',28,0.7);stopFall();playMiss();lives--;face='sad';faceT=1;item=null;waitT=0.9;
+    if(lives<=0){state='over';overAt=performance.now();if(score>best){best=score;try{localStorage.setItem('burgerBaitoBest',best);}catch(e){}}stopBgm();playOver();}
+  }
+}
+function draw(){
+  // 店の中
+  ctx.fillStyle='#ffe9c4';ctx.fillRect(0,0,W,H);
+  for(let i=0;i<3;i++){ctx.fillStyle=i===lane&&state==='play'?'rgba(255,170,60,.28)':i%2?'rgba(255,255,255,.35)':'rgba(255,255,255,.12)';ctx.fillRect(i*160,70,160,H-70);}
+  ctx.strokeStyle='rgba(120,70,20,.35)';ctx.lineWidth=3;ctx.setLineDash([10,10]);
+  [160,320].forEach(x=>{ctx.beginPath();ctx.moveTo(x,70);ctx.lineTo(x,H);ctx.stroke();});ctx.setLineDash([]);
+  ctx.fillStyle='#b5531f';ctx.fillRect(0,0,W,70);ctx.fillStyle='#8f3e14';ctx.fillRect(0,64,W,6);
+  // 落ちてくる具と、どの列かの目じるし
+  if(item){
+    if(!item.missed){ctx.fillStyle='rgba(230,60,40,.75)';ctx.beginPath();const ax=LANE_X[item.lane];ctx.moveTo(ax-16,76);ctx.lineTo(ax+16,76);ctx.lineTo(ax,98);ctx.closePath();ctx.fill();}
+    drawIng(item.type,LANE_X[item.lane],item.y,IW);
+  }
+  drawBaito(px);
+  drawStackAt(stack,px,PLATE_Y,IW);
+  // 上のバー
+  ctx.fillStyle='#fff';ctx.font='bold 20px sans-serif';ctx.textBaseline='middle';
+  ctx.textAlign='left';ctx.fillText('点数 '+score,14,24);ctx.textAlign='center';ctx.fillText('ステージ '+stage,W/2,24);
+  ctx.textAlign='right';ctx.fillText('♥'.repeat(Math.max(0,lives)),W-14,24);
+  ctx.font='14px sans-serif';ctx.textAlign='center';
+  if(state==='play'||state==='clear')ctx.fillText('のこり '+(recipe.length-idx)+' こ',W/2,48);
+  // 作るバーガーの見本（のせた分は こく、まだの分は うすく）
+  if(state==='play'||state==='clear'){
+    const sw=46,sx=W-40;let yy=150+recipe.reduce((s,t)=>s+ING[t].h*sw/IW,0);
+    ctx.fillStyle='rgba(255,255,255,.8)';rr(sx-34,96,68,yy-96+14,10);ctx.fill();
+    ctx.fillStyle='#8f3e14';ctx.font='bold 12px sans-serif';ctx.fillText('みほん',sx,108);
+    recipe.forEach((t,i)=>{ctx.globalAlpha=i<idx?1:0.4;drawIng(t,sx,yy,sw);yy-=ING[t].h*sw/IW;});ctx.globalAlpha=1;
+  }
+  for(const e of effects){ctx.globalAlpha=Math.max(0,1-e.t/e.life);bigText(e.text,e.x,e.y-e.t*40,e.size,e.color);ctx.globalAlpha=1;}
+  if(cam()&&state==='play'&&!Body.both)bigText('りょう手を 前に 出してね',W/2,330,24,'#fff');
+  if(state==='title'||state==='over'){
+    ctx.fillStyle='rgba(60,30,10,.72)';ctx.fillRect(0,0,W,H);
+    if(state==='title'){
+      bigText('キャッチ！',W/2,130,46,'#ff6a3a');bigText('かさねて！',W/2,190,46,'#ffd23a');bigText('バーガーバイト！',W/2,250,44,'#7ad15a');
+      drawStackAt(['bunB','lettuce','patty','cheese','tomato','bunT'],W/2,400,150);
+    }else{
+      bigText('バイト しゅうりょう…',W/2,150,38,'#ffd23a');bigText('ステージ '+stage+' まで',W/2,215,28,'#fff');
+      bigText('点数 '+score,W/2,265,38,'#fff');bigText('ベスト '+best,W/2,315,24,'#fff');
+    }
+    ctx.fillStyle='#fff';ctx.font='18px sans-serif';ctx.textAlign='center';
+    ctx.fillText(cam()?'りょう手で 皿を 持つように 前に出して、左・まん中・右へ':'← → か 1 2 3、または 画面の 左・まん中・右を タップ',W/2,450);
+    ctx.fillText('落ちてくる具を 下から じゅんに 皿で うけよう',W/2,478);
+    bigText(cam()?'手を たたいて スタート':'スペース か タップで スタート',W/2,530,24,'#fff');
+  }
+}
+
+// ---------- 入力 ----------
+function canStart(){return state==='title'||(state==='over'&&performance.now()-overAt>800);}
+addEventListener('keydown',e=>{
+  initAudio();
+  if(state==='title'||state==='over'){if((e.key===' '||e.key==='Enter')&&canStart()){e.preventDefault();newGame();}return;}
+  if(e.key==='ArrowLeft')setLane(lane-1);else if(e.key==='ArrowRight')setLane(lane+1);
+  else if('123'.includes(e.key))setLane(+e.key-1);
+});
+cv.addEventListener('pointerdown',ev=>{
+  initAudio();
+  if(state==='title'||state==='over'){if(canStart())newGame();return;}
+  const r=cv.getBoundingClientRect();setLane(Math.floor((ev.clientX-r.left)/r.width*3));
+});
+
+// ---------- カメラ：両手のまん中が 体のまん中から 左右どちらに出ているかで 列を決める ----------
+Body.on('pose',()=>{
+  if(!cam()||!Body.both)return;
+  const off=(Body.gx-Body.cx)*Body.asp/Body.unit;
+  if(off<-HAND_OUT)setLane(0);else if(off>HAND_OUT)setLane(2);else if(Math.abs(off)<HAND_BACK)setLane(1);
+});
+Body.on('clap',()=>{if(cam()&&canStart()){initAudio();newGame();}});
+Body.gate({title:'キャッチ！かさねて！バーガーバイト！',corner:'tl',lines:['🍽 <b>りょう手</b>を 皿を 持つように 前に出す','↔ りょう手を <b>左・まん中・右</b>へ 動かす … 皿が その列へ うごく','🍔 落ちてくる具を 下から じゅんに うける','はじめは バンズ・バーガー・バンズ。だんだん 具が ふえる','👏 手を たたく … スタート・もういちど'],onStart:()=>initAudio()});
+
+let last=performance.now();
+function loop(now){const dt=Math.min(0.05,(now-last)/1000);last=now;update(dt);draw();requestAnimationFrame(loop);}
+requestAnimationFrame(loop);
+window.__game={get s(){return {state,stage,lives,score,lane,idx,stack,item,recipe};},setLane,newGame};
+</script>
+</body>
+</html>
