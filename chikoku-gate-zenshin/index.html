@@ -892,6 +892,23 @@ requestAnimationFrame(loop);
 // ---------- ぜんしん版：かけ足＝ダッシュ、しゃがむ＝角度をためる、とびあがる＝ジャンプ ----------
 const cam=()=>Body.mode==='cam';
 Body.on('step',e=>{if(cam()&&state==='play')press(e.side==='L'?0:2);});
+// 足が 少しでも動いていれば 走る（「1歩」と数えられるのを 待たない）。
+// ひざ・足首が 腰から見て 上下に どれだけ動いたかを 直前 WIN 秒ぶん 見る（肩はば単位）。足が うつらないときは 手首で代用。
+// MIN：これより小さい動きは 無視（立っているだけの ゆれ）、FULL：これ以上で 全力、ACC：全力のときの 加速
+const RUN={WIN:0.3,MIN:0.1,FULL:0.35,ACC:1.3*VMAX+40};
+let legH=[],legT=0;
+Body.on('pose',()=>{
+  if(!cam())return;
+  const lm=Body.lm,u=Body.unit,see=i=>lm[i].visibility==null||lm[i].visibility>0.5;
+  let ids=[25,26,27,28].filter(see);if(!ids.length)ids=[15,16].filter(see);
+  const hy=(lm[23].y+lm[24].y)/2,now=Body.now,dt=Math.min(0.1,Math.max(0.001,now-legT)),row={t:now};legT=now;
+  ids.forEach(i=>row[i]=(lm[i].y-hy)/u);
+  legH.push(row);while(legH.length&&now-legH[0].t>RUN.WIN)legH.shift();
+  let m=0;
+  ids.forEach(i=>{let lo=9,hi=-9;legH.forEach(r=>{if(r[i]!=null){lo=Math.min(lo,r[i]);hi=Math.max(hi,r[i]);}});m=Math.max(m,hi-lo);});
+  if(state!=='play'||jumped||m<RUN.MIN)return;
+  v=Math.min(VMAX,v+RUN.ACC*clamp(m/RUN.FULL,0.5,1)*dt);
+});
 Body.on('squat',()=>{if(cam()&&state==='play'){greenDown=true;press(1);}});
 Body.on('stand',()=>{if(cam()&&greenDown){greenDown=false;release(1);}});
 Body.on('clap',()=>{if(cam()&&(state==='title'||state==='over'))press(0);});
