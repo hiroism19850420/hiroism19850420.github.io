@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>NIGHT HERON ぜんしん版</title>
+<link rel="stylesheet" href="style.css">
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="game"></canvas>
+  </div>
+
+  <!-- タッチ操作（タッチ端末でのみ表示） -->
+  <div id="pad">
+    <div id="stickZone">
+      <div id="stickBase"><div id="stickKnob"></div></div>
+    </div>
+    <div id="buttons">
+      <button id="btnItem" type="button" hidden>箱</button>
+      <button id="btnWeapon" type="button" hidden>撃つ</button>
+      <button id="btnCrawl" type="button">ほふく</button>
+      <button id="btnAction" type="button"></button>
+    </div>
+  </div>
+
+  <button id="btnRadio" type="button">無線</button>
+  <button id="btnPause" type="button" aria-label="ポーズ"><span></span><span></span></button>
+
+  <div id="pause" class="overlay" hidden>
+    <div class="panel">
+      <h2>PAUSE</h2>
+      <button id="btnResume" type="button">再開</button>
+      <button id="btnBgm" type="button">BGM：ON</button>
+      <button id="btnDebug" type="button">デバッグ表示：OFF</button>
+      <button id="btnFull" type="button">全画面</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
+<script src="body.js"></script>
+<script src="js/input.js"></script>
+<script src="js/body-input.js"></script>
+<script src="js/bgm_manifest.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/map.js"></script>
+<script src="js/camera.js"></script>
+<script src="js/player.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/alert.js"></script>
+<script src="js/enemy.js"></script>
+<script src="js/sentry.js"></script>
+<script src="js/radio.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

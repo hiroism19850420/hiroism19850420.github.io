@@ -1,0 +1,270 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #000;
+  color: #cfe;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+#stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#game {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ---------- タッチ操作 ---------- */
+#pad, #btnPause, #btnRadio { display: none; }
+
+body.touch #btnRadio {
+  display: block;
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  right: calc(56px + env(safe-area-inset-right));
+  width: 48px;
+  height: 40px;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: bold;
+  color: rgba(200, 255, 235, .9);
+  border-radius: 6px;
+  border: 1px solid rgba(150, 220, 200, .45);
+  background: rgba(8, 18, 18, .55);
+  touch-action: none;
+}
+
+body.touch #pad {
+  display: block;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+#stickZone {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 46%;
+  height: 80%;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+#stickBase {
+  position: absolute;
+  left: calc(88px + env(safe-area-inset-left));
+  top: calc(100% - 92px);
+  width: 112px;
+  height: 112px;
+  margin: -56px 0 0 -56px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid rgba(150, 220, 200, .4);
+  background: radial-gradient(rgba(40, 80, 75, .15), rgba(10, 25, 25, .4));
+  opacity: .5;
+  transition: opacity .15s;
+  pointer-events: none;
+}
+#stickBase.active { opacity: 1; }
+
+#stickKnob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: rgba(140, 225, 195, .4);
+  border: 2px solid rgba(200, 255, 235, .75);
+}
+
+/* 右下のボタン群 */
+#buttons {
+  position: absolute;
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  width: 200px;
+  height: 180px;
+  pointer-events: none;
+}
+#buttons button[hidden] { display: none; }
+#buttons button.off { opacity: .35; }
+#buttons button {
+  position: absolute;
+  padding: 0;
+  border-radius: 50%;
+  font: inherit;
+  font-weight: bold;
+  color: rgba(220, 255, 240, .9);
+  border: 2px solid rgba(150, 220, 200, .45);
+  background: rgba(10, 30, 28, .45);
+  pointer-events: auto;
+  touch-action: none;
+}
+#buttons button.down { background: rgba(120, 220, 190, .45); }
+#btnAction {
+  right: 0;
+  bottom: 22px;
+  width: 84px;
+  height: 84px;
+  font-size: 18px;
+  opacity: .45;
+}
+#btnAction.ready {
+  opacity: 1;
+  border-color: rgba(255, 225, 120, .9);
+  color: #fff1b8;
+  background: rgba(70, 55, 10, .5);
+}
+#btnAction.ko {
+  border-color: rgba(255, 120, 100, .95);
+  color: #ffd0c8;
+  background: rgba(90, 20, 14, .55);
+}
+#btnCrawl {
+  right: 98px;
+  bottom: 0;
+  width: 66px;
+  height: 66px;
+  font-size: 14px;
+}
+#btnWeapon {
+  right: 92px;
+  bottom: 78px;
+  width: 62px;
+  height: 62px;
+  font-size: 14px;
+  line-height: 1.1;
+  border-color: rgba(140, 220, 255, .55);
+}
+#btnWeapon small {
+  display: block;
+  font-size: 11px;
+  color: #9fe8ff;
+}
+#btnItem {
+  right: 14px;
+  bottom: 118px;
+  width: 56px;
+  height: 56px;
+  font-size: 14px;
+  border-color: rgba(230, 200, 140, .55);
+}
+#btnItem.on {
+  border-color: rgba(255, 215, 140, .95);
+  color: #ffe9c0;
+  background: rgba(90, 60, 20, .55);
+}
+#btnCrawl.on {
+  border-color: rgba(120, 200, 255, .9);
+  color: #cfeaff;
+  background: rgba(14, 50, 80, .55);
+}
+
+body.touch #btnPause {
+  display: flex;
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  right: calc(8px + env(safe-area-inset-right));
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid rgba(150, 220, 200, .45);
+  background: rgba(8, 18, 18, .55);
+}
+#btnPause span {
+  width: 5px;
+  height: 16px;
+  background: rgba(200, 255, 235, .8);
+}
+
+/* 縦持ち：下に操作パネルを分ける */
+@media (orientation: portrait) {
+  body.touch #pad {
+    position: relative;
+    inset: auto;
+    flex: 0 0 36%;
+    pointer-events: auto;
+    background: linear-gradient(#12181c, #07090b);
+    border-top: 2px solid #27343b;
+  }
+  body.touch #stickZone {
+    width: 58%;
+    height: 100%;
+  }
+  body.touch #stickBase {
+    left: 50%;
+    top: 50%;
+  }
+}
+
+/* ---------- ポーズ ---------- */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 6, 8, .72);
+  z-index: 10;
+}
+.overlay[hidden] { display: none; }
+
+.panel {
+  min-width: 220px;
+  padding: 18px 22px 22px;
+  border: 1px solid #3d7a6a;
+  background: rgba(6, 20, 18, .92);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, .6), 0 0 24px rgba(60, 200, 160, .15);
+  text-align: center;
+}
+.panel h2 {
+  margin: 0 0 14px;
+  font-size: 20px;
+  letter-spacing: .4em;
+  text-indent: .4em;
+  color: #8fe6c6;
+}
+.panel button {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px 10px;
+  font: inherit;
+  font-size: 15px;
+  color: #d6fff0;
+  background: #0f2f2a;
+  border: 1px solid #3d7a6a;
+  border-radius: 3px;
+}
+.panel button:active { background: #1c5247; }
