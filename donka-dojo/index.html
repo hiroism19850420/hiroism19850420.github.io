@@ -563,7 +563,7 @@ let songs=[];const cache={};
 async function loadSongs(){let mine=[];try{mine=(await dbAll())||[];}catch(_){}mine.sort((a,b)=>a.added-b.added);songs=PRESETS.concat(mine);renderList();}
 async function songBlob(s){if(s.blob)return s.blob;const r=await fetch(s.url);if(!r.ok)throw new Error('HTTP '+r.status);return r.blob();}
 function renderList(){const L=$('songList');
- if(!songs.some(s=>s.id===S.songId))S.songId=songs[0].id;
+ if(!songs.some(s=>s.id===S.songId))S.songId=(songs.find(s=>s.id==='p-pajama-partys')||songs[0]).id;   /* はじめは パジャマパーティーズ */
  L.innerHTML='';for(const s of songs){const d=document.createElement('div');d.className='song'+(s.id===S.songId?' sel':'');
   d.innerHTML=`<span>🥁</span><span class="nm">${esc(s.name)}</span>`+(s.url?'':'<button class="del">削除</button>');
   d.onclick=()=>{S.songId=s.id;saveS();renderList();};
