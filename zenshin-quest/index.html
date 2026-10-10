@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>ぜんしんクエスト</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#101433;font-family:"Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif;color:#fff;-webkit-user-select:none;user-select:none;touch-action:none}
+  #cam{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  #cv{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:safe center;gap:12px;overflow-y:auto;touch-action:pan-y;padding:16px;box-sizing:border-box;background:rgba(10,14,46,.86);text-align:center}
+  .panel.hide{display:none}
+  h1{margin:0;font-size:clamp(30px,7vw,56px);line-height:1.2;color:#ffe35a;text-shadow:0 3px 0 #b3541e;letter-spacing:.05em}
+  .how{display:grid;gap:5px;font-size:clamp(13px,3.1vw,18px);text-align:left;background:#000;border:3px solid #fff;border-radius:10px;padding:14px 18px;max-width:560px}
+  .how b{color:#8ff0ff}
+  button{font:inherit;font-weight:700;font-size:clamp(16px,4vw,22px);color:#23306b;background:#ffe35a;border:0;border-radius:999px;padding:14px 28px;box-shadow:0 5px 0 #b98a12;cursor:pointer}
+  button:active{transform:translateY(3px);box-shadow:0 2px 0 #b98a12}
+  button.sub{background:#cfe0ff;box-shadow:0 5px 0 #7a8fc4;font-size:clamp(13px,3.2vw,17px);padding:10px 20px}
+  #msg{min-height:1.5em;font-size:clamp(13px,3.2vw,17px);color:#ffd0d0;max-width:520px}
+  .note{font-size:clamp(11px,2.8vw,14px);opacity:.8;max-width:560px}
+  #res{font-size:clamp(15px,3.6vw,20px);line-height:1.7;background:#000;border:3px solid #fff;border-radius:10px;padding:12px 20px;white-space:pre-line;text-align:left}
+  .modes{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .modes button.on{background:#8ff0ff;box-shadow:0 5px 0 #3c9db0}
+  #pad{position:absolute;left:0;right:0;bottom:8px;display:none;justify-content:center;flex-wrap:wrap;gap:6px;padding:0 8px}
+  #pad.show{display:flex}
+  #pad button{font-size:clamp(12px,3.2vw,16px);padding:9px 12px;background:#fff;box-shadow:0 4px 0 #8a93b8}
+  #pad button.on{background:#8ff0ff}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<video id="cam" playsinline muted></video>
+<canvas id="cv"></canvas>
+
+<div id="pad">
+  <button id="pL">←</button><button id="pR">→</button><button id="pJ">ジャンプ</button><button id="pD">しゃがむ</button>
+  <button id="pGuard">ガード</button><button id="pPose">ポーズ</button><span id="padSpells" style="display:contents"></span>
+</div>
+
+<div id="title" class="panel">
+  <h1>ぜんしんクエスト</h1>
+  <div class="how">
+    <div>👊 <b>うでを つきだす</b> … パンチ。てきを たおすと レベルが 上がる</div>
+    <div>⚔️ <b>りょう手を くっつけて ふる</b> … 剣（レベル2で 手に入る）</div>
+    <div>✨ <b>りょう手を 上げて、じゅもんを さけぶ</b> … レベルが 上がると おぼえる</div>
+    <div>⚠️ 声が 聞こえたら <b>よける</b>：やり→よこへ／てんじょう→しゃがむ／レーザー→ジャンプ</div>
+    <div>🧍 「この ポーズ！」と 言われたら <b>同じ ポーズ</b>を とる</div>
+    <div>👹 てきを たおしきると <b>ボスと 1対1</b>。ぜんぶの わざで たたかえ！</div>
+  </div>
+  <div class="modes"><button id="mEasy" class="sub on">かんたん</button><button id="mHard" class="sub">むずかしい</button></div>
+  <div class="modes"><button id="bVoice" class="sub on">🔊 こえの あんない：あり</button></div>
+  <button id="bCam">カメラで ぼうけんに 出る</button>
+  <button id="bNoCam" class="sub">カメラなしで ためす（マウス・ゆび）</button>
+  <div id="msg"></div>
+  <div class="note">頭から 足まで <b>ぜんしん</b>が うつるように、はなれて 立ってください。まわりに ぶつかる物が ないか たしかめよう。<br>カメラと マイクは この たんまつの中で つかいます。えいぞうは どこにも おくりません。じゅもんの 聞きとりには、ブラウザの 音声にんしきを つかいます。</div>
+</div>
+
+<div id="over" class="panel hide">
+  <h1 id="overTitle">ゆうしゃは たおれた…</h1>
+  <div id="res"></div>
+  <button id="bRetry">この しょうから つづける</button>
+  <button id="bBack" class="sub">タイトルへ</button>
+</div>
+
+<script src="monsters.js"></script>
+<script type="module">
+const MP_VER = '0.10.14';
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
+const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+
+// ================= 調整用の数値 =================
+// --- パンチ・剣・まほう（速さの単位は「肩はば何個ぶん／秒」。「ふれ！さけべ！からだで勇者！」と同じ） ---
+const PUNCH_SPEED = 3.5;   // こぶしが これより速く動いていて、
+const PUNCH_DIST  = 0.4;   // 動きだした所から これだけ進んだら「パンチ」
+const PUNCH_REARM = 1.8;   // これより おそくなるか、引きもどしたら 次のパンチを受けつける
+const PUNCH_GAP   = 0.1;   // 同じ手の パンチとパンチの 最短の間（秒）
+const Z_WEIGHT    = 0.5;   // 奥行きは ふるえやすいので、たて・よこより 軽く見る
+const WRIST_VIS   = 0.6;   // 手首が これより はっきり 見えているときだけ 数える
+const PUNCH_REACH = 0.6;   // こぶしの当たりはんい（肩はば単位）
+const FIST_LEN    = 0.3;   // ひじ→手首の長さに対して、手首の先の どこを こぶしとするか
+const COMBO_TIME  = 1.2;   // コンボが つづく秒数
+const SLASH_START = 5.0;   // 剣の先が これより速く動いたら「切り」開始
+const SLASH_KEEP  = 3.0;   // これを下回ったら「切り」終了
+const SWORD_LEN   = 1.6;   // 剣の長さ（肩はば単位）
+const GRIP_IN     = 0.6;   // りょう手首が これより近づいたら 剣を にぎったことにする
+const GRIP_OUT    = 0.9;   // これより はなれたら 剣を しまう
+const GRIP_VIS    = 0.15;  // にぎると 手首が かくれやすいので、剣は 見え方が あいまいでも みとめる
+const CHARGE_TIME = 0.5;   // まほうの構えが完成するまでの秒数
+const SHOUT_MIN   = 0.06;  // 声の大きさの最低ライン（0〜1）
+const NAME_WAIT   = 0.9;   // 声が出てから じゅもんの名前の聞きとりを待つ秒数
+const MAGIC_CD    = 2.5;   // じゅもんを となえてから 次を ためられるまで（秒）
+const SHOT_HIT    = 0.6;   // 赤い玉の当たりはんい（肩はば単位）
+// --- よける（長さの単位は「どうの長さ＝肩〜こし」。「きけ！よけろ！ぜんしん勇者！」と同じ） ---
+const JUMP_H   = 0.18;     // からだが これだけ 上がったら「ジャンプ」
+const SQUAT_H  = 0.35;     // からだが これだけ 下がったら「しゃがむ」
+const SIDE_D   = 0.5;      // 声が出た時の場所から これだけ よこに動いたら「よけた」
+const POSE_HOLD = 1.2;     // ポーズを これだけ つづけたら せいこう（秒）
+const POSE_TIME = 9;       // ポーズの せいげん時間（秒）
+// --- 進行 ---
+const SWORD_LV = 2;        // 剣が 手に入る レベル
+const TURN_TIME = 7;       // ボス戦で 自分が こうげきできる 秒数
+const DIFF = {             // dmg：うける ダメージの倍率、speed：てきの速さ、bossHp：ボスの かたさ、lead：よけるまでの ゆとりの倍率
+  easy: { dmg: 0.6, speed: 0.8, bossHp: 0.7, lead: 1.25 },
+  hard: { dmg: 1.0, speed: 1.15, bossHp: 1.0, lead: 1.0 }
+};
+// しょう。quota：たおす数、spawn：出る間隔（秒）、max：同時に出る数、evGap：よける・ポーズが 来る間隔（秒）、
+// lead：声が 終わってから 当たるまで（秒）、hit：てきに ふれられた時の ダメージ、haz：よけそこねた時の ダメージ
+const CH = [
+  { name: 'はじまりの そうげん', bg: ['#2f7fc4', '#3f9c5a'], types: ['slime', 'slime', 'kawachi'], quota: 30, spawn: 1.3, max: 4, evGap: 11, lead: 1.4, hit: 3, haz: 4, shot: 0, boss: 'muza',
+    story: 'だいまおう ミルガドスが、村の えがおを うばった。ゆうしゃよ、からだを うごかして たびに 出よう！' },
+  { name: 'どろぬまの どうくつ', bg: ['#3a2c5c', '#6b4a35'], types: ['doro', 'bat', 'doro', 'slime'], quota: 40, spawn: 1.0, max: 6, evGap: 9, lead: 1.15, hit: 5, haz: 7, shot: 9, boss: 'despi',
+    story: 'どうくつの おくから、どろの 手が のびてくる。てごわいぞ。おぼえた じゅもんを つかえ！' },
+  { name: 'だいまおうの しろ', bg: ['#2a1038', '#7a2330'], types: ['gaikotsu', 'ghost', 'doro', 'ghost'], quota: 50, spawn: 0.85, max: 8, evGap: 8, lead: 0.95, hit: 7, haz: 10, shot: 6, boss: 'milga',
+    story: 'ついに だいまおうの しろだ。ここまで 来た きみなら、きっと かてる！' }
+];
+// てき。hp：かたさ、time：とどくまでの秒数、exp：けいけんち、size：大きさ、art：ドナルゴクエストの 絵の名前
+const TYPES = {
+  slime:    { name: 'プルリン',   hp: 1,  time: 5.5, exp: 1, size: 0.55, col: '#5ab4ff', art: 'pururin' },
+  kawachi:  { name: 'カワチー',   hp: 1,  time: 4.2, exp: 1, size: 0.45, col: '#ffd9c4', art: 'kawachi' },
+  doro:     { name: 'ドロハンズ', hp: 6,  time: 7.0, exp: 4, size: 0.62, col: '#9a6a44', art: 'dorohands' },
+  bat:      { name: 'こうもり',   hp: 3,  time: 3.6, exp: 3, size: 0.45, col: '#a26be0' },
+  gaikotsu: { name: 'がいこつ',   hp: 12, time: 7.5, exp: 6, size: 0.65, col: '#eef0f5' },
+  ghost:    { name: 'ゆうれい',   hp: 5,  time: 3.8, exp: 4, size: 0.5,  col: '#e8f4ff' }
+};
+// ボス（絵と 背景は ドナルゴクエストの もの）。dmg：こうげきの ダメージ、n：1ターンの こうげき回数、atks：こうげきの種類、
+// arts：のこり HP の わりあいが これ以下に なったら その絵に かわる、bg：背景、size：絵の大きさの倍率
+const BOSSES = {
+  muza:  { name: 'まおうムーザ',         hp: 180,  dmg: 6,  n: 1, exp: 20, bg: 'castle', size: 1.0,  arts: [[1, 'muza']], atks: ['spearR', 'spearL', 'laser'] },
+  despi: { name: 'デスピエール',         hp: 600,  dmg: 10, n: 2, exp: 40, bg: 'circus', size: 1.0,  arts: [[1, 'despierre1'], [0.66, 'despierre2'], [0.33, 'despierre3']], atks: ['spearR', 'spearL', 'laser', 'ceil', 'guard'],
+           change: ['', 'デスピエールの かめんが かわった！', 'デスピエールが しょうたいを あらわした！'] },
+  milga: { name: 'だいまおうミルガドス', hp: 1100, dmg: 14, n: 3, exp: 0,  bg: 'makai',  size: 1.12, arts: [[1, 'milgados1'], [0.5, 'milgados2']], atks: ['spearR', 'spearL', 'laser', 'ceil', 'guard'],
+           change: ['', 'ミルガドスが しんの すがたを あらわした！'] }
+};
+const bossArtIdx = () => { const a = BOSSES[B.id].arts, k = B.hp / B.maxHp; let n = 0; a.forEach((x, i) => { if (k <= x[0]) n = i; }); return n; };
+// じゅもん。lv：おぼえる レベル、mp：つかう MP、al：聞きとりの 合言葉。big は 長い名前の 上位じゅもん（合言葉が 聞こえたら 出る）
+const SPELLS = {
+  thunder: { name: 'サンダー',   icon: '⚡', col: '#ffe35a', lv: 3,  mp: 3, al: ['サンダ', 'thunder', 'カミナリ', '雷'] },
+  fire:    { name: 'ファイヤー', icon: '🔥', col: '#ff9a3c', lv: 4,  mp: 4, al: ['ファイヤ', 'ファイア', 'フアイヤ', 'ハイヤ', 'fire'] },
+  ice:     { name: 'フリーザー', icon: '❄️', col: '#8ff0ff', lv: 6,  mp: 4, al: ['フリザ', 'フリイザ', 'プリザ', 'ブリザ', 'フリズ', 'freez', 'frieza'] },
+  heal:    { name: 'リカバー',   icon: '💚', col: '#b6ffb0', lv: 7,  mp: 5, al: ['リカバ', 'recover', 'カイフク', '回復'] },
+  dragon:  { name: 'ドラゴンファイヤースペシャル',   icon: '🐉', col: '#ff7a3c', lv: 9,  mp: 8,  big: true, low: 'fire',    al: ['ドラゴン', 'dragon', 'スペシャル'] },
+  bolt:    { name: 'サンダーボルトレボリューション', icon: '🌩️', col: '#fff27a', lv: 11, mp: 9,  big: true, low: 'thunder', al: ['ボルト', 'レボリュ', 'bolt'] },
+  meteor:  { name: 'メテオストライクアタック',       icon: '☄️', col: '#ffb0f0', lv: 13, mp: 10, big: true, low: 'fire',    al: ['メテオ', 'ストライク', 'meteor'] }
+};
+const ORDER = ['thunder', 'fire', 'ice', 'heal', 'dragon', 'bolt', 'meteor'];
+const needExp = lv => Math.round((2 + lv + lv * lv / 6) * 1.7);      // 次のレベルまでの けいけんち
+const maxHp = lv => 20 + 6 * (lv - 1);
+const maxMp = lv => lv < 3 ? 0 : 6 + 3 * (lv - 3);
+const atkOf = lv => 1 + Math.floor(lv / 3);                  // パンチ1発の 強さ（剣は 2ばい）
+const DEBUG = new URLSearchParams(location.search).has('debug');
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const video = document.getElementById('cam');
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const pick = a => a[Math.floor(Math.random() * a.length)];
+let W = 0, H = 0;
+function resize(){
+  const d = Math.min(window.devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * d; cv.height = H * d;
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+}
+addEventListener('resize', resize); resize();
+
+const S = {
+  mode: null, diff: 'easy', state: 'title', running: false, now: 0, time: 0,
+  lv: 1, exp: 0, hp: 20, mp: 0, chapter: 0, kills: 0,
+  enemies: [], fx: [], shots: [], spawnT: 0, shotT: 0, evT: 0, evN: 0, ev: null, pose: null, card: null,
+  body: false, full: true, poseGuard: false, padGuard: false, poseMagic: false, hurt: 0, combo: 0, comboT: 0,
+  charge: 0, hold: 0, magicCD: 0, burn: 0, burnT: 0, heard: null, shoutT: 0, shoutUntil: 0, listenUntil: 0, ready: false, spellIdx: 0,
+  vol: 0, noise: 0.02, noMic: false, strokeId: 0, tip: '', tipUntil: 0,
+  cnt: { punch: 0, slash: 0, jump: 0, duck: 0, dodge: 0, pose: 0, spell: 0 }
+};
+const B = { id: '', name: '', hp: 0, maxHp: 0, phase: '', t: 0, next: null, msg: [], left: 0, frozen: false, iceCD: 0, shake: 0, dealt: 0, burn: 0 };   // ボス戦
+const P = { seen: false, x: 0, y: 0, T: 120, lift: 0, baseY: null, kd: 0, air: false, low: false };   // からだ全体（どうの まん中・高さ）
+const J = { unit: 100 };                                    // 関節（画面の座標）。ポーズの判定に使う
+const sim = { l: false, r: false, x: 0, jumpT: 0, down: false, pose: false };   // カメラなしの うごき
+const sword = { on: false, hold: 0, vis: false, slashing: false, stroke: 0, gx: 0, gy: 0, tx: 0, ty: 0, dx: 0, dy: -1, trail: [] };
+const head = { x: 0, y: 0, tx: 0, ty: 0 };
+const anchor = { x: 0, y: 0, unit: 100, tx: 0, ty: 0, tunit: 100 };
+const hands = [0, 1].map(() => ({ x: 0, y: 0, p: [0, 0, 0], org: [0, 0, 0], vis: false, armed: true, punchAt: -9 }));
+const learned = id => S.lv >= SPELLS[id].lv;
+const inBattle = () => S.state === 'battle';
+const bossY = () => H * 0.5;   // ボスを かく高さ
+
+// ---------- 絵（ドナルゴクエストの モンスター画・背景を そのまま使う） ----------
+// SVG の文字列を 画像に して、キャンバスに かく。はみ出す所が 切れないように まわりに 60 ずつ 余白を とる
+const ART = {};
+function art(id){
+  if (ART[id]) return ART[id];
+  const im = new Image(), a = ART[id] = { im, ok: false };
+  im.onload = () => { a.ok = true; };
+  let svg = '';
+  try {
+    svg = id.startsWith('bg_')
+      ? window.Monsters.bg(id.slice(3)).replace('viewBox="0 0 400 300"', 'width="800" height="600" viewBox="0 0 400 300"')
+      : window.Monsters.draw(id).replace('viewBox="0 0 400 400"', 'width="780" height="780" viewBox="-60 -60 520 520"');
+  } catch (e) { return a; }
+  im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  return a;
+}
+// (x, y) を まん中に、もとの絵の 400 の わくが size に なる大きさで かく
+function drawArt(id, x, y, size){
+  const a = art(id); if (!a.ok) return false;
+  const s = size * 1.3; ctx.drawImage(a.im, x - s / 2, y - s / 2, s, s); return true;
+}
+['pururin', 'kawachi', 'dorohands', 'muza', 'despierre1', 'despierre2', 'despierre3', 'milgados1', 'milgados2', 'bg_castle', 'bg_circus', 'bg_makai'].forEach(art);
+
+// ---------- 音 ----------
+let ac = null, master = null, noiseBuf = null, analyser = null, volBuf = null;
+function tone(freq, dur, type = 'sine', vol = 0.12, slide = 0, at = 0){
+  if (!ac) return;
+  const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + at;
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t + dur);
+}
+// ザーッという音をフィルターに通して鳴らす（風切り・打撃）
+function noise(dur, vol, type = 'bandpass', f1 = 1000, f2 = 0, q = 1, at = 0){
+  if (!ac) return;
+  const n = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(), t = ac.currentTime + at;
+  n.buffer = noiseBuf; n.loop = true;
+  f.type = type; f.Q.value = q; f.frequency.setValueAtTime(f1, t);
+  if (f2) f.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  n.connect(f).connect(g).connect(master); n.start(t, Math.random()); n.stop(t + dur);
+}
+const arp = (fs, step, dur, type, vol) => fs.forEach((f, i) => tone(f, dur, type, vol, 0, i * step));
+const sfx = {
+  miss:  () => noise(0.1, 0.16, 'bandpass', 700, 2600, 2),
+  swing: () => noise(0.2, 0.26, 'bandpass', 600, 3600, 2.5),
+  cut:   () => { noise(0.09, 0.3, 'highpass', 3500); tone(1500, 0.12, 'triangle', 0.08, -900); },
+  ready: () => { tone(880, 0.1, 'sine', 0.07); tone(1320, 0.18, 'sine', 0.07, 0, 0.08); },
+  denied: () => tone(200, 0.15, 'square', 0.06, -60),
+  thunder: () => { noise(0.08, 0.5, 'highpass', 3000); tone(1800, 0.15, 'sawtooth', 0.1, -1600); noise(0.9, 0.5, 'lowpass', 4000, 150); tone(60, 0.7, 'sine', 0.3, -20, 0.05); },
+  fire:  () => { noise(0.8, 0.35, 'bandpass', 300, 1800, 0.8); tone(120, 0.6, 'sawtooth', 0.06, 200); },
+  burn:  () => noise(0.12, 0.1, 'bandpass', 1200 + Math.random() * 1200, 0, 3),
+  ice:   () => { arp([2093, 1760, 2637, 1568, 3136], 0.06, 0.3, 'sine', 0.06); noise(0.5, 0.1, 'highpass', 6000); },
+  shatter: () => { noise(0.25, 0.25, 'highpass', 5000); arp([2637, 3136, 2093, 3520], 0.035, 0.12, 'sine', 0.06); },
+  heal:  () => arp([523, 659, 784, 1047, 1319], 0.08, 0.3, 'sine', 0.08),
+  big:   () => { arp([392, 523, 659, 784, 1047, 1319, 1568], 0.07, 0.35, 'square', 0.06); tone(70, 1.0, 'sine', 0.4, -30, 0.3); noise(1.0, 0.4, 'lowpass', 3000, 120, 1, 0.3); },
+  hit:   () => { const k = Math.min(S.combo, 24); tone(110 + k * 5, 0.12, 'sine', 0.34, -60); noise(0.07, 0.3, 'lowpass', 1500 + k * 80, 300); tone(500 + k * 35, 0.05, 'square', 0.04); },
+  pop:   () => { tone(500, 0.08, 'square', 0.07, 600); tone(900, 0.12, 'sine', 0.08, 300, 0.06); noise(0.1, 0.15, 'bandpass', 1800, 600); },
+  guard: () => { tone(180, 0.18, 'square', 0.08, 120); tone(1400, 0.2, 'triangle', 0.06, -300); noise(0.05, 0.2, 'highpass', 3000); },
+  hurt:  () => { tone(220, 0.30, 'sawtooth', 0.07, -120); tone(90, 0.25, 'sine', 0.3, -40); },
+  spawn: () => tone(300, 0.08, 'sine', 0.03, 200),
+  shoot: () => { tone(900, 0.3, 'sawtooth', 0.06, -600); tone(1300, 0.08, 'square', 0.04); },
+  dodge: () => { noise(0.18, 0.2, 'bandpass', 500, 3000, 2); tone(660, 0.1, 'sine', 0.07, 400, 0.05); },
+  warn:  () => { tone(990, 0.07, 'square', 0.04); tone(990, 0.07, 'square', 0.04, 0, 0.12); },
+  tick:  () => tone(1200, 0.05, 'square', 0.05),
+  spear: () => { noise(0.25, 0.4, 'highpass', 2500); tone(140, 0.25, 'square', 0.12, -60); },
+  ceil:  () => { tone(60, 0.6, 'sine', 0.5, -20); noise(0.5, 0.5, 'lowpass', 600, 80); },
+  laser: () => { tone(1800, 0.4, 'sawtooth', 0.1, -1500); noise(0.3, 0.25, 'highpass', 4000); },
+  dq:    () => tone(660, 0.04, 'square', 0.05),
+  boss:  () => { arp([196, 185, 175, 165], 0.16, 0.3, 'sawtooth', 0.09); tone(55, 1.0, 'sine', 0.3); },
+  bossHit: () => { tone(80, 0.16, 'sine', 0.4, -30); noise(0.09, 0.3, 'lowpass', 900); },
+  boom:  () => { tone(80, 0.8, 'sine', 0.5, -50); noise(1.0, 0.5, 'lowpass', 2500, 100); arp([523, 659, 784, 1047], 0.08, 0.25, 'square', 0.05); },
+  level: () => arp([523, 523, 523, 659, 784, 659, 784, 1047], 0.09, 0.22, 'square', 0.07),
+  start: () => arp([523, 659, 784, 1047], 0.09, 0.2, 'square', 0.05),
+  win:   () => arp([523, 659, 784, 1047, 784, 1047, 1319, 1568], 0.13, 0.4, 'square', 0.07),
+  over:  () => arp([523, 440, 349, 262], 0.16, 0.35, 'triangle', 0.08)
+};
+
+// ---------- こえの あんない ----------
+const VOICE = { on: true, until: 0, pri: 0, text: '' };
+const speechTime = text => 0.4 + text.length * 0.13;
+function say(text, pri = 1){
+  S.said.push(text); if (S.said.length > 40) S.said.shift();
+  if (!VOICE.on || !window.speechSynthesis) return true;
+  if (S.now < VOICE.until && pri < VOICE.pri) return false;   // 話している とちゅうは、同じか もっと 大事な ことだけ わりこむ
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'ja-JP'; u.rate = 1.1; u.pitch = 1.2;
+    speechSynthesis.speak(u);
+  } catch (e) {}
+  VOICE.pri = pri; VOICE.until = S.now + speechTime(text); VOICE.text = text;
+  return true;
+}
+S.said = [];
+function tip(str, sec = 6){ S.tip = str; S.tipUntil = S.now + sec; }
+
+// ---------- じゅもんの名前の聞きとり ----------
+const norm = s => s.toLowerCase().replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60)).replace(/[ー\s・！!。、]/g, '');
+// 長い名前の 上位じゅもんは 合言葉が 1つでも 聞こえたら それ。なければ ふつうの じゅもんの うち 最後に聞こえたもの
+function hear(str){
+  const n = norm(str);
+  // あんないの声を マイクが ひろって、じゅもんが 勝手に 出ないようにする
+  const mine = S.now < VOICE.until + 0.3 ? norm(VOICE.text) : '';
+  let id = null, at = -1;
+  for (const big of [true, false]){
+    for (const k of ORDER){
+      if (!!SPELLS[k].big !== big) continue;
+      for (const a of SPELLS[k].al){ const i = n.lastIndexOf(a); if (i > at && !mine.includes(a)){ at = i; id = k; } }
+    }
+    if (id) break;
+  }
+  if (id) S.heard = { id, t: S.now };
+  return id;
+}
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const ANDROID = /Android/i.test(navigator.userAgent);
+let rec = null, recOn = false, recDead = !SR, recAt = -9;
+// 聞きとりは まほうの構えの間だけ 動かす
+function listen(on){
+  if (recDead) return;
+  if (!on){ if (recOn){ try { rec.abort(); } catch (e) {} } return; }
+  if (recOn || S.now - recAt < 0.6) return;
+  if (!rec){
+    rec = new SR(); rec.lang = 'ja-JP'; rec.continuous = !ANDROID; rec.interimResults = true; rec.maxAlternatives = 3;
+    rec.onresult = ev => {
+      let t = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) for (let j = 0; j < ev.results[i].length; j++) t += ev.results[i][j].transcript + ' ';
+      hear(t);
+    };
+    rec.onend = () => { recOn = false; };
+    rec.onerror = ev => { if (['not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported'].includes(ev.error)) recDead = true; };
+  }
+  recAt = S.now;
+  try { rec.start(); recOn = true; } catch (e) {}
+}
+
+// ---------- カメラ・姿勢 ----------
+let pose = null, lastVT = -1, lastPoseT = 0;
+function vidRect(){
+  const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
+  const sc = Math.min(W / vw, H / vh), w = vw * sc, h = vh * sc;   // 切りとらずに 全体を 入れる（ぜんしんが 切れないように）
+  return { x: (W - w) / 2, y: (H - h) / 2, w, h };
+}
+function onPose(lm, dt){
+  const r = vidRect();
+  const pt = i => ({ x: r.x + (1 - lm[i].x) * r.w, y: r.y + lm[i].y * r.h, v: lm[i].visibility ?? 1 });
+  const ls = pt(11), rs = pt(12);
+  S.body = ls.v > 0.5 && rs.v > 0.5;
+  if (!S.body){ clearPose(); return; }
+  const unit = Math.max(40, Math.hypot(ls.x - rs.x, ls.y - rs.y));
+  anchor.tx = (ls.x + rs.x) / 2; anchor.ty = (ls.y + rs.y) / 2; anchor.tunit = unit;
+  const nose = pt(0), seen = nose.v > 0.5, lh = pt(23), rh = pt(24), lk = pt(25), rk = pt(26);
+  S.full = lh.v > 0.5 && rh.v > 0.5;
+  head.tx = seen ? nose.x : anchor.tx; head.ty = seen ? nose.y : anchor.ty - unit * 0.9;
+  const lw = pt(15), rw = pt(16);
+  Object.assign(J, { ls, rs, nose, lw, rw, unit });
+  // からだ全体：どうの まん中の 位置と、ふだんの高さからの 上がり下がり
+  if (S.full){
+    const sx = anchor.tx, sy = anchor.ty, hx = (lh.x + rh.x) / 2, hy = (lh.y + rh.y) / 2;
+    const x = (sx + hx) / 2, y = (sy + hy) / 2, T = Math.max(30, Math.hypot(sx - hx, sy - hy)), was = P.seen, k = was ? 0.6 : 1;
+    P.x += (x - P.x) * k; P.y += (y - P.y) * k; P.T += (T - P.T) * (was ? 0.3 : 1); P.seen = true;
+    if (P.baseY == null) P.baseY = P.y;
+    P.lift = (P.baseY - P.y) / P.T;
+    // ふだんの高さは、じっとしている間は 早く、とんだり しゃがんだり している間は ゆっくり 合わせなおす
+    P.baseY += (P.y - P.baseY) * Math.min(1, dt / (Math.abs(P.lift) < 0.1 ? 0.8 : 8));
+    P.kd = lk.v > 0.5 && rk.v > 0.5 ? (lk.y - rk.y) / P.T : 0;
+  } else P.seen = false;
+  const both = lw.v > 0.4 && rw.v > 0.4, gap = Math.hypot(lw.x - rw.x, lw.y - rw.y);
+  // 手首の左右が肩の左右と入れかわっていたら「クロス」→ ガード
+  const cross = (lw.x - rw.x) * Math.sign(ls.x - rs.x);
+  const top = Math.min(ls.y, rs.y) - unit * 0.3, bot = Math.max(ls.y, rs.y) + unit * 1.3;
+  S.poseGuard = both && cross < -unit * 0.3 && lw.y > top && lw.y < bot && rw.y > top && rw.y < bot;
+  // りょう手を ひろげて 頭より上 → まほうの構え
+  S.poseMagic = both && lw.y < nose.y && rw.y < nose.y && gap > unit * 1.0;
+  // りょう手を にぎり合わせる → 剣（レベル SWORD_LV から）
+  const grip = S.lv >= SWORD_LV && lw.v > GRIP_VIS && rw.v > GRIP_VIS && !S.poseGuard && gap < unit * (sword.on ? GRIP_OUT : GRIP_IN);
+  sword.hold = grip ? sword.hold + dt : 0;
+  sword.on = grip && (sword.on || sword.hold > 0.08);
+  S.dbg = `手の間 ${(gap / unit).toFixed(2)}　上下 ${P.lift.toFixed(2)}　${sword.on ? '剣' : S.poseGuard ? 'ガード' : S.poseMagic ? 'まほう' : 'パンチ'}`;
+  if (sword.on){
+    hands.forEach(h => { h.vis = false; });
+    const gx = (lw.x + rw.x) / 2, gy = (lw.y + rw.y) / 2, dx = gx - anchor.tx, dy = gy - (anchor.ty + unit * 0.3), d = Math.hypot(dx, dy);
+    if (d > unit * 0.35){ sword.dx += (dx / d - sword.dx) * 0.5; sword.dy += (dy / d - sword.dy) * 0.5; }
+    const n = Math.hypot(sword.dx, sword.dy) || 1;
+    swordMove(gx, gy, gx + sword.dx / n * unit * SWORD_LEN, gy + sword.dy / n * unit * SWORD_LEN, dt);
+    return;
+  }
+  sword.vis = false; sword.slashing = false;
+  [[lw, pt(13), ls, 11, 15], [rw, pt(14), rs, 12, 16]].forEach(([w, e, sh, si, wi], i) => {
+    if (S.poseMagic || w.v < WRIST_VIS || e.v < 0.5){ feedHand(i, 0, 0, 0, dt, false); return; }
+    feedHand(i, w.x + (w.x - e.x) * FIST_LEN, w.y + (w.y - e.y) * FIST_LEN, ((lm[si].z || 0) - (lm[wi].z || 0)) * r.w / unit, dt, true, sh.x, sh.y);
+  });
+}
+function clearPose(){
+  S.body = false; S.poseGuard = false; S.poseMagic = false; P.seen = false;
+  hands.forEach(h => { h.vis = false; });
+  Object.assign(sword, { on: false, hold: 0, vis: false, slashing: false });
+}
+// こぶしの位置を「同じがわの肩から見た位置」で追う（体ごと ゆれても パンチにならない）。
+// 肩から はなれる向きに 速く動き、動きだした所から PUNCH_DIST 進んだら 1発。
+// おそくなるか 引きもどすと 動きだしの所を 取りなおすので、
+// 行って もどっての くり返しが、うった回数ぶん そのまま パンチになる。
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+function feedHand(i, x, y, fwd, dt, vis, sx = 0, sy = 0){
+  const h = hands[i];
+  if (!vis){ h.vis = false; return; }
+  const u = anchor.unit, p = [(x - sx) / u, (y - sy) / u, fwd * Z_WEIGHT];
+  if (!h.vis){ Object.assign(h, { x, y, p, org: p, vis: true, armed: true }); return; }
+  const d = Math.max(dt, 0.001);
+  const np = p.map((c, k) => h.p[k] + (c - h.p[k]) * 0.75);
+  const v = np.map((c, k) => (c - h.p[k]) / d), sp = Math.hypot(...v);
+  h.x += (x - h.x) * 0.7; h.y += (y - h.y) * 0.7; h.p = np;
+  if (sp < PUNCH_REARM || dot(v, np) <= 0){ h.org = np; h.armed = true; return; }
+  if (h.armed && sp > PUNCH_SPEED && Math.hypot(np[0] - h.org[0], np[1] - h.org[1], np[2] - h.org[2]) > PUNCH_DIST && S.now - h.punchAt > PUNCH_GAP){
+    h.armed = false; h.punchAt = S.now;
+    punch(h.x, h.y);
+  }
+}
+
+// 剣：にぎった所(gx,gy)と 剣の先(tx,ty)。先が速く動いている間が「切り」
+function swordMove(gx, gy, tx, ty, dt){
+  const w = sword;
+  if (!w.vis){ Object.assign(w, { gx, gy, tx, ty, vis: true, slashing: false }); return; }
+  const nx = w.tx + (tx - w.tx) * 0.6, ny = w.ty + (ty - w.ty) * 0.6;
+  const sp = Math.hypot(nx - w.tx, ny - w.ty) / Math.max(dt, 0.001) / anchor.unit;
+  if (sp > (w.slashing ? SLASH_KEEP : SLASH_START)){
+    if (!w.slashing){ w.slashing = true; w.stroke = ++S.strokeId; sfx.swing(); if (S.running){ S.cnt.slash++; swordStart(); } }
+    w.trail.push({ x1: w.tx, y1: w.ty, x2: nx, y2: ny, t: S.now });
+    if (S.running) slash(gx, gy, w.tx, w.ty, nx, ny, w.stroke);
+  } else w.slashing = false;
+  w.gx = gx; w.gy = gy; w.tx = nx; w.ty = ny;
+}
+function segDist(px, py, x1, y1, x2, y2){
+  const dx = x2 - x1, dy = y2 - y1, l2 = dx * dx + dy * dy;
+  const t = l2 ? Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / l2)) : 0;
+  return Math.hypot(px - (x1 + dx * t), py - (y1 + dy * t));
+}
+function swordStart(){ if (inBattle()) bossDamage(atkOf(S.lv) * 2, W / 2 + (Math.random() - 0.5) * 80, bossY(), true); }
+// 剣の先が通った線か、剣そのものに ふれた てきを 切る。1ふりで 同じ てきは 1回だけ
+function slash(gx, gy, x1, y1, x2, y2, stroke){
+  for (const e of S.enemies){
+    if (e.dead || e.lastStroke === stroke) continue;
+    if (Math.min(segDist(e.x, e.y, x1, y1, x2, y2), segDist(e.x, e.y, gx, gy, x2, y2)) > e.r * 1.1) continue;
+    e.lastStroke = stroke; S.combo++; S.comboT = COMBO_TIME; sfx.cut();
+    damage(e, atkOf(S.lv) * 2);
+  }
+}
+
+// ---------- ポーズ ----------
+// 画面は 鏡うつし。「みぎて」は 自分の右手（画面でも 右がわ）
+const armUp = w => w && w.v > 0.4 && w.y < J.nose.y;
+const POSES = {
+  banzai:  { name: 'バンザイ',             fig: [-2.4, -0.75], ok: () => armUp(J.lw) && armUp(J.rw) && P.lift > -SQUAT_H / 2 },
+  tee:     { name: 'りょうてを まよこに',  fig: [3.14, 0],     ok: () => [[J.lw, J.ls], [J.rw, J.rs]].every(([w, s]) => w.v > 0.4 && Math.abs(w.y - s.y) < J.unit * 0.5 && Math.abs(w.x - s.x) > J.unit * 0.9) },
+  rightUp: { name: 'みぎてだけ 上に',      fig: [1.9, -1.1],   ok: () => armUp(J.rw) && J.lw.y > J.ls.y + J.unit * 0.3 },
+  leftUp:  { name: 'ひだりてだけ 上に',    fig: [-2.0, 1.25],  ok: () => armUp(J.lw) && J.rw.y > J.rs.y + J.unit * 0.3 },
+  squat:   { name: 'しゃがんで バンザイ',  fig: [-2.4, -0.75], low: true, ok: () => P.lift < -SQUAT_H && armUp(J.lw) && armUp(J.rw) },
+  oneLeg:  { name: 'かたあしで 立つ',      fig: [3.14, 0],     leg: true, ok: () => Math.abs(P.kd) > 0.22 }
+};
+const poseOK = id => S.mode === 'nocam' ? sim.pose : (P.seen && POSES[id].ok());
+
+// ---------- 成長 ----------
+function gainExp(n){
+  S.exp += n;
+  while (S.exp >= needExp(S.lv)){
+    S.exp -= needExp(S.lv); S.lv++;
+    S.hp = maxHp(S.lv); S.mp = maxMp(S.lv);
+    sfx.level();
+    S.fx.push({ kind: 'flash', col: '255,240,170', t: 0, life: 0.5 });
+    text(W / 2, H * 0.3, `レベル ${S.lv} に 上がった！`, '#ffe35a', 34, 2.2);
+    const got = ORDER.filter(k => SPELLS[k].lv === S.lv)[0];
+    if (S.lv === SWORD_LV){
+      text(W / 2, H * 0.3 + 44, '⚔️ 剣を 手に入れた！', '#fff', 28, 2.6);
+      say(`レベル${S.lv}！ けんを てにいれた！ りょうてを あわせて ふろう！`, 2);
+      tip(S.mode === 'cam' ? '⚔️ りょう手を くっつけて ふると 剣！' : '⚔️ なぞると 剣！', 8);
+    } else if (got){
+      const sp = SPELLS[got];
+      text(W / 2, H * 0.3 + 44, `${sp.icon} ${sp.name} を おぼえた！`, sp.col, sp.big ? 22 : 28, 2.6);
+      say(`レベル${S.lv}！ ${sp.name} を おぼえた！`, 2);
+      tip(S.mode === 'cam' ? `${sp.icon} りょう手を 上げて「${sp.name}」と さけべ！` : `${sp.icon} の ボタンで ${sp.name}！`, 9);
+    } else say(`レベル${S.lv}！`, 1);
+    buildPad();
+  }
+}
+function hurtPlayer(n, x = P.x, y = anchor.y){
+  n = Math.max(1, Math.round(n * DIFF[S.diff].dmg));
+  S.hp = Math.max(0, S.hp - n); S.hurt = 0.4; S.combo = 0; sfx.hurt();
+  text(x, y - 40, `-${n}`, '#ff8a8a', 34, 1.0);
+  if (S.hp <= 0) gameOver();
+}
+
+// ---------- 敵（ざこ） ----------
+function spawn(type){
+  const T = TYPES[type], D = DIFF[S.diff];
+  S.enemies.push({
+    type, hp: T.hp, maxHp: T.hp, z: 1, speed: D.speed / T.time,
+    ux: (Math.random() * 2 - 1) * 2.0, uy: -1.2 + Math.random() * (S.mode === 'cam' ? 3.0 : 2.0),   // カメラのときは 頭の上から こしの下まで
+    flash: 0, frozen: 0, lastStroke: 0, wob: Math.random() * 6.28, x: 0, y: 0, r: 0
+  });
+  sfx.spawn();
+}
+function place(e){
+  const s = 0.3 + 0.7 * Math.pow(1 - e.z, 1.5);
+  e.r = anchor.unit * TYPES[e.type].size * s;
+  e.x = clamp(anchor.x + e.ux * anchor.unit, e.r, W - e.r);
+  e.y = clamp(anchor.y + e.uy * anchor.unit + Math.sin(S.now * 3 + e.wob) * e.r * 0.08, e.r + 110, H - e.r - 50);
+}
+function punch(x, y){
+  if (!S.running) return;
+  S.cnt.punch++;
+  S.fx.push({ kind: 'fist', x, y, rot: (Math.random() - 0.5) * 0.8, size: anchor.unit * 0.8, t: 0, life: 0.18 });
+  if (inBattle()){ bossDamage(atkOf(S.lv), x, y); return; }
+  let hit = false;
+  for (const e of S.enemies){
+    if (e.dead || Math.hypot(e.x - x, e.y - y) > e.r + anchor.unit * PUNCH_REACH) continue;
+    if (!hit){ hit = true; S.combo++; S.comboT = COMBO_TIME; }
+    damage(e, atkOf(S.lv));
+  }
+  if (!hit) sfx.miss();
+}
+function damage(e, n = 1){
+  if (e.dead) return;
+  const T = TYPES[e.type], ice = e.frozen > 0;
+  e.hp -= n; e.flash = 0.12;
+  e.z = Math.min(1, e.z + 0.1);   // なぐると すこし おしもどす
+  S.fx.push({ kind: 'burst', x: e.x, y: e.y, r: e.r, t: 0, life: 0.18 });
+  if (e.hp > 0){ sfx.hit(); return; }
+  e.dead = true; S.kills++;
+  S.mp = Math.min(maxMp(S.lv), S.mp + 1);
+  text(e.x, e.y - e.r, `+${T.exp}`, '#ffe35a', 22, 0.7);
+  dots(e.x, e.y, 10, T.col);
+  ice ? sfx.shatter() : sfx.pop();
+  gainExp(T.exp);
+}
+// てきが 頭を ねらって 玉を うつ。ねらう場所は うった しゅんかんの 頭の位置で 固定。
+function shoot(){
+  const c = S.enemies.filter(e => !e.dead && e.z > 0.25 && !(e.frozen > 0));
+  if (!c.length) return false;
+  const e = pick(c);
+  e.flash = 0.2;
+  S.shots.push({ sx: e.x, sy: e.y, tx: head.x, ty: head.y, t: 0, life: 1.5 });
+  sfx.shoot();
+  return true;
+}
+function dots(x, y, n, col, pow = 1){
+  for (let i = 0; i < n; i++){
+    const a = Math.random() * 6.28, v = (80 + Math.random() * 160) * pow;
+    S.fx.push({ kind: 'dot', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: 0.5, col });
+  }
+}
+function text(x, y, str, col, size = 24, life = 0.8){ S.fx.push({ kind: 'text', x, y, str, col, size, t: 0, life }); }
+
+// ---------- じゅもん ----------
+const canMagic = () => S.running && ((S.state === 'field' && !S.pose) || (inBattle() && B.phase === 'player'));
+// 名前が 聞きとれなかった時の「おまかせ」。HP が 少なければ 回復、あとは おぼえた こうげきを じゅんばんに
+function nextSpell(){
+  const ok = ORDER.filter(k => learned(k) && S.mp >= SPELLS[k].mp);
+  if (!ok.length) return null;
+  if (ok.includes('heal') && S.hp < maxHp(S.lv) * 0.35) return 'heal';
+  const atk = ok.filter(k => k !== 'heal');
+  if (!atk.length) return null;
+  return atk[S.spellIdx % atk.length];
+}
+function cast(id){
+  S.heard = null; S.shoutT = 0;
+  const u = anchor.unit, top = Math.max(120, anchor.y - u * 1.6);
+  if (id && !learned(id) && SPELLS[id].low) id = SPELLS[id].low;   // まだ おぼえていない 上位じゅもんは、もとの じゅもんに
+  if (!id || !learned(id)){
+    text(anchor.x, top, S.lv < 3 ? 'じゅもんは レベル3から' : id ? 'まだ おぼえていない！' : 'MPが たりない！', '#ffd0d0');
+    sfx.denied(); S.charge = 0; S.magicCD = 0.8; return;
+  }
+  const sp = SPELLS[id];
+  if (S.mp < sp.mp){ text(anchor.x, top, 'MPが たりない！', '#ffd0d0'); sfx.denied(); S.charge = 0; S.magicCD = 0.8; return; }
+  S.mp -= sp.mp; S.cnt.spell++; S.spellIdx++;
+  S.charge = 0; S.hold = 0; S.magicCD = MAGIC_CD; S.listenUntil = 0;
+  text(anchor.x, top, sp.icon + sp.name + '！', sp.col, sp.big ? 26 : 32, sp.big ? 1.6 : 1.0);
+  const L = S.lv, bolts = () => {
+    S.fx.push({ kind: 'flash', col: '255,255,220', t: 0, life: 0.25 });
+    const ts = inBattle() ? [{ x: W / 2, y: bossY() }] : S.enemies.filter(e => !e.dead);
+    ts.forEach(e => {
+      const pts = [], x = e.x + (Math.random() - 0.5) * u;
+      for (let i = 0; i <= 6; i++) pts.push([i === 6 ? e.x : x + (Math.random() - 0.5) * u * 0.6, e.y * i / 6]);
+      S.fx.push({ kind: 'bolt', pts, t: 0, life: 0.35 });
+    });
+  };
+  const all = (n, col) => S.enemies.forEach(e => { if (!e.dead){ dots(e.x, e.y, 6, col, 0.8); damage(e, n); } });
+  if (id === 'heal'){
+    const n = Math.round(maxHp(L) * 0.5);
+    S.hp = Math.min(maxHp(L), S.hp + n); sfx.heal();
+    S.fx.push({ kind: 'flash', col: '170,255,180', t: 0, life: 0.4 });
+    text(anchor.x, top + 40, `HP +${n}`, '#b6ffb0', 28, 1.2);
+    return;
+  }
+  if (inBattle()){
+    // ボス戦：1体に 大きな ダメージ
+    const dmg = { thunder: 10 + 2 * L, fire: 14 + 2 * L, ice: 8 + L, dragon: 40 + 3 * L, bolt: 50 + 3 * L, meteor: 70 + 3 * L }[id];
+    if (id === 'thunder' || id === 'bolt'){ sfx.thunder(); bolts(); }
+    else if (id === 'ice'){
+      sfx.ice(); S.fx.push({ kind: 'flash', col: '170,235,255', t: 0, life: 0.4 });
+      // こおらせると つぎの こうげきを 1回 休ませる（つづけては きかない）
+      if (B.iceCD <= 0){ B.frozen = true; B.iceCD = 2; } else text(W / 2, H * 0.2, 'こんどは こおらなかった', '#d6f6ff', 20, 1.2);
+    }
+    else { id === 'fire' ? sfx.fire() : sfx.big(); S.fx.push({ kind: 'flash', col: id === 'meteor' ? '255,200,255' : '255,170,90', t: 0, life: 0.5 }); S.fx.push({ kind: 'ring', x: W / 2, y: bossY(), col: '255,154,60', t: 0, life: 0.6 }); }
+    bossDamage(dmg, W / 2, bossY(), true);
+    return;
+  }
+  if (id === 'thunder'){ sfx.thunder(); bolts(); all(3 + Math.floor(L / 2), '#ffe35a'); }
+  else if (id === 'fire'){
+    // ほのおの かべ：しばらくの間、近づいた てきが もえる
+    sfx.fire(); S.burn = 6; S.burnT = 0.4;
+    S.fx.push({ kind: 'ring', x: anchor.x, y: anchor.y, col: '255,154,60', t: 0, life: 0.6 });
+    all(atkOf(L), '#ff9a3c');
+  } else if (id === 'ice'){
+    sfx.ice(); S.fx.push({ kind: 'flash', col: '170,235,255', t: 0, life: 0.4 });
+    S.enemies.forEach(e => { if (!e.dead){ e.frozen = 5; dots(e.x, e.y, 6, '#d6f6ff', 0.5); } });
+  } else if (id === 'dragon'){
+    sfx.big(); S.burn = 8; S.burnT = 0.4;
+    S.fx.push({ kind: 'flash', col: '255,170,90', t: 0, life: 0.6 }); S.fx.push({ kind: 'ring', x: anchor.x, y: anchor.y, col: '255,120,60', t: 0, life: 0.8 });
+    all(12, '#ff7a3c');
+  } else if (id === 'bolt'){
+    sfx.thunder(); sfx.big(); bolts(); all(16, '#fff27a');
+    S.enemies.forEach(e => { if (!e.dead) e.frozen = 2; });
+  } else {
+    sfx.big(); S.fx.push({ kind: 'flash', col: '255,200,255', t: 0, life: 0.7 }); S.fx.push({ kind: 'ring', x: anchor.x, y: anchor.y, col: '255,176,240', t: 0, life: 0.8 });
+    S.shots.forEach(b => dots(b.tx, b.ty, 8, '#ffd0ff')); S.shots = [];
+    all(25, '#ffb0f0');
+  }
+}
+function shouting(){
+  if (S.mode === 'cam' && S.noMic) return S.hold > 1.0;       // マイクなし：構えを1秒つづける
+  if (S.mode === 'cam') return S.vol > Math.max(SHOUT_MIN, S.noise * 4);
+  return S.now < S.shoutUntil;
+}
+
+// ---------- よける ----------
+// win：当たる しゅんかんを 0 として、この間に 動けていれば セーフ（秒）
+const HAZ = {
+  spearR: { say: 'うえから やり！ みぎへ！',           show: 'やりが ふってくる！ みぎへ ➡',     win: [-0.1, 0.25],  snd: 'spear', done: 'やりを かわした！' },
+  spearL: { say: 'うえから やり！ ひだりへ！',         show: '⬅ ひだりへ！ やりが ふってくる！', win: [-0.1, 0.25],  snd: 'spear', done: 'やりを かわした！' },
+  ceil:   { say: 'てんじょうが おちてくる！ しゃがめ！', show: '⬇ てんじょうだ！ しゃがめ！',      win: [-0.3, 0.3],   snd: 'ceil',  done: 'てんじょうを くぐった！' },
+  laser:  { say: 'したに レーザー！ ジャンプ！',       show: '⬆ 下に レーザー！ ジャンプ！',      win: [-0.35, 0.2],  snd: 'laser', done: 'レーザーを とびこえた！' },
+  guard:  { say: 'たいあたりが くる！ うでを クロス！', show: '🛡 うでを クロスして ガード！',     win: [-0.3, 0.3],   snd: 'ceil',  done: 'がっちり ふせいだ！' }
+};
+function startEvent(type){
+  const hz = HAZ[type], lead = CH[S.chapter].lead * DIFF[S.diff].lead;
+  S.ev = { type, t0: S.now, at: S.now + speechTime(hz.say) + lead, x0: P.x, ok: false, tick: 0, boom: false };
+  say(hz.say, 3); sfx.warn();
+  return S.ev;
+}
+function hazGood(ev){
+  const dir = ev.type === 'spearR' ? 1 : -1;
+  return ev.type === 'laser' ? P.lift > JUMP_H : ev.type === 'ceil' ? P.lift < -SQUAT_H : ev.type === 'guard' ? S.poseGuard : (P.x - ev.x0) * dir > SIDE_D * P.T;
+}
+function updateEvent(){
+  const ev = S.ev; if (!ev) return;
+  const d = S.now - ev.at, hz = HAZ[ev.type];
+  if (ev.tick < 1 && d >= -1.0){ ev.tick = 1; sfx.tick(); }
+  if (ev.tick < 2 && d >= -0.5){ ev.tick = 2; sfx.tick(); }
+  if (!ev.boom && d >= 0){ ev.boom = true; sfx[hz.snd](); }
+  if (d >= hz.win[0] && hazGood(ev)) ev.ok = true;
+  if (d < hz.win[1]) return;
+  S.ev = null;
+  if (ev.ok){
+    S.cnt.dodge++; sfx.dodge();
+    text(W / 2, H * 0.3, hz.done, '#b6ffb0', 30, 1.2);
+    if (inBattle()){ S.mp = Math.min(maxMp(S.lv), S.mp + 2); B.msg = [hz.done, 'MPが 2 かいふくした！']; } else say('じょうず！', 1);
+  } else {
+    const n = inBattle() ? BOSSES[B.id].dmg : CH[S.chapter].haz;
+    if (inBattle()) B.msg = ['よけられなかった！'];
+    hurtPlayer(n);
+  }
+  if (inBattle() && S.running) afterAttack();
+}
+
+// ---------- ボス戦（1対1。自分のターンと あいてのターンが かわりばんこ） ----------
+function wait(t, next){ B.phase = 'wait'; B.t = t; B.next = next; }
+function startBoss(){
+  const b = BOSSES[CH[S.chapter].boss], hp = Math.round(b.hp * DIFF[S.diff].bossHp);
+  S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.burn = 0; S.state = 'battle';
+  Object.assign(B, { id: CH[S.chapter].boss, name: b.name, hp, maxHp: hp, msg: [`${b.name}が あらわれた！`], art: 0, left: 0, frozen: false, iceCD: 0, shake: 0, dealt: 0 });
+  sfx.boss(); say(`${b.name}が あらわれた！`, 3);
+  wait(3, playerTurn);
+}
+function playerTurn(){
+  B.phase = 'player'; B.t = TURN_TIME; B.dealt = 0; B.iceCD--;
+  B.msg = ['ゆうしゃの ターン！', S.lv >= 3 ? 'パンチ！ 剣！ じゅもん！ ぜんぶ つかえ！' : 'パンチ！ 剣！ うちまくれ！'];
+  sfx.dq(); say('ゆうしゃの ターン！ こうげきだ！', 2);
+}
+function bossDamage(n, x, y, strong){
+  if (!inBattle() || B.phase !== 'player' || B.hp <= 0) return;
+  B.hp = Math.max(0, B.hp - n); B.dealt += n; B.shake = strong ? 0.3 : 0.12;
+  S.combo++; S.comboT = COMBO_TIME;
+  strong ? sfx.bossHit() : sfx.hit();
+  text(W / 2 + (Math.random() - 0.5) * 140, H * 0.3 + (Math.random() - 0.5) * 60, String(n), strong ? '#ffe35a' : '#fff', strong ? 40 : 26, 0.7);
+  const ai = bossArtIdx();
+  if (B.hp > 0 && ai !== B.art){
+    B.art = ai; const m = (BOSSES[B.id].change || [])[ai];
+    S.fx.push({ kind: 'flash', col: '255,255,255', t: 0, life: 0.5 }); sfx.boss();
+    if (m){ B.msg = [m]; say(m, 2); }
+  }
+  if (B.hp <= 0) bossDown();
+}
+function enemyTurn(){
+  B.msg = [`${B.name}に ${B.dealt}の ダメージ！`];
+  wait(1.6, () => {
+    if (B.frozen){ B.frozen = false; B.msg = [`${B.name}は こおって うごけない！`]; wait(1.8, playerTurn); return; }
+    B.left = BOSSES[B.id].n; nextAttack();
+  });
+}
+function nextAttack(){
+  B.phase = 'enemy';
+  const type = pick(BOSSES[B.id].atks.filter(t => t !== B.lastAtk)); B.lastAtk = type;
+  B.msg = [`${B.name}の こうげき！`, HAZ[type].show];
+  startEvent(type);
+}
+function afterAttack(){
+  B.left--;
+  wait(1.3, B.left > 0 ? nextAttack : playerTurn);
+}
+function bossDown(){
+  const b = BOSSES[B.id], last = S.chapter >= CH.length - 1;
+  S.ev = null; S.charge = 0; listen(false);
+  B.msg = [`${B.name}を たおした！`, b.exp ? `けいけんち ${b.exp}を 手に入れた！` : 'せかいに えがおが もどった！'];
+  sfx.boom(); sfx.win(); dots(W / 2, bossY(), 50, '#ffe35a', 2);
+  S.fx.push({ kind: 'ring', x: W / 2, y: bossY(), t: 0, life: 0.8 });
+  say(`やった！ ${B.name}を たおした！`, 3);
+  wait(1.5, () => { if (b.exp) gainExp(b.exp); wait(3.5, () => last ? ending() : startChapter(S.chapter + 1)); });
+}
+
+// ---------- 進行 ----------
+function showCard(lines, dur, next, voice){ S.state = 'card'; S.card = { lines, t: dur, next }; if (voice) say(voice, 3); }
+function startChapter(i){
+  S.chapter = i; S.kills = 0; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.burn = 0; S.evN = 0;
+  S.hp = maxHp(S.lv); S.mp = maxMp(S.lv);
+  const c = CH[i];
+  showCard([`だい${i + 1}しょう`, c.name, c.story], speechTime(c.story) + 1.5, () => {
+    S.state = 'field'; S.spawnT = 1; S.evT = c.evGap; S.shotT = c.shot || 0; sfx.start();
+    if (i === 0){ say('プルリンが きた！ パンチで たおせ！', 2); tip(S.mode === 'cam' ? '👊 てきに むかって うでを つきだす → パンチ' : '👊 てきを タップ → パンチ', 8); }
+  }, `だい${i + 1}しょう。${c.name}。${c.story}`);
+}
+function startPose(){
+  S.enemies.forEach(e => dots(e.x, e.y, 6, '#fff', 0.6)); S.enemies = []; S.shots = [];
+  const id = pick(Object.keys(POSES).filter(k => k !== S.lastPose)); S.lastPose = id;
+  S.pose = { id, t: POSE_TIME, hold: 0 };
+  sfx.ready(); say(`この ポーズを とれ！ ${POSES[id].name}！`, 3);
+}
+function updatePose(dt){
+  const p = S.pose; p.t -= dt;
+  p.hold = poseOK(p.id) ? p.hold + dt : Math.max(0, p.hold - dt * 2);
+  if (p.hold >= POSE_HOLD){
+    S.pose = null; S.cnt.pose++;
+    const heal = Math.round(maxHp(S.lv) * 0.2); S.hp = Math.min(maxHp(S.lv), S.hp + heal);
+    sfx.heal(); text(W / 2, H * 0.3, `ポーズ せいこう！ HP +${heal}`, '#b6ffb0', 30, 1.6);
+    say('ナイス ポーズ！', 2); gainExp(2 * (S.chapter + 1));
+  } else if (p.t <= 0){ S.pose = null; text(W / 2, H * 0.3, 'じかんぎれ…', '#ffd0d0', 28, 1.2); sfx.denied(); }
+  if (!S.pose){ S.spawnT = 1.2; S.evT = CH[S.chapter].evGap * 0.7; }
+}
+function updateField(dt){
+  const c = CH[S.chapter], D = DIFF[S.diff];
+  if (S.pose){ updatePose(dt); return; }
+  if (S.burn > 0){
+    S.burn -= dt; S.burnT -= dt;
+    if (S.burnT <= 0){
+      S.burnT = 0.4; let any = false;
+      for (const e of S.enemies) if (!e.dead && e.z < 0.5){ any = true; dots(e.x, e.y, 4, '#ff9a3c', 0.6); damage(e, atkOf(S.lv)); }
+      if (any) sfx.burn();
+    }
+  }
+  // てき：きまった数を たおしきるまで 出つづける
+  const alive = S.enemies.filter(e => !e.dead).length;
+  S.spawnT -= dt;
+  if (S.spawnT <= 0 && alive < c.max && S.kills + alive < c.quota){ spawn(pick(c.types)); S.spawnT = c.spawn; }
+  for (const e of S.enemies){
+    if (e.frozen > 0) e.frozen -= dt; else e.z -= e.speed * dt;
+    e.flash = Math.max(0, e.flash - dt); place(e);
+    if (!e.warned && e.z < 0.3){ e.warned = true; sfx.warn(); }
+    if (e.z > 0 || e.dead) continue;
+    if (S.poseGuard){ e.z = 0.6; e.warned = false; sfx.guard(); text(e.x, e.y - e.r, 'ガード！', '#b6ffb0'); }
+    else { e.z = 0.7; e.warned = false; hurtPlayer(c.hit, e.x, e.y); if (!S.running) return; }   // ふれられても いなくならない（たおすまで つづく）
+  }
+  S.enemies = S.enemies.filter(e => !e.dead);
+  // 赤い玉（2しょうから）
+  if (c.shot){
+    S.shotT -= dt;
+    if (S.shotT <= 0) S.shotT = shoot() ? c.shot : 1;
+  }
+  for (const s of S.shots){
+    s.t += dt;
+    if (s.t < s.life) continue;
+    s.done = true;
+    if (Math.hypot(head.x - s.tx, head.y - s.ty) < anchor.unit * SHOT_HIT){ dots(s.tx, s.ty, 12, '#ff7a5a'); hurtPlayer(c.hit, s.tx, s.ty); if (!S.running) return; }
+    else { text(s.tx, s.ty, 'よけた！', '#b6ffb0'); sfx.dodge(); }
+  }
+  S.shots = S.shots.filter(s => !s.done);
+  // よける・ポーズ：3回に1回が ポーズ
+  if (S.ev) updateEvent();
+  else {
+    S.evT -= dt;
+    if (S.evT <= 0 && S.kills < c.quota){
+      S.evN++; S.evT = c.evGap;
+      if (S.evN % 3 === 0) startPose(); else startEvent(pick(['spearR', 'spearL', 'ceil', 'laser'].filter(t => t !== S.lastHaz)));
+      if (S.ev) S.lastHaz = S.ev.type;
+    }
+    if (S.kills >= c.quota && S.running) startBoss();
+  }
+}
+function updateBattle(dt){
+  B.shake = Math.max(0, B.shake - dt);
+  if (B.phase === 'wait'){ B.t -= dt; if (B.t <= 0){ const f = B.next; B.next = null; f && f(); } }
+  else if (B.phase === 'player'){ B.t -= dt; if (B.t <= 0){ S.charge = 0; enemyTurn(); } }
+  else if (B.phase === 'enemy') updateEvent();
+}
+function update(dt){
+  const k = Math.min(1, dt * 8), cam = S.mode === 'cam';
+  if (!cam || !S.body){ anchor.tx = W / 2; anchor.ty = H * 0.5; anchor.tunit = Math.min(W, H) * 0.16; }
+  anchor.x += (anchor.tx - anchor.x) * k; anchor.y += (anchor.ty - anchor.y) * k; anchor.unit += (anchor.tunit - anchor.unit) * k;
+  if (S.mode === 'nocam'){
+    // カメラなし：キーや ボタンで 体の動きを まねる
+    sim.x = clamp(sim.x + ((sim.r ? 1 : 0) - (sim.l ? 1 : 0)) * dt * 3, -2, 2); sim.jumpT -= dt;
+    S.poseGuard = S.padGuard;
+    Object.assign(P, { seen: true, T: anchor.unit * 1.4, baseY: anchor.y + anchor.unit * 0.7, lift: sim.jumpT > 0 ? 0.35 : sim.down ? -0.6 : 0 });
+    P.x = W / 2 + sim.x * P.T; P.y = P.baseY - P.lift * P.T;
+  }
+  if (!cam || !S.body){ head.tx = (S.mode === 'nocam' ? P.x : anchor.x); head.ty = anchor.y - anchor.unit * 0.9 - (S.mode === 'nocam' ? P.lift * P.T : 0); }
+  const hk = Math.min(1, dt * 14);
+  head.x += (head.tx - head.x) * hk; head.y += (head.ty - head.y) * hk;
+  if (analyser){
+    analyser.getFloatTimeDomainData(volBuf);
+    let q = 0; for (let i = 0; i < volBuf.length; i++) q += volBuf[i] * volBuf[i];
+    S.vol = Math.sqrt(q / volBuf.length);
+    if (S.vol < S.noise * 2) S.noise += (S.vol - S.noise) * 0.02;
+  }
+  sword.trail = sword.trail.filter(t => S.now - t.t < 0.25);
+  S.hurt = Math.max(0, S.hurt - dt);
+  for (const f of S.fx){ f.t += dt; if (f.kind === 'dot'){ f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 400 * dt; } }
+  S.fx = S.fx.filter(f => f.t < f.life);
+  if (!S.running) return;
+  // 体が うつっていない間は 止めて待つ
+  S.paused = cam && !P.seen;
+  if (S.paused){ listen(false); return; }
+
+  S.time += dt;
+  S.comboT -= dt; if (S.comboT <= 0) S.combo = 0;
+  if (P.seen){
+    if (!P.air && P.lift > JUMP_H){ P.air = true; S.cnt.jump++; } else if (P.lift < JUMP_H / 2) P.air = false;
+    if (!P.low && P.lift < -SQUAT_H){ P.low = true; S.cnt.duck++; } else if (P.lift > -SQUAT_H / 2) P.low = false;
+  }
+  // じゅもん：名前が聞こえたら その じゅもん。声だけなら 少し待って「おまかせ」
+  const magic = canMagic() && S.lv >= 3;
+  S.magicCD -= dt;
+  S.charge = magic && S.poseMagic && S.magicCD <= 0 ? Math.min(1, S.charge + dt / CHARGE_TIME) : Math.max(0, S.charge - dt * 2.5);
+  if (cam && !S.noMic && magic && S.poseMagic && S.magicCD <= 0.4) S.listenUntil = S.now + 0.8;
+  listen(S.now < S.listenUntil);
+  if (S.mode === 'nocam'){ if (S.heard && S.now - S.heard.t < 0.3 && S.magicCD <= 0 && canMagic()) cast(S.heard.id); }
+  else if (S.charge >= 1){
+    if (!S.ready){ S.ready = true; sfx.ready(); }
+    S.hold += dt;
+    if (S.heard && S.now - S.heard.t < 1.5) cast(S.heard.id);
+    else {
+      if (!S.shoutT && shouting()) S.shoutT = S.now;
+      if (S.shoutT && (!recOn || S.now - S.shoutT > NAME_WAIT)) cast(nextSpell());
+    }
+  } else { S.hold = 0; S.shoutT = 0; S.ready = false; }
+
+  if (S.state === 'card'){ S.card.t -= dt; if (S.card.t <= 0){ const f = S.card.next; S.card = null; f(); } }
+  else if (S.state === 'field') updateField(dt);
+  else if (S.state === 'battle') updateBattle(dt);
+}
+function begin(){
+  Object.assign(S, { running: true, time: 0, lv: 1, exp: 0, hp: maxHp(1), mp: 0, fx: [], hurt: 0, combo: 0, comboT: 0,
+    charge: 0, hold: 0, magicCD: 0, heard: null, shoutT: 0, listenUntil: 0, ready: false, spellIdx: 0, tip: '', tipUntil: 0,
+    cnt: { punch: 0, slash: 0, jump: 0, duck: 0, dodge: 0, pose: 0, spell: 0 } });
+  sim.x = 0; P.baseY = null;
+  $('title').classList.add('hide'); $('over').classList.add('hide');
+  $('pad').classList.toggle('show', S.mode === 'nocam'); buildPad();
+  startChapter(0);
+}
+function resultText(){
+  const m = Math.floor(S.time / 60), s = Math.floor(S.time % 60), c = S.cnt;
+  return `レベル ${S.lv}　／　じかん ${m}ふん ${s}びょう\n👊 パンチ ${c.punch}回　⚔️ 剣 ${c.slash}回　✨ じゅもん ${c.spell}回\n🦘 ジャンプ ${c.jump}回　🧎 しゃがむ ${c.duck}回\n💨 よけた ${c.dodge}回　🧍 ポーズ ${c.pose}回`;
+}
+function endPanel(title, retry){
+  S.running = false; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.burn = 0; S.charge = 0; listen(false);
+  $('overTitle').textContent = title; $('res').textContent = resultText();
+  $('bRetry').textContent = retry; $('pad').classList.remove('show'); $('over').classList.remove('hide');
+}
+function gameOver(){
+  sfx.over(); say('ゆうしゃは たおれた。でも だいじょうぶ、つづきから やりなおせるよ。', 3);
+  S.over = 'lose'; endPanel('ゆうしゃは たおれた…', 'この しょうから つづける');
+}
+function ending(){
+  S.state = 'end'; sfx.win(); say('せかいに えがおが もどった！ おつかれさま！ よく がんばったね！', 3);
+  S.over = 'win'; endPanel('クリア！ おつかれさま！', 'はじめから あそぶ');
+}
+function retry(){
+  if (S.over === 'win'){ begin(); return; }
+  // この しょうの はじめから（レベルは そのまま）
+  S.running = true; S.fx = []; S.hurt = 0; S.charge = 0; S.magicCD = 0; S.heard = null;
+  $('over').classList.add('hide'); $('pad').classList.toggle('show', S.mode === 'nocam'); buildPad();
+  startChapter(S.chapter);
+}
+
+// ---------- 描画 ----------
+function face(r, angry){
+  ctx.fillStyle = '#2a2140';
+  ctx.beginPath(); ctx.arc(-r * 0.28, 0, r * 0.09, 0, 6.28); ctx.arc(r * 0.28, 0, r * 0.09, 0, 6.28); ctx.fill();
+  ctx.strokeStyle = '#2a2140'; ctx.lineWidth = Math.max(2, r * 0.06); ctx.lineCap = 'round';
+  ctx.beginPath();
+  if (angry) ctx.arc(0, r * 0.42, r * 0.2, Math.PI + 0.3, -0.3); else ctx.arc(0, r * 0.12, r * 0.16, 0.2, Math.PI - 0.2);
+  ctx.stroke();
+  if (angry){ ctx.beginPath(); ctx.moveTo(-r * 0.45, -r * 0.28); ctx.lineTo(-r * 0.15, -r * 0.14); ctx.moveTo(r * 0.45, -r * 0.28); ctx.lineTo(r * 0.15, -r * 0.14); ctx.stroke(); }
+}
+function slimeShape(r, col){
+  ctx.fillStyle = col; ctx.beginPath();
+  ctx.moveTo(0, -r * 1.15); ctx.bezierCurveTo(r * 0.25, -r * 0.6, r * 1.05, -r * 0.3, r, r * 0.35);
+  ctx.bezierCurveTo(r, r * 0.95, -r, r * 0.95, -r, r * 0.35); ctx.bezierCurveTo(-r * 1.05, -r * 0.3, -r * 0.25, -r * 0.6, 0, -r * 1.15); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.ellipse(-r * 0.4, -r * 0.25, r * 0.2, r * 0.11, -0.6, 0, 6.28); ctx.fill();
+}
+function drawBody(type, r){
+  const col = TYPES[type].col;
+  if (TYPES[type].art && drawArt(TYPES[type].art, 0, -r * 0.25, r * 2.9)) return;
+  if (type === 'slime' || type === 'kawachi'){ slimeShape(r, col); ctx.translate(0, r * 0.2); face(r); }
+  else if (type === 'doro'){
+    // どろの 手：てのひらと 4本の ゆび、おやゆび
+    ctx.fillStyle = col;
+    for (let i = 0; i < 4; i++){ const fx = (-0.6 + i * 0.4) * r, fh = r * (0.75 + (i === 1 || i === 2 ? 0.2 : 0)) + Math.sin(S.now * 6 + i) * r * 0.06; ctx.beginPath(); ctx.roundRect(fx - r * 0.17, -r * 0.2 - fh, r * 0.34, fh + r * 0.3, r * 0.17); ctx.fill(); }
+    ctx.beginPath(); ctx.roundRect(r * 0.55, -r * 0.3, r * 0.7, r * 0.34, r * 0.17); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, r * 0.3, r * 0.85, r * 0.75, 0, 0, 6.28); ctx.fill();
+    ctx.fillStyle = '#6d452a'; ctx.beginPath(); ctx.ellipse(0, r * 1.0, r * 1.1, r * 0.2, 0, 0, 6.28); ctx.fill();
+    ctx.translate(0, r * 0.3); face(r, true);
+  } else if (type === 'bat'){
+    const fl = Math.sin(S.now * 14) * 0.35;
+    ctx.fillStyle = col;
+    [-1, 1].forEach(s => { ctx.beginPath(); ctx.moveTo(s * r * 0.4, 0); ctx.lineTo(s * r * 1.9, -r * (0.7 + fl)); ctx.lineTo(s * r * 1.5, r * 0.1); ctx.lineTo(s * r * 1.15, -r * 0.15); ctx.lineTo(s * r * 0.8, r * 0.35); ctx.closePath(); ctx.fill(); });
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.75, 0, 6.28); ctx.fill();
+    [-1, 1].forEach(s => { ctx.beginPath(); ctx.moveTo(s * r * 0.2, -r * 0.6); ctx.lineTo(s * r * 0.5, -r * 1.15); ctx.lineTo(s * r * 0.65, -r * 0.4); ctx.fill(); });
+    face(r * 0.8, true);
+  } else if (type === 'gaikotsu'){
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, -r * 0.1, r * 0.9, 0, 6.28); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(-r * 0.5, r * 0.4, r, r * 0.55, r * 0.12); ctx.fill();
+    ctx.fillStyle = '#2a2140'; ctx.beginPath(); ctx.ellipse(-r * 0.35, -r * 0.1, r * 0.22, r * 0.27, 0, 0, 6.28); ctx.ellipse(r * 0.35, -r * 0.1, r * 0.22, r * 0.27, 0, 0, 6.28); ctx.fill();
+    ctx.fillStyle = '#ff5a5a'; ctx.beginPath(); ctx.arc(-r * 0.35, -r * 0.08, r * 0.07, 0, 6.28); ctx.arc(r * 0.35, -r * 0.08, r * 0.07, 0, 6.28); ctx.fill();
+    ctx.strokeStyle = '#2a2140'; ctx.lineWidth = Math.max(2, r * 0.05); ctx.beginPath();
+    for (let i = -1; i <= 1; i++){ ctx.moveTo(i * r * 0.22, r * 0.45); ctx.lineTo(i * r * 0.22, r * 0.9); }
+    ctx.stroke();
+  } else {
+    ctx.globalAlpha *= 0.9; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, -r * 0.15, r * 0.9, Math.PI, 0);
+    for (let i = 0; i <= 6; i++){ ctx.lineTo(r * 0.9 - i * r * 0.3, r * (i % 2 ? 0.75 : 1.0) + Math.sin(S.now * 6 + i) * r * 0.05); }
+    ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+    face(r, true);
+  }
+}
+function drawEnemy(e){
+  const { x, y, r } = e, near = e.z < 0.3;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.beginPath(); ctx.ellipse(x, y + r * 1.05, r * 0.8, r * 0.18, 0, 0, 6.28); ctx.fill();
+  // せまってくる合図の輪
+  ctx.strokeStyle = near ? '#ff9a3c' : 'rgba(255,255,255,.5)'; ctx.lineWidth = near ? 5 : 3;
+  ctx.beginPath(); ctx.arc(x, y, r * (1.15 + e.z * 0.9), 0, 6.28); ctx.stroke();
+  if (e.maxHp > 1){
+    const bw = r * 1.6, by = y - r * 1.5;
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(x - bw / 2, by, bw, 7);
+    ctx.fillStyle = '#7dff8a'; ctx.fillRect(x - bw / 2, by, bw * Math.max(0, e.hp) / e.maxHp, 7);
+  }
+  const sq = e.frozen > 0 ? 1 : 1 + Math.sin(S.now * 5 + e.wob) * 0.05;
+  ctx.translate(x + (e.flash > 0 ? (Math.random() - 0.5) * r * 0.15 : 0), y); ctx.scale(1 / sq, sq);
+  ctx.save(); drawBody(e.type, r); ctx.restore();
+  if (e.frozen > 0){
+    ctx.globalAlpha = e.frozen < 1 && Math.sin(S.now * 30) > 0 ? 0.25 : 0.55; ctx.fillStyle = '#9fe6ff'; ctx.beginPath(); ctx.arc(0, 0, r * 1.15, 0, 6.28); ctx.fill();
+    ctx.globalAlpha = 1; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, r * 1.15, 0, 6.28); ctx.stroke();
+  }
+  if (e.flash > 0){ ctx.globalAlpha = 0.7; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0, 0, r * 1.05, 0, 6.28); ctx.fill(); }
+  ctx.restore();
+}
+function drawBoss(){
+  const b = BOSSES[B.id], size = Math.min(W * 0.9, H * 0.5) * b.size, r = size * 0.3, dead = B.hp <= 0;
+  const x = W / 2 + (B.shake > 0 ? (Math.random() - 0.5) * r * 0.3 : 0), y = bossY() + Math.sin(S.now * 2) * r * 0.05;
+  if (dead && B.phase === 'wait' && !B.next) return;
+  ctx.save();
+  if (dead) ctx.globalAlpha = 0.35;
+  if (!drawArt(b.arts[B.art || 0][1], x, y, size)){ ctx.fillStyle = '#8b3fb8'; ctx.beginPath(); ctx.arc(x, y, r, 0, 6.28); ctx.fill(); }
+  if (B.shake > 0.05){ ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.35; drawArt(b.arts[B.art || 0][1], x, y, size); }   // なぐられた しゅんかんに 白く光る
+  ctx.restore();
+  if (B.frozen){ ctx.fillStyle = 'rgba(159,230,255,.45)'; ctx.beginPath(); ctx.arc(x, y, size * 0.5, 0, 6.28); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke(); }
+  // ボスの HP
+  const bw = Math.min(360, W * 0.6), bx = (W - bw) / 2, by = Math.max(150, y - size * 0.68);
+  ctx.fillStyle = '#000'; ctx.fillRect(bx - 3, by - 3, bw + 6, 20); ctx.fillStyle = '#ff5a5a'; ctx.fillRect(bx, by, bw * B.hp / B.maxHp, 14);
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.strokeRect(bx - 3, by - 3, bw + 6, 20);
+  ctx.textAlign = 'center'; outText(B.name, W / 2, by - 18, 18);
+}
+// ドラクエふうの まど
+function box(x, y, w, h){
+  ctx.fillStyle = 'rgba(0,0,0,.88)'; ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.beginPath(); ctx.roundRect(x + 3, y + 3, w - 6, h - 6, 6); ctx.stroke();
+}
+function drawStatus(){
+  const w = 178, h = 96;
+  box(8, 8, w, h);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = S.hp < maxHp(S.lv) * 0.3 ? '#ff9a8a' : '#fff'; ctx.font = '700 17px sans-serif';
+  ctx.fillText(`ゆうしゃ　Lv ${S.lv}`, 20, 28);
+  ctx.fillText(`HP ${String(S.hp).padStart(3)} / ${maxHp(S.lv)}`, 20, 52);
+  ctx.fillText(`MP ${String(S.mp).padStart(3)} / ${maxMp(S.lv)}`, 20, 74);
+  ctx.fillStyle = '#444'; ctx.fillRect(20, 88, w - 24, 5); ctx.fillStyle = '#ffe35a'; ctx.fillRect(20, 88, (w - 24) * S.exp / needExp(S.lv), 5);
+  // おぼえた わざ
+  const got = (S.lv >= SWORD_LV ? ['⚔️'] : []).concat(ORDER.filter(learned).map(k => SPELLS[k].icon));
+  ctx.font = '18px sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('👊' + got.join(''), 12, h + 26);
+}
+// よける相手（やり・てんじょう・レーザー）
+function drawHazard(ev){
+  const k = clamp((S.now - ev.t0) / (ev.at - ev.t0), 0, 1), T = P.T, baseY = P.baseY ?? H * 0.55;
+  const ground = Math.min(H - 20, baseY + T * 2.3), q = k * k, blink = Math.sin(S.now * 18) > 0;
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (ev.type === 'spearR' || ev.type === 'spearL'){
+    const dir = ev.type === 'spearR' ? 1 : -1, zw = T * 1.2;
+    ctx.fillStyle = `rgba(255,60,60,${0.12 + 0.25 * k})`; ctx.fillRect(ev.x0 - zw / 2, 0, zw, H);
+    for (let i = -1; i <= 1; i++){
+      const x = ev.x0 + i * zw * 0.32, tipY = -60 + (ground + 60) * q;
+      ctx.strokeStyle = '#d9b36a'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(x, tipY - T * 1.6); ctx.lineTo(x, tipY - 26); ctx.stroke();
+      ctx.fillStyle = '#e8eef5'; ctx.beginPath(); ctx.moveTo(x, tipY); ctx.lineTo(x - 13, tipY - 34); ctx.lineTo(x + 13, tipY - 34); ctx.closePath(); ctx.fill();
+    }
+    ctx.font = `700 ${Math.round(T * 0.9)}px sans-serif`; ctx.fillStyle = blink ? '#ffe35a' : '#fff';
+    ctx.fillText(dir > 0 ? '➡' : '⬅', clamp(ev.x0 + dir * T * 1.5, 60, W - 60), baseY);
+  } else if (ev.type === 'ceil'){
+    const bot = (baseY - T * 0.35) * q;
+    ctx.fillStyle = '#6b6f80'; ctx.fillRect(0, 0, W, bot);
+    ctx.fillStyle = '#4a4e5e'; for (let x = 0; x < W; x += 70) ctx.fillRect(x, bot - 16, 40, 16);
+    ctx.fillStyle = '#ff5a5a'; ctx.fillRect(0, bot, W, 5);
+    ctx.font = `700 ${Math.round(T * 0.8)}px sans-serif`; ctx.fillStyle = blink ? '#ffe35a' : '#fff'; ctx.fillText('⬇', W / 2, baseY + T * 0.9);
+  } else if (ev.type === 'laser'){
+    const y = ground - T * 0.3;
+    ctx.strokeStyle = `rgba(255,60,60,${blink ? 0.9 : 0.4})`; ctx.lineWidth = 3; ctx.setLineDash([14, 10]); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#ff3b3b'; ctx.fillRect(0, y - 9, W * q, 18); ctx.fillStyle = '#fff'; ctx.fillRect(0, y - 3, W * q, 6);
+    ctx.font = `700 ${Math.round(T * 0.8)}px sans-serif`; ctx.fillStyle = blink ? '#ffe35a' : '#fff'; ctx.fillText('⬆', W / 2, baseY - T * 0.2);
+  } else {
+    ctx.strokeStyle = `rgba(255,80,80,${0.4 + 0.6 * k})`; ctx.lineWidth = 10; ctx.beginPath(); ctx.arc(W / 2, bossY(), Math.min(W, H) * (0.5 - 0.3 * q), 0, 6.28); ctx.stroke();
+    ctx.font = `700 ${Math.round(T * 0.8)}px sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText('🛡', W / 2, baseY);
+  }
+  // のこり時間の わ と、すること
+  ctx.font = '700 28px sans-serif'; ctx.lineWidth = 6; ctx.strokeStyle = '#7a1010'; ctx.fillStyle = '#fff';
+  if (!inBattle()){ ctx.strokeText(HAZ[ev.type].show, W / 2, 150, W - 20); ctx.fillText(HAZ[ev.type].show, W / 2, 150, W - 20); }
+  ctx.restore();
+}
+// ポーズの お手本（ぼう人間）。fig は 左うで・右うでの 角度（画面で 見たまま）
+function drawPoseFig(id, cx, cy, s, prog){
+  const p = POSES[id], low = p.low ? s * 0.45 : 0;
+  ctx.save(); ctx.translate(cx, cy + low); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = s * 0.16; ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(0, -s * 1.15, s * 0.33, 0, 6.28); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(0, -s * 0.75); ctx.lineTo(0, s * 0.35); ctx.stroke();
+  p.fig.forEach((a, i) => { const sx = (i ? 1 : -1) * s * 0.05; ctx.beginPath(); ctx.moveTo(sx, -s * 0.6); ctx.lineTo(sx + Math.cos(a) * s * 0.95, -s * 0.6 + Math.sin(a) * s * 0.95); ctx.stroke(); });
+  if (p.low){ [-1, 1].forEach(d => { ctx.beginPath(); ctx.moveTo(0, s * 0.35); ctx.lineTo(d * s * 0.6, s * 0.45); ctx.lineTo(d * s * 0.45, s * 1.0); ctx.stroke(); }); }
+  else if (p.leg){ ctx.beginPath(); ctx.moveTo(0, s * 0.35); ctx.lineTo(-s * 0.15, s * 1.45); ctx.moveTo(0, s * 0.35); ctx.lineTo(s * 0.6, s * 0.55); ctx.lineTo(s * 0.35, s * 1.1); ctx.stroke(); }
+  else { [-1, 1].forEach(d => { ctx.beginPath(); ctx.moveTo(0, s * 0.35); ctx.lineTo(d * s * 0.35, s * 1.45); ctx.stroke(); }); }
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 10; ctx.beginPath(); ctx.arc(cx, cy, s * 2.1, 0, 6.28); ctx.stroke();
+  ctx.strokeStyle = '#7dff8a'; ctx.beginPath(); ctx.arc(cx, cy, s * 2.1, -Math.PI / 2, -Math.PI / 2 + 6.28 * prog); ctx.stroke();
+}
+function outText(str, x, y, size, col = '#fff', edge = 'rgba(10,14,46,.9)', maxW = W - 20){
+  ctx.font = `700 ${size}px sans-serif`; ctx.lineWidth = Math.max(4, size / 5); ctx.strokeStyle = edge; ctx.fillStyle = col;
+  ctx.strokeText(str, x, y, maxW); ctx.fillText(str, x, y, maxW);
+}
+function wrap(str, maxW){
+  const out = []; let line = '';
+  for (const ch of str){ if (ctx.measureText(line + ch).width > maxW && line){ out.push(line); line = ch; } else line += ch; }
+  if (line) out.push(line); return out;
+}
+function draw(){
+  const c = CH[S.chapter], cam = S.mode === 'cam', battle = inBattle() && S.running;
+  const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, battle ? '#000' : c.bg[0]); bg.addColorStop(1, battle ? '#12081c' : c.bg[1]);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  // ボス戦の 背景（画面いっぱいに、下を そろえて）
+  const bgA = battle ? art('bg_' + BOSSES[B.id].bg) : null;
+  if (bgA && bgA.ok){ const sc = Math.max(W / 800, H / 600), w = 800 * sc, h = 600 * sc; ctx.drawImage(bgA.im, (W - w) / 2, H - h, w, h); }
+  if (cam && video.readyState >= 2 && bgA && bgA.ok){
+    // ボス戦では 自分の すがたを うすく 重ねる（よける時に 見えるように）
+    const r = vidRect();
+    ctx.save(); ctx.globalAlpha = 0.3; ctx.translate(W, 0); ctx.scale(-1, 1); ctx.drawImage(video, W - r.x - r.w, r.y, r.w, r.h); ctx.restore();
+    ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(0, 0, W, H);
+  } else if (cam && video.readyState >= 2){
+    const r = vidRect();
+    ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1); ctx.drawImage(video, W - r.x - r.w, r.y, r.w, r.h); ctx.restore();
+    ctx.fillStyle = battle ? 'rgba(0,0,0,.72)' : 'rgba(24,34,90,.45)'; ctx.fillRect(0, 0, W, H);
+  }
+  const u = anchor.unit;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  if (!S.mode){ return; }
+  if (S.burn > 0 && !battle){
+    const al = Math.min(1, S.burn);
+    for (let i = 0; i < 26; i++){
+      const a = i / 26 * 6.28, fx0 = anchor.x + Math.cos(a) * u * 2.2, fy0 = anchor.y + u * 0.6 + Math.sin(a) * u * 1.6;
+      const h = u * (0.55 + 0.25 * Math.sin(S.now * 11 + i * 2.3)), w = u * 0.24;
+      ctx.fillStyle = `rgba(255,${120 + (i % 3) * 40},40,${0.75 * al})`;
+      ctx.beginPath(); ctx.moveTo(fx0 - w, fy0); ctx.quadraticCurveTo(fx0 + Math.sin(S.now * 7 + i) * w, fy0 - h * 0.6, fx0, fy0 - h); ctx.quadraticCurveTo(fx0 + w * 0.6, fy0 - h * 0.4, fx0 + w, fy0); ctx.fill();
+    }
+  }
+  if (battle) drawBoss(); else [...S.enemies].sort((a, b) => b.z - a.z).forEach(drawEnemy);
+
+  // カメラなしのときは 体の場所が わかるように かんたんな 人を かく
+  if (S.mode === 'nocam' && S.running && (!battle || S.ev)){
+    const hy = P.y - P.T * 1.15, low = P.lift < -0.3;
+    ctx.strokeStyle = '#ffe0b0'; ctx.lineWidth = 10; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(P.x, hy + u * 0.3); ctx.lineTo(P.x, P.y + P.T * 0.5); ctx.moveTo(P.x, P.y + P.T * 0.5); ctx.lineTo(P.x - u * 0.3, P.y + P.T * (low ? 0.9 : 1.5)); ctx.moveTo(P.x, P.y + P.T * 0.5); ctx.lineTo(P.x + u * 0.3, P.y + P.T * (low ? 0.9 : 1.5)); ctx.stroke();
+    ctx.fillStyle = '#ffe0b0'; ctx.beginPath(); ctx.arc(P.x, hy, u * 0.32, 0, 6.28); ctx.fill();
+  } else if (cam && S.shots.length){
+    ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(head.x, head.y, u * 0.32, 0, 6.28); ctx.stroke();
+  }
+  for (const s of S.shots){
+    const k = s.t / s.life, R = u * SHOT_HIT, e = k * k;
+    ctx.fillStyle = `rgba(255,60,60,${0.12 + 0.22 * k})`; ctx.beginPath(); ctx.arc(s.tx, s.ty, R, 0, 6.28); ctx.fill();
+    ctx.strokeStyle = '#ff5a5a'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(s.tx, s.ty, R * (2.4 - 1.4 * k), 0, 6.28); ctx.stroke();
+    const bx = s.sx + (s.tx - s.sx) * e, by = s.sy + (s.ty - s.sy) * e, br = u * (0.12 + 0.38 * e);
+    const g = ctx.createRadialGradient(bx - br * 0.3, by - br * 0.3, br * 0.1, bx, by, br);
+    g.addColorStop(0, '#fff2b0'); g.addColorStop(0.4, '#ff8a3c'); g.addColorStop(1, '#d92a2a');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.28); ctx.fill();
+  }
+  if (S.ev && S.running) drawHazard(S.ev);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+  if (cam) for (const h of hands){
+    if (!h.vis) continue;
+    ctx.globalAlpha = 0.85; ctx.font = `${Math.round(u * 0.5)}px sans-serif`; ctx.fillText('👊', h.x, h.y); ctx.globalAlpha = 1;
+  }
+  ctx.lineCap = 'round';
+  for (const t of sword.trail){
+    const a = 1 - (S.now - t.t) / 0.25;
+    ctx.strokeStyle = `rgba(190,245,255,${a})`; ctx.lineWidth = 16 * a + 2;
+    ctx.beginPath(); ctx.moveTo(t.x1, t.y1); ctx.lineTo(t.x2, t.y2); ctx.stroke();
+  }
+  if (cam && sword.vis){
+    ctx.strokeStyle = sword.slashing ? '#ffffff' : 'rgba(200,235,255,.9)'; ctx.lineWidth = sword.slashing ? 11 : 8;
+    ctx.beginPath(); ctx.moveTo(sword.gx, sword.gy); ctx.lineTo(sword.tx, sword.ty); ctx.stroke();
+    ctx.strokeStyle = '#ffe35a'; ctx.lineWidth = 8;
+    const n = Math.hypot(sword.tx - sword.gx, sword.ty - sword.gy) || 1, px = -(sword.ty - sword.gy) / n * u * 0.22, py = (sword.tx - sword.gx) / n * u * 0.22;
+    ctx.beginPath(); ctx.moveTo(sword.gx - px, sword.gy - py); ctx.lineTo(sword.gx + px, sword.gy + py); ctx.stroke();
+  }
+  if (S.charge > 0){
+    ctx.strokeStyle = `rgba(143,240,255,${0.4 + S.charge * 0.6})`; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(anchor.x, anchor.y - u * 1.7, u * 0.5 * S.charge, 0, 6.28); ctx.stroke();
+    const nx = nextSpell();
+    if (S.charge >= 1 && nx){ ctx.font = `${Math.round(u * 0.5)}px sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText(SPELLS[nx].icon, anchor.x, anchor.y - u * 1.7); }
+  }
+  if (S.poseGuard){
+    ctx.strokeStyle = 'rgba(182,255,176,.9)'; ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.arc(anchor.x, anchor.y + u * 0.4, u * 1.3, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+  }
+  // ポーズ
+  if (S.pose && S.running){
+    const p = S.pose, s = Math.min(W, H) * 0.085, px = cam ? Math.min(W - s * 2.6, W * 0.82) : W / 2, py = H * 0.42;
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.beginPath(); ctx.arc(px, py, s * 2.3, 0, 6.28); ctx.fill();
+    drawPoseFig(p.id, px, py, s, p.hold / POSE_HOLD);
+    ctx.textAlign = 'center';
+    outText('この ポーズを とれ！', W / 2, 140, 28, '#ffe35a');
+    outText(`${POSES[p.id].name}　あと ${Math.ceil(p.t)}びょう`, W / 2, 176, 24);
+  }
+  for (const f of S.fx){
+    const a = 1 - f.t / f.life;
+    if (f.kind === 'dot'){ ctx.fillStyle = f.col; ctx.globalAlpha = a; ctx.beginPath(); ctx.arc(f.x, f.y, 6, 0, 6.28); ctx.fill(); ctx.globalAlpha = 1; }
+    else if (f.kind === 'fist'){
+      const k = 0.7 + 0.6 * f.t / f.life;
+      ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.globalAlpha = Math.min(1, a * 2);
+      ctx.font = `${Math.round(f.size * k)}px sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText('👊', 0, 0); ctx.restore();
+    }
+    else if (f.kind === 'burst'){
+      ctx.strokeStyle = `rgba(255,255,255,${a})`; ctx.lineWidth = 5; ctx.beginPath();
+      for (let i = 0; i < 8; i++){ const an = i / 8 * 6.28, r1 = f.r * (0.6 + f.t / f.life), r2 = r1 + f.r * 0.5; ctx.moveTo(f.x + Math.cos(an) * r1, f.y + Math.sin(an) * r1); ctx.lineTo(f.x + Math.cos(an) * r2, f.y + Math.sin(an) * r2); }
+      ctx.stroke();
+    }
+    else if (f.kind === 'flash'){ ctx.fillStyle = `rgba(${f.col},${a * 0.6})`; ctx.fillRect(0, 0, W, H); }
+    else if (f.kind === 'bolt'){
+      ctx.lineJoin = 'round';
+      [['255,227,90', 12], ['255,255,255', 4]].forEach(([c, w]) => { ctx.strokeStyle = `rgba(${c},${a})`; ctx.lineWidth = w; ctx.beginPath(); f.pts.forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)); ctx.stroke(); });
+    }
+    else if (f.kind === 'ring'){ ctx.strokeStyle = `rgba(${f.col || '255,227,90'},${a})`; ctx.lineWidth = 16 * a + 2; ctx.beginPath(); ctx.arc(f.x, f.y, (f.t / f.life) * Math.hypot(W, H), 0, 6.28); ctx.stroke(); }
+    else { ctx.font = `700 ${f.size}px sans-serif`; ctx.globalAlpha = a; ctx.lineWidth = 4; ctx.strokeStyle = '#23306b'; ctx.strokeText(f.str, f.x, f.y - f.t * 40); ctx.fillStyle = f.col; ctx.fillText(f.str, f.x, f.y - f.t * 40); ctx.globalAlpha = 1; }
+  }
+  if (S.hurt > 0){ ctx.fillStyle = `rgba(255,150,150,${S.hurt})`; ctx.fillRect(0, 0, W, H); }
+  if (DEBUG && S.dbg){ ctx.textAlign = 'left'; outText(S.dbg, 12, 150, 15); }
+  if (!S.running) return;
+
+  // 上の表示
+  drawStatus();
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  outText(`だい${S.chapter + 1}しょう ${c.name}`, W - 12, 22, 15, '#fff', undefined, W - 210);
+  if (S.state === 'field') outText(`ボスまで あと ${Math.max(0, c.quota - S.kills)}ひき`, W - 12, 48, 19, '#ffe35a', undefined, W - 210);
+  ctx.textAlign = 'center';
+  if (S.combo >= 3 && !battle){
+    const pop = 1 + Math.max(0, S.comboT - (COMBO_TIME - 0.12)) * 3;
+    outText(S.combo + ' HIT', W / 2, 96, Math.round(40 * pop), '#ffe35a', '#b3541e');
+  }
+  // じゅもんの ためぐあいと、声の大きさ
+  if (S.lv >= 3 && canMagic()){
+    const bw = 170, bx = 12;
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(bx, 138, bw, 10);
+    ctx.fillStyle = S.charge >= 1 ? '#ffe35a' : '#8ff0ff'; ctx.fillRect(bx, 138, bw * (cam ? S.charge : S.magicCD > 0 ? 1 - S.magicCD / MAGIC_CD : 1), 10);
+    if (cam && analyser && S.charge > 0){
+      const th = Math.max(SHOUT_MIN, S.noise * 4);
+      ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(bx, 152, bw, 6);
+      ctx.fillStyle = '#b6ffb0'; ctx.fillRect(bx, 152, bw * Math.min(1, S.vol / (th * 1.5)), 6);
+    }
+  }
+  const padH = S.mode === 'nocam' ? 96 : 0;
+  if (S.paused){
+    ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(0, 0, W, H);
+    outText(S.body ? 'ぜんしんが うつるように、もう少し はなれてね' : 'カメラの 前に 立ってね', W / 2, H / 2, 26, '#ffe35a');
+    return;
+  }
+  if (S.state === 'card' && S.card){
+    // しょうの はじまり
+    const bw = Math.min(620, W - 24), bh = 230, bx = (W - bw) / 2, by = (H - bh) / 2 - 20;
+    box(bx, by, bw, bh);
+    ctx.fillStyle = '#8ff0ff'; ctx.font = '700 20px sans-serif'; ctx.fillText(S.card.lines[0], W / 2, by + 34);
+    ctx.fillStyle = '#ffe35a'; ctx.font = '700 32px sans-serif'; ctx.fillText(S.card.lines[1], W / 2, by + 76, bw - 30);
+    ctx.fillStyle = '#fff'; ctx.font = '700 19px sans-serif';
+    wrap(S.card.lines[2], bw - 44).forEach((l, i) => ctx.fillText(l, W / 2, by + 124 + i * 28));
+    return;
+  }
+  if (battle){
+    // メッセージの まど
+    const bw = Math.min(640, W - 20), bh = 96, bx = (W - bw) / 2, by = H - bh - 12 - padH;
+    box(bx, by, bw, bh);
+    ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = '700 21px sans-serif';
+    B.msg.slice(0, 2).forEach((l, i) => ctx.fillText(l, bx + 22, by + 32 + i * 32, bw - 44));
+    if (B.phase === 'player'){
+      ctx.fillStyle = '#333'; ctx.fillRect(bx + 14, by - 16, bw - 28, 10);
+      ctx.fillStyle = B.t < 2 ? '#ff8a5a' : '#7dff8a'; ctx.fillRect(bx + 14, by - 16, (bw - 28) * B.t / TURN_TIME, 10);
+      ctx.textAlign = 'center'; outText(cam && S.charge >= 1 ? 'いまだ！ じゅもんを さけべ！' : `こうげき チャンス！ あと ${Math.ceil(B.t)}びょう`, W / 2, by - 40, 24, '#ffe35a');
+    }
+    return;
+  }
+  // 下の ひとこと
+  const tips = cam
+    ? ['うでを つきだす → パンチ', S.lv >= SWORD_LV ? 'りょう手を くっつけて ふる → 剣' : 'レベル2で 剣が 手に入る', S.lv >= 3 ? 'りょう手を 上げて じゅもんを さけぶ' : 'レベル3で じゅもんを おぼえる', 'むねの前で うでを クロス → ガード']
+    : ['タップ → パンチ', 'なぞる → 剣', '下の ボタンで よける・じゅもん'];
+  let hint = S.now < S.tipUntil ? S.tip : tips[Math.floor(S.now / 3.5) % tips.length], bigT = S.now < S.tipUntil;
+  if (cam && S.charge >= 1){ hint = S.noMic ? 'そのまま キープ！' : 'いまだ！ じゅもんの 名前を さけべ！  ' + ORDER.filter(learned).map(k => SPELLS[k].icon + (SPELLS[k].big ? SPELLS[k].al[0] : SPELLS[k].name)).join(' / '); bigT = true; }
+  else if (S.shots.length){ hint = cam ? '赤い玉だ！ 頭を よこに よけろ！' : '赤い玉だ！ ← → で よけろ！'; bigT = true; }
+  ctx.textAlign = 'center';
+  outText(hint, W / 2, H - 24 - padH, bigT ? 22 : 17, bigT ? '#ffe35a' : '#fff');
+}
+
+function frame(ts){
+  const now = ts / 1000, dt = Math.max(0, Math.min(0.05, now - S.now || 0));
+  S.now = now;
+  if (W !== innerWidth || H !== innerHeight) resize();
+  if (S.mode === 'cam' && pose && video.readyState >= 2 && video.currentTime !== lastVT){
+    const pdt = lastPoseT ? Math.min(0.2, now - lastPoseT) : 0.033;
+    lastVT = video.currentTime; lastPoseT = now;
+    const res = pose.detectForVideo(video, ts);
+    if (res.landmarks && res.landmarks[0]) onPose(res.landmarks[0], pdt); else clearPose();
+  }
+  update(dt); draw();
+}
+// テスト用：手動で1コマ進める／関節データを直接わたす
+window.__game = { S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
+const loop = ts => { frame(ts); requestAnimationFrame(loop); };
+requestAnimationFrame(loop);
+
+// ---------- はじめる ----------
+function ensureAudio(){
+  if (!ac){
+    try {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      master = ac.createDynamicsCompressor(); master.connect(ac.destination);
+      noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+      const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    } catch (e) { ac = null; }
+  }
+  if (ac && ac.state === 'suspended') ac.resume();
+}
+async function startCam(){
+  ensureAudio();
+  const msg = $('msg');
+  if (pose){ S.mode = 'cam'; begin(); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ msg.textContent = 'この ひらきかたでは カメラを つかえません。https か localhost で ひらいてください。'; return; }
+  msg.textContent = 'カメラを じゅんび中…';
+  const vopt = { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } };
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: vopt, audio: { echoCancellation: true, noiseSuppression: true } }); }
+  catch (e){
+    // マイクが だめでも カメラだけで あそべる（まほうは 構えを つづけると 出る）
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: vopt }); S.noMic = true; }
+    catch (e2){ msg.textContent = 'カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'; return; }
+  }
+  video.srcObject = new MediaStream(stream.getVideoTracks());
+  await video.play();
+  const at = stream.getAudioTracks();
+  if (at.length && ac){
+    analyser = ac.createAnalyser(); analyser.fftSize = 1024; volBuf = new Float32Array(analyser.fftSize);
+    ac.createMediaStreamSource(new MediaStream(at)).connect(analyser);
+  } else S.noMic = true;
+  msg.textContent = 'うごきを 見る じゅんび中…（はじめは すこし かかります）';
+  try {
+    const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
+    const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
+    const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
+    try { pose = await make('GPU'); } catch (e){ pose = await make('CPU'); }
+  } catch (e){ msg.textContent = 'うごきを 見る しくみを よみこめませんでした。ネットに つながっているか かくにんしてください。'; return; }
+  msg.textContent = '';
+  S.mode = 'cam'; begin();
+}
+$('bCam').onclick = startCam;
+$('bNoCam').onclick = () => { ensureAudio(); S.mode = 'nocam'; clearPose(); begin(); };
+$('bRetry').onclick = retry;
+function setDiff(k){
+  S.diff = k;
+  $('mEasy').classList.toggle('on', k === 'easy'); $('mHard').classList.toggle('on', k === 'hard');
+  try { localStorage.setItem('zenshinQuestDiff', k); } catch (e) {}
+}
+function setVoice(v){
+  VOICE.on = v;
+  $('bVoice').classList.toggle('on', v); $('bVoice').textContent = v ? '🔊 こえの あんない：あり' : '🔇 こえの あんない：なし';
+  if (!v && window.speechSynthesis) speechSynthesis.cancel();
+  try { localStorage.setItem('zenshinQuestVoice', v ? '1' : '0'); } catch (e) {}
+}
+$('bVoice').onclick = () => setVoice(!VOICE.on);
+try { if (localStorage.getItem('zenshinQuestVoice') === '0') setVoice(false); } catch (e) {}
+$('mEasy').onclick = () => setDiff('easy'); $('mHard').onclick = () => setDiff('hard');
+try { if (localStorage.getItem('zenshinQuestDiff') === 'hard') setDiff('hard'); } catch (e) {}
+$('bBack').onclick = () => { S.mode = null; S.state = 'title'; $('over').classList.add('hide'); $('title').classList.remove('hide'); };
+
+// ---------- カメラなしの操作 ----------
+// タップ＝パンチ、なぞる＝剣、ボタン・キー＝よける・ガード・ポーズ・じゅもん
+let ptT = 0, ptOn = false;
+cv.addEventListener('pointerdown', e => {
+  if (S.mode !== 'nocam') return;
+  punch(e.clientX, e.clientY);
+  if (S.lv < SWORD_LV) return;
+  ptOn = true; ptT = e.timeStamp; sword.vis = false; swordMove(e.clientX, e.clientY, e.clientX, e.clientY, 0.016);
+});
+cv.addEventListener('pointermove', e => {
+  if (S.mode !== 'nocam' || !ptOn) return;
+  swordMove(e.clientX, e.clientY, e.clientX, e.clientY, Math.max(0.004, (e.timeStamp - ptT) / 1000)); ptT = e.timeStamp;
+});
+['pointerup', 'pointercancel'].forEach(n => cv.addEventListener(n, () => { ptOn = false; sword.vis = false; sword.slashing = false; }));
+function buildPad(){
+  const box = $('padSpells'); box.innerHTML = '';
+  if (S.mode !== 'nocam') return;
+  ORDER.filter(learned).forEach(k => {
+    const b = document.createElement('button'); b.textContent = SPELLS[k].icon;
+    b.addEventListener('pointerdown', e => { e.preventDefault(); S.heard = { id: k, t: S.now }; });
+    box.appendChild(b);
+  });
+}
+function holdBtn(id, on, off){
+  const b = $(id);
+  b.addEventListener('pointerdown', e => { e.preventDefault(); on(); b.classList.add('on'); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(n => b.addEventListener(n, () => { if (b.classList.contains('on')){ off(); b.classList.remove('on'); } }));
+}
+holdBtn('pGuard', () => { S.padGuard = true; }, () => { S.padGuard = false; });
+holdBtn('pL', () => { sim.l = true; }, () => { sim.l = false; });
+holdBtn('pR', () => { sim.r = true; }, () => { sim.r = false; });
+holdBtn('pJ', () => { sim.jumpT = 0.5; }, () => {});
+holdBtn('pD', () => { sim.down = true; }, () => { sim.down = false; });
+holdBtn('pPose', () => { sim.pose = true; }, () => { sim.pose = false; });
+const KEYS = {
+  KeyG: v => { S.padGuard = v; }, ArrowLeft: v => { sim.l = v; }, ArrowRight: v => { sim.r = v; },
+  ArrowUp: v => { if (v) sim.jumpT = 0.5; }, ArrowDown: v => { sim.down = v; }, KeyP: v => { sim.pose = v; }
+};
+KEYS.KeyA = KEYS.ArrowLeft; KEYS.KeyD = KEYS.ArrowRight; KEYS.KeyW = KEYS.ArrowUp; KEYS.KeyS = KEYS.ArrowDown; KEYS.Space = KEYS.ArrowUp;
+addEventListener('keydown', e => {
+  if (S.mode !== 'nocam' || e.repeat) return;
+  if (KEYS[e.code]){ KEYS[e.code](true); e.preventDefault(); }
+  const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7'].indexOf(e.code); if (k >= 0) S.heard = { id: ORDER[k], t: S.now };
+});
+addEventListener('keyup', e => { if (KEYS[e.code]) KEYS[e.code](false); });
+</script>
+</body>
+</html>
