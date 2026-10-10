@@ -980,7 +980,7 @@ function render(al){
   if(G.state==='play'){
     if(G.introT>0){const a=Math.min(1,G.introT/30,(230-G.introT)/20);ctx.globalAlpha=a;
       txt('STAGE 1',W/2,H/2-26,22,'#fff','center',F,900);txt('NEON GARDEN',W/2,H/2,11,'#ff9ae0','center');
-      txt(Body.mode==='cam'?'体を 左右に動かす・しゃがむ／のびる で移動 ・ ショットは自動':G.mode==='touch'?'画面のどこでもドラッグで移動 ・ ショットは自動':'矢印キー / WASD で移動 ・ ショットは自動 ・ P でポーズ',W/2,H/2+28,11,'#c8f6ff','center',JF,500);ctx.globalAlpha=1}
+      txt(Body.mode==='cam'?'左手を 動かして移動 ・ ショットは自動':G.mode==='touch'?'画面のどこでもドラッグで移動 ・ ショットは自動':'矢印キー / WASD で移動 ・ ショットは自動 ・ P でポーズ',W/2,H/2+28,11,'#c8f6ff','center',JF,500);ctx.globalAlpha=1}
     if(G.warnT>0){const a=Math.min(1,G.warnT/20)*(G.t%30<18?1:.35);ctx.globalAlpha=a;ctx.fillStyle='rgba(255,30,80,.18)';ctx.fillRect(0,H/2-26,W,52);
       txt('WARNING',W/2,H/2-4,28,'#ff4f7a','center',F,900);txt('A HUGE BLOOM IS APPROACHING',W/2,H/2+16,8,'#ffc0d0','center');ctx.globalAlpha=1}
   }
@@ -1041,16 +1041,24 @@ function frame(now){
 selIdx=IS_TOUCH?0:1;
 const go=()=>requestAnimationFrame(t=>{last=t;frame(t)});
 if(document.fonts&&document.fonts.load)Promise.race([document.fonts.load(`900 20px Orbitron`),new Promise(r=>setTimeout(r,1500))]).then(go,go);else go();
-// ================= ぜんしん版：頭の位置で機体を動かす =================
-// 左右は 頭の左右の位置、上下は しゃがむ／のびる。数値は 肩はば単位
-const BODY={X0:.3,X1:.7,UP:.1,DOWN:-.9};
+// ================= ぜんしん版：左手の位置で機体を動かす =================
+// 機体は 左手だけに ついてくる（体や頭が動いても 反応しない）。
+// 手の位置は 左肩から見た場所で、数値は 肩はば単位。X0〜X1 が画面の左はし〜右はし、Y0〜Y1 が上はし〜下はし
+// EASE：手への ついていきかた（小さいほど なめらか）、DEAD：これより小さい ゆれは 無視
+const BODY={X0:-1.3,X1:.3,Y0:-.9,Y1:.9,EASE:.35,DEAD:.05};
+let handS=null;
 Body.on('pose',()=>{
-  if(Body.mode!=='cam'||G.state!=='play'||!P.alive||P.entering>0)return;
-  P.tx=clamp(10+(Body.head.x-BODY.X0)/(BODY.X1-BODY.X0)*(W-24),10,W-14);
-  P.ty=clamp(10+(BODY.UP-Body.up)/(BODY.UP-BODY.DOWN)*(H-20),10,H-10);
+  const h=Body.hands[0];
+  if(Body.mode!=='cam'||!h.vis){handS=null;return}
+  if(!handS)handS=[h.px,h.py];
+  const dx=h.px-handS[0],dy=h.py-handS[1];
+  if(Math.hypot(dx,dy)>BODY.DEAD){handS[0]+=dx*BODY.EASE;handS[1]+=dy*BODY.EASE}
+  if(G.state!=='play'||!P.alive||P.entering>0)return;
+  P.tx=clamp(10+(handS[0]-BODY.X0)/(BODY.X1-BODY.X0)*(W-24),10,W-14);
+  P.ty=clamp(10+(handS[1]-BODY.Y0)/(BODY.Y1-BODY.Y0)*(H-20),10,H-10);
 });
 Body.on('clap',()=>{if(Body.mode==='cam'&&G.state!=='play'){audioInit();onKey('Enter');}});
-Body.gate({title:'GLADIOLA',corner:'tr',needFull:true,lines:['🚀 体を <b>左右に 動かす</b> … 機体が 左右に動く','🚀 <b>しゃがむ</b> … 下へ ／ <b>のびる</b> … 上へ','ショットは 自動','👏 手を たたく … スタート・けってい'],
+Body.gate({title:'GLADIOLA',corner:'tr',lines:['🚀 <b>左手</b>を 動かす … 機体が 手に ついてくる','体や 右手を 動かしても 機体は 動かない','ショットは 自動','👏 手を たたく … スタート・けってい'],
  onStart:m=>{if(m==='cam')selIdx=1;}});
 window.__G={G,P,E,EB,PB,CAPS,startGame,restartAt,CP,step(n){for(let i=0;i<n;i++)update();render(0)}};
 })();
