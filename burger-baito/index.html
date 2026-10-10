@@ -17,11 +17,12 @@ const cv=document.getElementById('c'),ctx=cv.getContext('2d');
 const W=480,H=720,LANE_X=[80,240,400],PLATE_Y=590,IW=120;
 
 // ---------- 調整する数値 ----------
-const FALL_FIRST=2.6;     // ステージ1で、具が上から皿まで落ちる秒数
-const FALL_STEP=0.14;     // ステージが1つ進むごとに これだけ速くなる
-const FALL_MIN=1.1;       // いちばん速いときの秒数
-const CAM_SLOW=1.25;      // カメラで遊ぶときは これだけ ゆっくり（手は指より おそい）
-const NEXT_WAIT=0.35;     // のせてから 次の具が出るまでの秒数
+const FALL_FIRST=2.2;     // さいしょの具が 上から皿まで落ちる秒数
+const FALL_RATE=0.965;    // 具を1つ のせるごとに 落ちる秒数と 次が出るまでの間に これを掛ける（小さいほど 急に むずかしくなる）
+const FALL_MIN=0.8;       // いちばん速いときの秒数
+const CAM_SLOW=1.1;       // カメラで遊ぶときは これだけ ゆっくり（手は指より おそい）
+const NEXT_WAIT=0.35;     // さいしょの、のせてから 次の具が出るまでの秒数
+const WAIT_MIN=0.08;      // いちばん短いときの 次の具が出るまでの秒数
 const HAND_OUT=0.7;       // 両手のまん中が 体のまん中から これだけ横に出たら 左／右の列（肩はば単位）
 const HAND_BACK=0.45;     // これより内がわに もどしたら まん中の列
 
@@ -46,16 +47,17 @@ function recipeOf(st){
   return ['bunB',...mid,'bunT'];
 }
 
-let state='title',stage=1,lives=3,score=0,best=0,overAt=0;
+let state='title',stage=1,lives=3,score=0,best=0,overAt=0,caught=0;   // caught：このゲームで のせた具の数（速さのもと）
 let recipe=[],idx=0,stack=[],item=null,waitT=0,phaseT=0,lane=1,px=LANE_X[1],lastLane=-1,sameN=0,effects=[],face='normal',faceT=0;
 try{best=+(localStorage.getItem('burgerBaitoBest')||0);}catch(e){}
 
 const cam=()=>Body.mode==='cam';
-const fallDur=()=>Math.max(FALL_MIN,FALL_FIRST-(stage-1)*FALL_STEP)*(cam()?CAM_SLOW:1);
+const fallDur=()=>Math.max(FALL_MIN,FALL_FIRST*Math.pow(FALL_RATE,caught))*(cam()?CAM_SLOW:1);
+const nextWait=()=>Math.max(WAIT_MIN,NEXT_WAIT*Math.pow(FALL_RATE,caught));
 const stackH=()=>stack.reduce((s,t)=>s+ING[t].h,0);
 
 function startStage(){recipe=recipeOf(stage);idx=0;stack=[];item=null;waitT=1.0;state='play';face='normal';}
-function newGame(){stage=1;lives=3;score=0;effects=[];startStage();startBgm();}
+function newGame(){stage=1;lives=3;score=0;caught=0;effects=[];startStage();startBgm();}
 function spawn(){
   let l;do{l=Math.floor(Math.random()*3);}while(l===lastLane&&sameN>=1);
   sameN=l===lastLane?sameN+1:0;lastLane=l;
@@ -176,13 +178,13 @@ function update(dt){
   const top=PLATE_Y-stackH();
   if(!item.missed&&item.y>=top){
     if(item.lane===lane){
-      stack.push(item.type);idx++;score+=10;stopFall();playCatch(stack.length);
+      stack.push(item.type);idx++;caught++;score+=10;stopFall();playCatch(stack.length);
       fx(LANE_X[lane],top-30,ING[item.type].name+'!','#fff',24,0.5);
       item=null;
       if(idx>=recipe.length){
         const bonus=stage*50;score+=bonus;state='clear';phaseT=2.0;face='happy';faceT=2;playClear();
         fx(W/2,250,'できあがり!','#ffd23a',48,1.8);fx(W/2,310,'ボーナス +'+bonus,'#fff',26,1.8);
-      }else waitT=NEXT_WAIT;
+      }else waitT=nextWait();
     }else item.missed=true;
   }
   if(item&&item.missed&&item.y>H-70){
@@ -261,7 +263,7 @@ Body.gate({title:'キャッチ！かさねて！バーガーバイト！',corner
 let last=performance.now();
 function loop(now){const dt=Math.min(0.05,(now-last)/1000);last=now;update(dt);draw();requestAnimationFrame(loop);}
 requestAnimationFrame(loop);
-window.__game={get s(){return {state,stage,lives,score,lane,idx,stack,item,recipe};},setLane,newGame};
+window.__game={get s(){return {state,stage,lives,score,lane,idx,stack,item,recipe,caught,fall:fallDur(),wait:nextWait()};},setLane,newGame};
 </script>
 </body>
 </html>
