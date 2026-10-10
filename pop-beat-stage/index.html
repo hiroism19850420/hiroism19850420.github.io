@@ -257,7 +257,8 @@ function showMsg(s,d=3500){msg={s,t:performance.now(),d};}
 function errText(e){return'（'+((e&&e.name)||'error')+(e&&e.message?': '+e.message:'')+'）';}
 function moveSel(d){sel=(sel+d+SONGS.length)%SONGS.length;}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
-try{const k=localStorage.getItem('pbs_lastkey');const i=SONGS.findIndex(x=>x.key===k);if(i>0)sel=i;}catch(e){}
+sel=Math.max(0,SONGS.findIndex(x=>x.key==='p-pajama-partys'));   // はじめて開いた時は パジャマパーティーズ を えらんでおく
+try{const k=localStorage.getItem('pbs_lastkey');const i=SONGS.findIndex(x=>x.key===k);if(k!=null&&i>=0)sel=i;}catch(e){}
 
 openDB().then(dbAll).then(async list=>{
   for(const r of list){loading++;await wait(20);
