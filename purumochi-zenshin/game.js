@@ -1114,13 +1114,13 @@ resize();
 const go=()=>requestAnimationFrame(t=>{last=t;frame(t)});
 if(document.fonts&&document.fonts.load)Promise.race([document.fonts.load(`800 20px "M PLUS Rounded 1c"`),new Promise(r=>setTimeout(r,1500))]).then(go,go);else go();
 // ======================================================================
-//  ぜんしん版：りょう手で つかんで うごかす／ハンドルのように かたむけて まわす／手を下げて おく
+//  ぜんしん版：りょう手で つかんで うごかす／ハンドルのように かたむけて まわす／りょう手を 大きく ひろげて おとす
 // ======================================================================
 const BODY={
   COL0:.3,COL1:.7,   // りょう手のまん中が 画面の ここ〜ここ にあるとき、左はし〜右はしの列
   ROT:30,            // りょう手を結んだ線が これ（度）より かたむいたら 1回まわす
   ROT_BACK:12,       // これより 水平にもどすと 次の回転を受けつける
-  DROP:1.0,          // りょう手が 肩より これだけ下（肩はば単位）なら 下に おとす
+  WIDE:2.8,          // りょう手の間が これより はなれたら（大きく ひろげたら）下に おとす。肩はば単位
   GAP_MIN:.5,        // りょう手の間が これより はなれていると「つかんでいる」
   SLOW:.5            // 落ちる速さの倍率（体は指より おそい）
 };
@@ -1133,11 +1133,11 @@ function bodyInput(p){
   const pc=p.piece,fc=clamp((Body.gx-BODY.COL0)/(BODY.COL1-BODY.COL0),0,1)*(COLS-1);
   if(Math.abs(fc-bz.col)>.65)bz.col=Math.round(fc);          // となりの列との さかい目で ふらつかないように
   if(G.t%4<2){if(pc.x<bz.col)inp.r=1;else if(pc.x>bz.col)inp.l=1}
+  // 下に おとすのは りょう手を 大きく ひろげた ときだけ（手を下げる・しゃがむ では おちない）
+  if(Body.gap>BODY.WIDE){inp.d=1;return}
   const deg=Body.angle*180/Math.PI;
   if(Math.abs(deg)<BODY.ROT_BACK)bz.armed=true;
   else if(bz.armed&&Math.abs(deg)>BODY.ROT){bz.armed=false;rotate(p,deg>0?1:-1)}
-  const h=Body.hands;
-  if((h[0].py>BODY.DROP&&h[1].py>BODY.DROP)||Body.crouch)inp.d=1;
 }
 function drawHands(p){
   if(!cam()||p.cpu)return;
@@ -1148,7 +1148,7 @@ function drawHands(p){
 }
 if(typeof Body!=='undefined'){
   Body.on('clap',()=>{if(cam()&&!((G.scene==='match'||G.scene==='toko')&&!G.paused))onKey('Enter')});
-  Body.gate({title:'ぷるもち☆バトル',corner:'tr',lines:['🤲 <b>りょう手を 前に出す</b> … おちてくる ぷるもちを つかむ','↔ つかんだまま <b>左右に 動かす</b> … 置きたい列へ','🔄 りょう手を <b>ハンドルのように かたむける</b> … 1回 まわる（もどして もう一度で さらに まわる）','⬇ <b>りょう手を 下げる</b>（しゃがんでも）… 下に おく','👏 手を たたく … けってい','はじめは「とことんモード」が おすすめ']});
+  Body.gate({title:'ぷるもち☆バトル',corner:'tr',lines:['🤲 <b>りょう手を 前に出す</b> … おちてくる ぷるもちを つかむ','↔ つかんだまま <b>左右に 動かす</b> … 置きたい列へ','🔄 りょう手を <b>ハンドルのように かたむける</b> … 1回 まわる（もどして もう一度で さらに まわる）','⬇ <b>りょう手を 大きく ひろげる</b> … 下に おとす','👏 手を たたく … けってい','はじめは「とことんモード」が おすすめ']});
 }
 window.__P={bz,bodyInput,G,STAGES,startMatch,startToko,goVS,goToko,step(n){for(let i=0;i<n;i++)update();render()},heights,AU};
 })();
