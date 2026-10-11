@@ -25,6 +25,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#8fd3ff;font-family:"H
 <div id="hud">⭐ <span id="star">0</span> / <span id="need">10</span><br><small>🏃 <span id="dist">0</span> メートル　🏆 <span id="round">0</span> しゅう　👊 <span id="ko">0</span> ひき</small></div>
 <div id="msg"></div>
 <div id="tip"></div>
+<pre id="dbg" style="position:fixed;left:8px;top:84px;z-index:10;margin:0;color:#fff;background:#000a;font:14px/1.5 monospace;padding:4px 8px;border-radius:8px;pointer-events:none"></pre>
 <div id="pad">
   <div><button data-k="left">◀</button><button data-k="right">▶</button></div>
   <div class="g4"><button data-k="punch">パンチ</button><button data-k="sword">けん</button><button data-k="run">はしる</button><button data-k="jump">とぶ</button></div>
@@ -44,17 +45,20 @@ const CFG = {
   JUMP_V: 9,         // ジャンプの 初めの速さ（高さ 約1.7m）
   BOUNCE_V: 14,      // ぴょんぴょんブロックで はねる速さ（高さ 約4m）
   GRAVITY: 24,
-  // カメラ：足の動き（chikoku-gate と同じ見方）。直前 RUN_WIN 秒に ひざ・足首が 上下に動いた幅（肩はば単位）
-  RUN_WIN: 0.3, RUN_MIN: 0.1, RUN_FULL: 0.35,
-  // 立ち止まって 体をかたむけている間は、足が これ以上 大きく動かないと 歩きださない（その場で 向きを変えられるように）。
+  // カメラ：足ぶみ。「左足と右足の高さの差」（ひざ どうし・足首 どうし、肩はば単位）が 直前 RUN_WIN 秒に どれだけ変わったか。
+  // 左右が 入れかわりで 上がらないと 走らない（体のゆれ・ジャンプ・カメラのぶれ・うでの動きでは 走らない）。
+  // RUN_MIN より小さいと 止まる、RUN_FULL で 全力。足が うつっていないときは 走らない
+  RUN_WIN: 0.45, RUN_MIN: 0.25, RUN_FULL: 0.6, LEG_VIS: 0.6,
+  // 立ち止まって 体をかたむけている間は、これ以上 大きく足ぶみしないと 歩きださない（その場で 向きを変えられるように）。
   // RUN_KEEP 秒 走りつづけた後なら、かたむけても そのまま 走りながら 曲がれる
-  RUN_MIN_TURN: 0.3, RUN_KEEP: 0.4,
+  RUN_MIN_TURN: 0.45, RUN_KEEP: 0.4,
   // カメラ：体のかたむき（肩の線のかたむき＋腰に対する肩のずれ）。TILT_MIN より小さいと まっすぐ、TILT_FULL で 回しきり
   TILT_MIN: 0.12, TILT_FULL: 0.4, LEAN_W: 0.3,
   ARM_LEN: 1.45,     // うでを まっすぐ のばしたときの 肩から手首（肩はば単位）。短く見えたぶん 前に出す
-  // パンチ：手を はやく動かす（body.js の「ふり」。ただし 真下へ おろす動きは 数えない）か、カメラのほうへ つきだす
-  // つきだしは 手首の奥行き（肩はば単位）が Z_SPEED より速く Z_DIST 手前に来たら 1発
-  Z_SPEED: 5, Z_DIST: 0.6, Z_REARM: 1.5,
+  // パンチ：① うでを のばして ふる（body.js の「ふり」のうち、手が 肩から PUNCH_REACH より遠く、PUNCH_LOW より上で、肩から はなれる向き）
+  // ② カメラのほうへ つきだす（手首の奥行きが Z_SPEED より速く Z_DIST 手前に来る）。② は 立ち止まっているときだけ（走るときの うでふりと 区別できないため）
+  PUNCH_REACH: 1.0, PUNCH_LOW: 0.6,
+  Z_SPEED: 6, Z_DIST: 0.8, Z_REARM: 1.5,
   PUNCH_RANGE: 2.6, PUNCH_COS: 0.3, PUNCH_GAP: 0.2,       // とどく距離、前から何度まで（cos）、同じ手の最短間隔
   // けん：両手首の間が GRIP_IN より近いのが GRIP_HOLD 秒つづくと 持つ。GRIP_OUT より はなすと しまう
   GRIP_IN: 0.6, GRIP_OUT: 1.1, GRIP_HOLD: 0.1, GRIP_VIS: 0.15,
@@ -335,7 +339,7 @@ const S = {
   got: 0, round: 0, dist: 0, phase: 0, t: 0, ko: 0,
   sword: false, pArm: 0, pAnim: 0, sAnim: 0, pNext: 0,
   key: { left: false, right: false, run: false },
-  cam: { run: 0, steer: 0, wall: 0, sd: null }   // カメラから読んだ「走る強さ 0〜1」「曲がる -1〜1」
+  cam: { run: 0, steer: 0, wall: 0, sd: null, legs: true }   // カメラから読んだ「走る強さ 0〜1」「曲がる -1〜1」
 };
 function hud(){ $('star').textContent = S.got; $('need').textContent = stars.length || CFG.STARS; $('dist').textContent = Math.floor(S.dist); $('round').textContent = S.round; $('ko').textContent = S.ko; }
 let msgTimer = 0;
@@ -351,6 +355,8 @@ function jump(){
   S.vy = CFG.JUMP_V; S.ground = false; sfx.jump();
 }
 
+const TIP_CAM = 'あしぶみ＝はしる　かたむける＝まがる　りょうてを あわせる＝けん';
+const DEBUG = location.search.includes('debug');
 const qA = new THREE.Quaternion(), vDown = new THREE.Vector3(0, -1, 0), vUp = new THREE.Vector3(0, 1, 0), vDir = new THREE.Vector3(), vS = new THREE.Vector3(), vH = new THREE.Vector3();
 S.cam.sd = new THREE.Vector3(0, 0.95, -0.35).normalize();
 const SHX = [-0.56, 0.56];
@@ -429,6 +435,11 @@ function update(dt){
     a.quaternion.slerp(qA, Math.min(1, dt * 18));
   });
   updateEnemies(dt); updateFx(dt);
+  if (cam && S.on){
+    const warn = Body.ok && !S.cam.legs;
+    if (warn !== S.warn){ S.warn = warn; $('tip').textContent = warn ? '⚠ あしが うつる ところまで はなれてね（あしぶみで はしるよ）' : TIP_CAM; $('tip').style.color = warn ? '#ffe14d' : '#fff'; }
+    if (DEBUG) $('dbg').textContent = `あし ${dbg.m.toFixed(2)} / ${dbg.min}  はしる ${run.toFixed(2)}  あし見える ${S.cam.legs ? '○' : '×'}\nかたむき ${(Body.roll + Body.lean * CFG.LEAN_W).toFixed(2)}  まがる ${steer.toFixed(2)}\n手の間 ${dbg.gap.toFixed(2)}  けん ${S.sword ? '○' : '×'}  パンチ ${dbg.why}`;
+  }
   shadow.position.set(S.x, f.h + 0.02, S.z); shadow.scale.setScalar(clamp(1 - (S.y - f.h) * 0.15, 0.4, 1));
 
   // カメラ：アバターの うしろから ついていく
@@ -445,22 +456,31 @@ function frame(ts){ requestAnimationFrame(frame); const dt = last ? (ts - last) 
 
 // ---- カメラからの入力 ----
 let legH = [], steerS = 0, runFrom = null, runLast = -9;
+const LEGS = [[25, 26], [27, 28]], legS = {};   // ひざ どうし、足首 どうし
+const dbg = { m: 0, min: 0, gap: 9, why: '' };
 Body.on('pose', () => {
   if (Body.mode !== 'cam') return;
-  const lm = Body.lm, u = Body.unit, see = i => lm[i].visibility == null || lm[i].visibility > 0.5;
-  // 足は 同じがわの腰から、手首は 同じがわの肩から見た高さ（体をかたむけただけでは 動いたことにならない）
-  const BASE = { 25: 23, 27: 23, 26: 24, 28: 24, 15: 11, 16: 12 };
-  let ids = [25, 26, 27, 28].filter(see); if (!ids.length) ids = [15, 16].filter(see);
+  const lm = Body.lm, u = Body.unit, see = i => lm[i].visibility == null || lm[i].visibility > CFG.LEG_VIS;
   const now = Body.now, row = { t: now };
-  ids.forEach(i => row[i] = (lm[i].y - lm[BASE[i]].y) / u);
+  let seen = 0;
+  LEGS.forEach(([l, r]) => {
+    if (!see(l) || !see(r)){ legS[l] = null; return; }
+    seen++;
+    // 同じがわの腰から見た高さの、左右の差（体をかたむけたり とんだりしても 変わらない）
+    const d = ((lm[l].y - lm[23].y) - (lm[r].y - lm[24].y)) / u;
+    legS[l] = legS[l] == null ? d : legS[l] + (d - legS[l]) * 0.5;
+    row[l] = legS[l];
+  });
+  S.cam.legs = seen > 0;
   legH.push(row); while (legH.length && now - legH[0].t > CFG.RUN_WIN) legH.shift();
   let m = 0;
-  ids.forEach(i => { let lo = 9, hi = -9; legH.forEach(r => { if (r[i] != null){ lo = Math.min(lo, r[i]); hi = Math.max(hi, r[i]); } }); m = Math.max(m, hi - lo); });
+  LEGS.forEach(([l]) => { let lo = 9, hi = -9; legH.forEach(r => { if (r[l] != null){ lo = Math.min(lo, r[l]); hi = Math.max(hi, r[l]); } }); m = Math.max(m, hi - lo); });
   const tilt = Body.roll + Body.lean * CFG.LEAN_W, a = Math.abs(tilt);
   if (now - runLast > 0.3) runFrom = null;
   const running = runFrom != null && now - runFrom > CFG.RUN_KEEP;
   const min = a > CFG.TILT_MIN * 0.6 && !running ? CFG.RUN_MIN_TURN : CFG.RUN_MIN;
   S.cam.run = m < min ? 0 : clamp(m / CFG.RUN_FULL, 0.5, 1);
+  dbg.m = m; dbg.min = min;
   if (S.cam.run){ if (runFrom == null) runFrom = now; runLast = now; }
   const raw = a < CFG.TILT_MIN ? 0 : Math.sign(tilt) * clamp((a - CFG.TILT_MIN) / (CFG.TILT_FULL - CFG.TILT_MIN), 0, 1);
   steerS += (raw - steerS) * 0.35;
@@ -468,7 +488,11 @@ Body.on('pose', () => {
   S.cam.steer = steerS; S.cam.wall = performance.now();
 });
 Body.on('jump', () => { if (Body.mode === 'cam') jump(); });
-Body.on('swing', e => { if (Body.mode === 'cam' && e.dy < 0.7) strike(e.i); });
+Body.on('swing', e => {
+  if (Body.mode !== 'cam' || S.sword) return;
+  pend[e.i] = { until: Body.now + 0.25, dx: e.dx, dy: e.dy };   // ふりの 終わりで うでが のびたかを poseAttack で見る
+});
+const pend = [null, null];
 let atkT = 0, gripT = 0, lostT = 0, sdPrev = null, slashArmed = true;
 const zs = [{ z: null, org: 0, armed: false }, { z: null, org: 0, armed: false }];
 const sdNew = new THREE.Vector3();
@@ -478,7 +502,7 @@ function poseAttack(lm, u, now){
   // けん：両手首を 近づける
   if (ok(lw) && ok(rw)){
     lostT = 0;
-    const gap = Math.hypot((lw.x - rw.x) * asp, lw.y - rw.y) / u;
+    const gap = dbg.gap = Math.hypot((lw.x - rw.x) * asp, lw.y - rw.y) / u;
     if (gap < CFG.GRIP_IN){ gripT += dt; if (gripT > CFG.GRIP_HOLD) setSword(true); }
     else { gripT = 0; if (gap > CFG.GRIP_OUT) setSword(false); }
     if (S.sword){
@@ -494,15 +518,22 @@ function poseAttack(lm, u, now){
       sdPrev.copy(sdNew); S.cam.sd.lerp(sdNew, 0.6).normalize();
     } else sdPrev = null;
   } else { lostT += dt; if (lostT > 1) setSword(false); }
+  // パンチ：ふった手が 肩から遠く・高い所まで のびたら 1発
+  pend.forEach((q, i) => {
+    if (!q) return;
+    const h = Body.hands[i], r = Math.hypot(h.px, h.py) || 1;
+    if (now > q.until || S.sword || !h.vis){ pend[i] = null; return; }
+    if (r > CFG.PUNCH_REACH && h.py < CFG.PUNCH_LOW && (h.px * q.dx + h.py * q.dy) / r > 0.3){ pend[i] = null; dbg.why = 'ふり'; punch(i); }
+  });
   // パンチ：カメラのほうへ つきだす（手首の奥行き）
   [[15, 11], [16, 12]].forEach(([w, sh], i) => {
     const st = zs[i];
-    if (!ok(lm[w]) || !isFinite(lm[w].z) || !isFinite(lm[sh].z) || S.sword){ st.z = null; return; }
+    if (!ok(lm[w]) || !isFinite(lm[w].z) || !isFinite(lm[sh].z) || S.sword || S.cam.run > 0 || S.speed > 0.5){ st.z = null; return; }
     const z = (lm[w].z - lm[sh].z) * asp / u;
     if (st.z == null){ st.z = z; st.org = z; st.armed = false; return; }
     const nz = st.z + (z - st.z) * 0.6, v = (nz - st.z) / dt; st.z = nz;
     if (v > -CFG.Z_REARM){ st.org = nz; st.armed = true; }
-    else if (st.armed && v < -CFG.Z_SPEED && st.org - nz > CFG.Z_DIST){ st.armed = false; punch(i); }
+    else if (st.armed && v < -CFG.Z_SPEED && st.org - nz > CFG.Z_DIST){ st.armed = false; dbg.why = 'つきだし'; punch(i); }
   });
 }
 
@@ -524,9 +555,9 @@ for (let i = 0; i < CFG.ENEMIES; i++) makeEnemy();
 requestAnimationFrame(frame);
 Body.gate({
   title: 'からだアバター<br>はらっぱ ぼうけん', corner: 'tr', needFull: true,
-  lines: ['🏃 その場で <b>あしぶみ</b> … はしる', '↔ からだを <b>よこに かたむける</b> … まがる', '🦘 <b>とびあがる</b> … ジャンプ', '👊 うでを <b>はやく つきだす</b> … パンチ', '🗡 <b>りょうてを あわせる</b> … けんを もつ。ふると きる', '⭐ ひかりの はしらの 下に ほしが あるよ'],
+  lines: ['🏃 その場で <b>あしぶみ</b> … はしる（あしが うつるように はなれてね）', '↔ からだを <b>よこに かたむける</b> … まがる', '🦘 <b>とびあがる</b> … ジャンプ', '👊 うでを <b>のばして はやく ふる・つきだす</b> … パンチ', '🗡 <b>りょうてを あわせる</b> … けんを もつ。ふると きる', '⭐ ひかりの はしらの 下に ほしが あるよ'],
   onStart: async mode => {
-    if (mode === 'cam'){ $('tip').textContent = 'あしぶみ＝はしる　かたむける＝まがる　りょうてを あわせる＝けん'; await Body.countdown(5); }
+    if (mode === 'cam'){ $('tip').textContent = TIP_CAM; await Body.countdown(5); }
     else { $('pad').style.display = 'flex'; $('tip').textContent = 'やじるし＋スペース、Z＝パンチ、X＝けん でも うごくよ'; }
     S.on = true; say(`ほしを ${stars.length}こ あつめよう！`, 3);
   }
