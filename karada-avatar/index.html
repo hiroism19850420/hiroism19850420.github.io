@@ -12,7 +12,9 @@ html,body{margin:0;height:100%;overflow:hidden;background:#8fd3ff;font-family:"H
 #msg{position:fixed;left:0;right:0;top:28%;z-index:10;text-align:center;color:#fff;font-weight:bold;font-size:min(9vw,48px);text-shadow:0 3px 0 #0008,0 0 12px #0008;pointer-events:none;opacity:0;transition:opacity .4s}
 #tip{position:fixed;left:0;right:0;bottom:8px;z-index:10;text-align:center;color:#fff;font-weight:bold;font-size:16px;text-shadow:0 2px 0 #0008;pointer-events:none}
 #pad{position:fixed;left:0;right:0;bottom:36px;z-index:20;display:none;justify-content:space-between;padding:0 10px;pointer-events:none}
+#pad{align-items:flex-end}
 #pad div{display:flex;gap:8px}
+#pad div.g4{display:grid;grid-template-columns:72px 72px}
 #pad button{pointer-events:auto;width:72px;height:72px;border-radius:50%;border:3px solid #fff;background:#0006;color:#fff;font:bold 18px sans-serif;white-space:nowrap;touch-action:none}
 #pad button.on{background:#ff7a2fcc}
 #err{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:#102040;color:#fff;padding:20px;text-align:center;font-size:18px}
@@ -20,12 +22,12 @@ html,body{margin:0;height:100%;overflow:hidden;background:#8fd3ff;font-family:"H
 <script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
 <body>
 <canvas id="c"></canvas>
-<div id="hud">⭐ <span id="star">0</span> / <span id="need">10</span><br><small>🏃 <span id="dist">0</span> メートル　🏆 <span id="round">0</span> しゅう</small></div>
+<div id="hud">⭐ <span id="star">0</span> / <span id="need">10</span><br><small>🏃 <span id="dist">0</span> メートル　🏆 <span id="round">0</span> しゅう　👊 <span id="ko">0</span> ひき</small></div>
 <div id="msg"></div>
 <div id="tip"></div>
 <div id="pad">
   <div><button data-k="left">◀</button><button data-k="right">▶</button></div>
-  <div><button data-k="run">はしる</button><button data-k="jump">とぶ</button></div>
+  <div class="g4"><button data-k="punch">パンチ</button><button data-k="sword">けん</button><button data-k="run">はしる</button><button data-k="jump">とぶ</button></div>
 </div>
 <div id="err">3Dの しくみを よみこめませんでした。ネットに つながっているか たしかめて、もういちど ひらいてください。</div>
 <script src="body.js"></script>
@@ -44,9 +46,23 @@ const CFG = {
   GRAVITY: 24,
   // カメラ：足の動き（chikoku-gate と同じ見方）。直前 RUN_WIN 秒に ひざ・足首が 上下に動いた幅（肩はば単位）
   RUN_WIN: 0.3, RUN_MIN: 0.1, RUN_FULL: 0.35,
+  // 立ち止まって 体をかたむけている間は、足が これ以上 大きく動かないと 歩きださない（その場で 向きを変えられるように）。
+  // RUN_KEEP 秒 走りつづけた後なら、かたむけても そのまま 走りながら 曲がれる
+  RUN_MIN_TURN: 0.3, RUN_KEEP: 0.4,
   // カメラ：体のかたむき（肩の線のかたむき＋腰に対する肩のずれ）。TILT_MIN より小さいと まっすぐ、TILT_FULL で 回しきり
   TILT_MIN: 0.12, TILT_FULL: 0.4, LEAN_W: 0.3,
   ARM_LEN: 1.45,     // うでを まっすぐ のばしたときの 肩から手首（肩はば単位）。短く見えたぶん 前に出す
+  // パンチ：手を はやく動かす（body.js の「ふり」。ただし 真下へ おろす動きは 数えない）か、カメラのほうへ つきだす
+  // つきだしは 手首の奥行き（肩はば単位）が Z_SPEED より速く Z_DIST 手前に来たら 1発
+  Z_SPEED: 5, Z_DIST: 0.6, Z_REARM: 1.5,
+  PUNCH_RANGE: 2.6, PUNCH_COS: 0.3, PUNCH_GAP: 0.2,       // とどく距離、前から何度まで（cos）、同じ手の最短間隔
+  // けん：両手首の間が GRIP_IN より近いのが GRIP_HOLD 秒つづくと 持つ。GRIP_OUT より はなすと しまう
+  GRIP_IN: 0.6, GRIP_OUT: 1.1, GRIP_HOLD: 0.1, GRIP_VIS: 0.15,
+  SLASH_SPEED: 3.5, SLASH_REARM: 1.5,                      // けんの向きが これより速く変わったら 切り（ラジアン/秒）
+  SWORD_RANGE: 4.6, SWORD_COS: -0.2, SWORD_GAP: 0.3, SWORD_DMG: 3,
+  SWORD_LEN: 2.6,     // けんの 刃の長さ
+  SWORD_UP: 1.4,      // けんを 上に立てる つよさ（大きいほど、むねの前で持っても 刃が 頭の上に出る）
+  ENEMIES: 14, ENEMY_SEE: 14,                              // 同時にいる数、これより近いと よってくる
   STARS: 10, HALF: 58
 };
 
@@ -145,6 +161,126 @@ const legs = [limb(-0.2, 0.8, 0x2b3a67, 0.38), limb(0.2, 0.8, 0x2b3a67, 0.38)];
 const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.55, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }));
 shadow.rotation.x = -Math.PI / 2; scene.add(shadow);
 
+// けん（手の位置から +Y にのびる）
+const sword = new THREE.Group(); sword.visible = false; bodyG.add(sword);
+const bladeMat = new THREE.MeshBasicMaterial({ color: 0xbff4ff });
+box(0.26, CFG.SWORD_LEN, 0.1, bladeMat, 0, 0.22 + CFG.SWORD_LEN / 2, 0, sword); box(0.1, CFG.SWORD_LEN - 0.2, 0.14, 0xffffff, 0, 0.22 + CFG.SWORD_LEN / 2, 0, sword);
+box(0.7, 0.12, 0.2, 0xffc233, 0, 0.18, 0, sword); box(0.12, 0.34, 0.12, 0x7a4a22, 0, 0, 0, sword);
+
+// ---- エフェクト ----
+const fx = [];
+const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
+const arcGeo = new THREE.RingGeometry(1.4, 4.4, 20, 1, Math.PI / 2 - 1.3, 2.6);
+function spark(x, y, z, color, size, o){
+  const m = new THREE.Mesh(cubeGeo, new THREE.MeshBasicMaterial({ color, transparent: true }));
+  m.position.set(x, y, z); m.scale.setScalar(size); scene.add(m);
+  fx.push(Object.assign({ m, life: 0.25, max: 0.25, vx: 0, vy: 0, vz: 0, grow: 3, grav: 0 }, o));
+}
+function arc(){
+  const g = new THREE.Group(); g.position.set(S.x, S.y + 1.2, S.z); g.rotation.y = S.yaw;
+  const m = new THREE.Mesh(arcGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; g.add(m); scene.add(g);
+  fx.push({ m: g, mat: m.material, life: 0.2, max: 0.2, vx: 0, vy: 0, vz: 0, grow: 0, grav: 0 });
+}
+function updateFx(dt){
+  for (let i = fx.length - 1; i >= 0; i--){
+    const f = fx[i]; f.life -= dt;
+    if (f.life <= 0){ scene.remove(f.m); (f.mat || f.m.material).dispose(); fx.splice(i, 1); continue; }
+    f.vy -= f.grav * dt; f.m.position.x += f.vx * dt; f.m.position.y += f.vy * dt; f.m.position.z += f.vz * dt;
+    if (f.grow) f.m.scale.multiplyScalar(1 + f.grow * dt);
+    (f.mat || f.m.material).opacity = f.life / f.max;
+  }
+}
+
+// ---- てき（ぴょんぴょん はねる 箱のスライム。当たっても いたくない） ----
+const enemies = [];
+function makeEnemy(){
+  const g = new THREE.Group(), m = new THREE.MeshLambertMaterial({ color: 0x4cd964 });
+  box(1, 0.8, 1, m, 0, 0.4, 0, g);
+  box(0.16, 0.22, 0.04, 0x222222, -0.22, 0.5, -0.52, g); box(0.16, 0.22, 0.04, 0x222222, 0.22, 0.5, -0.52, g);
+  box(0.3, 0.07, 0.04, 0x222222, 0, 0.24, -0.52, g);
+  scene.add(g);
+  const e = { g, m, x: 0, y: 0, z: 0, vy: 0, hx: 0, hz: 0, kx: 0, kz: 0, wait: 0, hp: 1, size: 1, flash: 0, dead: 0 };
+  enemies.push(e); placeEnemy(e);
+}
+function placeEnemy(e){
+  for (let n = 0; n < 99; n++){
+    const x = (rnd() * 2 - 1) * (CFG.HALF - 4), z = (rnd() * 2 - 1) * (CFG.HALF - 4);
+    if (!freeAt(x, z, 1.5) || Math.hypot(x - S.x, z - S.z) < 12) continue;
+    e.x = x; e.z = z; break;
+  }
+  e.big = rnd() < 0.25; e.size = e.big ? 1.7 : 1; e.hp = e.big ? 3 : 1;
+  e.color = e.big ? 0x9b5de5 : 0x4cd964; e.m.color.setHex(e.color);
+  e.y = 0; e.vy = 0; e.kx = e.kz = 0; e.wait = rnd() * 1.5; e.dead = 0; e.flash = 0;
+  e.g.scale.setScalar(e.size); e.g.visible = true;
+}
+function updateEnemies(dt){
+  for (const e of enemies){
+    if (e.dead > 0){ e.dead -= dt; if (e.dead <= 0) placeEnemy(e); continue; }
+    const dx = S.x - e.x, dz = S.z - e.z, d = Math.hypot(dx, dz) || 1;
+    let mx = e.kx * dt, mz = e.kz * dt;
+    e.kx *= Math.max(0, 1 - dt * 6); e.kz *= Math.max(0, 1 - dt * 6);
+    if (e.y <= 0 && e.vy <= 0){
+      e.y = 0; e.wait -= dt;
+      if (e.wait <= 0){
+        e.vy = 6; e.wait = 0.3 + rnd() * 0.8;
+        if (d < CFG.ENEMY_SEE && d > 1.2 + e.size * 0.5){ e.hx = dx / d * 3; e.hz = dz / d * 3; }
+        else if (d >= CFG.ENEMY_SEE){ const a = rnd() * 6.283; e.hx = Math.cos(a) * 2; e.hz = Math.sin(a) * 2; }
+        else e.hx = e.hz = 0;
+      }
+    } else { e.vy -= 20 * dt; e.y = Math.max(0, e.y + e.vy * dt); mx += e.hx * dt; mz += e.hz * dt; }
+    const nx = clamp(e.x + mx, -CFG.HALF, CFG.HALF), nz = clamp(e.z + mz, -CFG.HALF, CFG.HALF);
+    if (!blocked(nx, e.z, 0)) e.x = nx;
+    if (!blocked(e.x, nz, 0)) e.z = nz;
+    if (e.flash > 0){ e.flash -= dt; e.m.color.setHex(e.flash > 0 ? 0xffffff : e.color); }
+    e.g.position.set(e.x, e.y, e.z);
+    if (d < CFG.ENEMY_SEE) e.g.rotation.y = Math.atan2(-dx, -dz);
+    e.g.scale.set(e.size, e.size * (e.y > 0 ? 1.12 : 1), e.size);
+  }
+}
+function hurt(e, dmg){
+  const dx = e.x - S.x, dz = e.z - S.z, d = Math.hypot(dx, dz) || 1;
+  e.hp -= dmg; e.flash = 0.12; e.kx = dx / d * 5; e.kz = dz / d * 5;
+  spark(e.x, e.y + 0.6 * e.size, e.z, 0xffffff, 0.5);
+  if (e.hp > 0){ sfx.hit(); return; }
+  e.dead = 5; e.g.visible = false; S.ko++; sfx.ko(); hud();
+  for (let i = 0; i < 7; i++) spark(e.x, 0.5, e.z, e.color, 0.3 * e.size, { life: 0.7, max: 0.7, grow: 0, grav: 18, vx: (rnd() - 0.5) * 7, vy: 4 + rnd() * 4, vz: (rnd() - 0.5) * 7 });
+}
+// 前にいる てきに 当てる。multi：とどく てき ぜんぶ（けん）。そうでなければ いちばん近い 1ぴき（パンチ）
+function attack(range, cos, dmg, multi){
+  const ax = -Math.sin(S.yaw), az = -Math.cos(S.yaw);
+  const hits = [];
+  for (const e of enemies){
+    if (e.dead > 0 || Math.abs(e.y - S.y) > 2.4) continue;
+    const dx = e.x - S.x, dz = e.z - S.z, d = Math.hypot(dx, dz);
+    if (d > range + e.size * 0.5) continue;
+    if (d > 1.1 && (dx * ax + dz * az) / d < cos) continue;
+    hits.push([d, e]);
+  }
+  hits.sort((a, b) => a[0] - b[0]);
+  (multi ? hits : hits.slice(0, 1)).forEach(h => hurt(h[1], dmg));
+  return hits.length;
+}
+const lastPunch = [-9, -9]; let lastSlash = -9;
+function punch(i){
+  if (!S.on || S.t - lastPunch[i] < CFG.PUNCH_GAP) return;
+  lastPunch[i] = S.t; S.pArm = i; S.pAnim = 0.16;
+  const ax = -Math.sin(S.yaw), az = -Math.cos(S.yaw), side = (i ? 1 : -1) * 0.45;
+  spark(S.x + ax * 1.3 - az * side, S.y + 1.5, S.z + az * 1.3 + ax * side, 0xffe066, 0.35);
+  if (attack(CFG.PUNCH_RANGE, CFG.PUNCH_COS, 1, false) === 0) sfx.punch();
+}
+function slash(){
+  if (!S.on || S.t - lastSlash < CFG.SWORD_GAP) return;
+  lastSlash = S.t; S.sAnim = 0.22; arc(); sfx.slash();
+  attack(CFG.SWORD_RANGE, CFG.SWORD_COS, CFG.SWORD_DMG, true);
+}
+const strike = i => { if (S.sword) slash(); else punch(i); };
+function setSword(on){
+  if (!S.on || S.sword === on) return;
+  S.sword = on; sword.visible = on;
+  if (on){ sfx.draw(); say('🗡 けんを もった！', 1.2); }
+}
+
 // ---- ほし ----
 const stars = [];
 const starGeo = new THREE.OctahedronGeometry(0.55), starMat = new THREE.MeshLambertMaterial({ color: 0xffd400, emissive: 0xaa7700 });
@@ -185,17 +321,23 @@ const sfx = {
   jump: () => beep(300, 0.18, 'square', 0.1, 700),
   bounce: () => beep(200, 0.3, 'triangle', 0.2, 1200),
   star: () => { beep(988, 0.1, 'square', 0.12); setTimeout(() => beep(1319, 0.25, 'square', 0.12), 90); },
+  punch: () => beep(160, 0.08, 'sawtooth', 0.08, 80),
+  hit: () => beep(220, 0.12, 'square', 0.15, 90),
+  ko: () => { beep(330, 0.1, 'square', 0.14, 660); setTimeout(() => beep(880, 0.18, 'triangle', 0.16), 80); },
+  slash: () => beep(1400, 0.14, 'sawtooth', 0.07, 300),
+  draw: () => beep(700, 0.2, 'triangle', 0.15, 1600),
   clear: () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.3, 'square', 0.13), i * 130))
 };
 
 // ---- 状態 ----
 const S = {
   on: false, x: 0, y: 0, z: 0, vy: 0, yaw: 0, camYaw: Math.PI, speed: 0, ground: true, crouch: false,
-  got: 0, round: 0, dist: 0, phase: 0, t: 0,
+  got: 0, round: 0, dist: 0, phase: 0, t: 0, ko: 0,
+  sword: false, pArm: 0, pAnim: 0, sAnim: 0, pNext: 0,
   key: { left: false, right: false, run: false },
-  cam: { run: 0, steer: 0, wall: 0 }   // カメラから読んだ「走る強さ 0〜1」「曲がる -1〜1」
+  cam: { run: 0, steer: 0, wall: 0, sd: null }   // カメラから読んだ「走る強さ 0〜1」「曲がる -1〜1」
 };
-function hud(){ $('star').textContent = S.got; $('need').textContent = stars.length || CFG.STARS; $('dist').textContent = Math.floor(S.dist); $('round').textContent = S.round; }
+function hud(){ $('star').textContent = S.got; $('need').textContent = stars.length || CFG.STARS; $('dist').textContent = Math.floor(S.dist); $('round').textContent = S.round; $('ko').textContent = S.ko; }
 let msgTimer = 0;
 function say(t, sec){ const m = $('msg'); m.textContent = t; m.style.opacity = 1; clearTimeout(msgTimer); msgTimer = setTimeout(() => { m.style.opacity = 0; }, (sec || 2.5) * 1000); }
 
@@ -209,7 +351,9 @@ function jump(){
   S.vy = CFG.JUMP_V; S.ground = false; sfx.jump();
 }
 
-const qA = new THREE.Quaternion(), vDown = new THREE.Vector3(0, -1, 0), vDir = new THREE.Vector3();
+const qA = new THREE.Quaternion(), vDown = new THREE.Vector3(0, -1, 0), vUp = new THREE.Vector3(0, 1, 0), vDir = new THREE.Vector3(), vS = new THREE.Vector3(), vH = new THREE.Vector3();
+S.cam.sd = new THREE.Vector3(0, 0.95, -0.35).normalize();
+const SHX = [-0.56, 0.56];
 function update(dt){
   dt = Math.min(dt, 0.05);
   S.t += dt;
@@ -262,19 +406,29 @@ function update(dt){
   S.crouch = cam && Body.ok && Body.crouch;
   bodyG.scale.y += ((S.crouch ? 0.65 : 1) - bodyG.scale.y) * Math.min(1, dt * 12);
   bodyG.position.y = S.ground ? Math.abs(Math.sin(S.phase)) * 0.08 * k : 0;
+  // けん：手の位置（むねの前 0.75）から けんの向きへ のびる。カメラなしのときは きまった ふり
+  S.pAnim = Math.max(0, S.pAnim - dt); S.sAnim = Math.max(0, S.sAnim - dt);
+  if (S.sword){
+    if (cam && Body.ok) vS.copy(S.cam.sd);
+    else if (S.sAnim > 0){ const q = 1 - S.sAnim / 0.22; vS.set(0.9 - 1.8 * q, 0.9 - 1.0 * q, -0.6).normalize(); }
+    else vS.set(0.2, 0.95, -0.35).normalize();
+    vH.set(0, 1.45, 0).addScaledVector(vS, 0.75);
+    sword.position.copy(vH); qA.setFromUnitVectors(vUp, vS); sword.quaternion.slerp(qA, Math.min(1, dt * 22));
+  }
   arms.forEach((a, i) => {
     const h = Body.hands[i];
-    if (cam && Body.ok && h.vis){
+    if (S.sword) vDir.set(vH.x - SHX[i], vH.y - 1.58, vH.z).normalize();
+    else if (cam && Body.ok && h.vis){
       // 手首が 肩から見て どこにあるか（px：画面の右が＋、py：下が＋）を そのまま うでの向きにする
       const len = Math.hypot(h.px, h.py), fwd = Math.sqrt(Math.max(0, CFG.ARM_LEN * CFG.ARM_LEN - len * len));
       vDir.set(h.px, -h.py, -fwd).normalize();
-      qA.setFromUnitVectors(vDown, vDir);
-    } else {
-      vDir.set(0, -Math.cos(sw), (i ? 1 : -1) * Math.sin(sw) * -1).normalize();
-      qA.setFromUnitVectors(vDown, vDir);
     }
+    else if (S.pAnim > 0 && S.pArm === i) vDir.set(0, -0.05, -1).normalize();
+    else vDir.set(0, -Math.cos(sw), (i ? -1 : 1) * Math.sin(sw)).normalize();
+    qA.setFromUnitVectors(vDown, vDir);
     a.quaternion.slerp(qA, Math.min(1, dt * 18));
   });
+  updateEnemies(dt); updateFx(dt);
   shadow.position.set(S.x, f.h + 0.02, S.z); shadow.scale.setScalar(clamp(1 - (S.y - f.h) * 0.15, 0.4, 1));
 
   // カメラ：アバターの うしろから ついていく
@@ -290,47 +444,94 @@ let last = 0;
 function frame(ts){ requestAnimationFrame(frame); const dt = last ? (ts - last) / 1000 : 0.016; last = ts; tick(dt); }
 
 // ---- カメラからの入力 ----
-let legH = [], steerS = 0;
+let legH = [], steerS = 0, runFrom = null, runLast = -9;
 Body.on('pose', () => {
   if (Body.mode !== 'cam') return;
   const lm = Body.lm, u = Body.unit, see = i => lm[i].visibility == null || lm[i].visibility > 0.5;
+  // 足は 同じがわの腰から、手首は 同じがわの肩から見た高さ（体をかたむけただけでは 動いたことにならない）
+  const BASE = { 25: 23, 27: 23, 26: 24, 28: 24, 15: 11, 16: 12 };
   let ids = [25, 26, 27, 28].filter(see); if (!ids.length) ids = [15, 16].filter(see);
-  const hy = (lm[23].y + lm[24].y) / 2, now = Body.now, row = { t: now };
-  ids.forEach(i => row[i] = (lm[i].y - hy) / u);
+  const now = Body.now, row = { t: now };
+  ids.forEach(i => row[i] = (lm[i].y - lm[BASE[i]].y) / u);
   legH.push(row); while (legH.length && now - legH[0].t > CFG.RUN_WIN) legH.shift();
   let m = 0;
   ids.forEach(i => { let lo = 9, hi = -9; legH.forEach(r => { if (r[i] != null){ lo = Math.min(lo, r[i]); hi = Math.max(hi, r[i]); } }); m = Math.max(m, hi - lo); });
-  S.cam.run = m < CFG.RUN_MIN ? 0 : clamp(m / CFG.RUN_FULL, 0.5, 1);
   const tilt = Body.roll + Body.lean * CFG.LEAN_W, a = Math.abs(tilt);
+  if (now - runLast > 0.3) runFrom = null;
+  const running = runFrom != null && now - runFrom > CFG.RUN_KEEP;
+  const min = a > CFG.TILT_MIN * 0.6 && !running ? CFG.RUN_MIN_TURN : CFG.RUN_MIN;
+  S.cam.run = m < min ? 0 : clamp(m / CFG.RUN_FULL, 0.5, 1);
+  if (S.cam.run){ if (runFrom == null) runFrom = now; runLast = now; }
   const raw = a < CFG.TILT_MIN ? 0 : Math.sign(tilt) * clamp((a - CFG.TILT_MIN) / (CFG.TILT_FULL - CFG.TILT_MIN), 0, 1);
   steerS += (raw - steerS) * 0.35;
+  poseAttack(lm, u, now);
   S.cam.steer = steerS; S.cam.wall = performance.now();
 });
 Body.on('jump', () => { if (Body.mode === 'cam') jump(); });
+Body.on('swing', e => { if (Body.mode === 'cam' && e.dy < 0.7) strike(e.i); });
+let atkT = 0, gripT = 0, lostT = 0, sdPrev = null, slashArmed = true;
+const zs = [{ z: null, org: 0, armed: false }, { z: null, org: 0, armed: false }];
+const sdNew = new THREE.Vector3();
+function poseAttack(lm, u, now){
+  const dt = clamp(now - atkT, 0.001, 0.1); atkT = now;
+  const asp = Body.asp, lw = lm[15], rw = lm[16], ok = p => p.visibility == null || p.visibility > CFG.GRIP_VIS;
+  // けん：両手首を 近づける
+  if (ok(lw) && ok(rw)){
+    lostT = 0;
+    const gap = Math.hypot((lw.x - rw.x) * asp, lw.y - rw.y) / u;
+    if (gap < CFG.GRIP_IN){ gripT += dt; if (gripT > CFG.GRIP_HOLD) setSword(true); }
+    else { gripT = 0; if (gap > CFG.GRIP_OUT) setSword(false); }
+    if (S.sword){
+      // 肩のまん中から見た 両手のまん中の向きが けんの向き。手が体に近いほど 前（画面の奥）を向く
+      const mx = ((lm[11].x + lm[12].x) - (lw.x + rw.x)) / 2 * asp / u, my = ((lw.y + rw.y) - (lm[11].y + lm[12].y)) / 2 / u;
+      const fwd = Math.sqrt(Math.max(0.25, CFG.ARM_LEN * CFG.ARM_LEN - mx * mx - my * my));
+      sdNew.set(mx, -my + CFG.SWORD_UP, -fwd * 0.6).normalize();
+      if (sdPrev){
+        const sp = sdNew.distanceTo(sdPrev) / dt;
+        if (sp < CFG.SLASH_REARM) slashArmed = true;
+        else if (slashArmed && sp > CFG.SLASH_SPEED){ slashArmed = false; slash(); }
+      } else sdPrev = new THREE.Vector3();
+      sdPrev.copy(sdNew); S.cam.sd.lerp(sdNew, 0.6).normalize();
+    } else sdPrev = null;
+  } else { lostT += dt; if (lostT > 1) setSword(false); }
+  // パンチ：カメラのほうへ つきだす（手首の奥行き）
+  [[15, 11], [16, 12]].forEach(([w, sh], i) => {
+    const st = zs[i];
+    if (!ok(lm[w]) || !isFinite(lm[w].z) || !isFinite(lm[sh].z) || S.sword){ st.z = null; return; }
+    const z = (lm[w].z - lm[sh].z) * asp / u;
+    if (st.z == null){ st.z = z; st.org = z; st.armed = false; return; }
+    const nz = st.z + (z - st.z) * 0.6, v = (nz - st.z) / dt; st.z = nz;
+    if (v > -CFG.Z_REARM){ st.org = nz; st.armed = true; }
+    else if (st.armed && v < -CFG.Z_SPEED && st.org - nz > CFG.Z_DIST){ st.armed = false; punch(i); }
+  });
+}
 
 // ---- カメラなしの入力 ----
 const KEYS = { ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right', ArrowUp: 'run', w: 'run' };
-addEventListener('keydown', e => { if (e.key === ' '){ jump(); e.preventDefault(); } else if (KEYS[e.key]) S.key[KEYS[e.key]] = true; });
+const ACT = { jump, punch: () => strike(S.pNext ^= 1), sword: () => setSword(!S.sword) };
+const ACT_KEYS = { ' ': 'jump', z: 'punch', j: 'punch', x: 'sword', k: 'sword' };
+addEventListener('keydown', e => { if (ACT_KEYS[e.key]){ if (!e.repeat) ACT[ACT_KEYS[e.key]](); e.preventDefault(); } else if (KEYS[e.key]) S.key[KEYS[e.key]] = true; });
 addEventListener('keyup', e => { if (KEYS[e.key]) S.key[KEYS[e.key]] = false; });
 document.querySelectorAll('#pad button').forEach(b => {
   const k = b.dataset.k;
-  const down = e => { e.preventDefault(); b.classList.add('on'); if (k === 'jump') jump(); else S.key[k] = true; };
-  const up = e => { e.preventDefault(); b.classList.remove('on'); if (k !== 'jump') S.key[k] = false; };
+  const down = e => { e.preventDefault(); b.classList.add('on'); if (ACT[k]) ACT[k](); else S.key[k] = true; };
+  const up = e => { e.preventDefault(); b.classList.remove('on'); if (!ACT[k]) S.key[k] = false; };
   b.addEventListener('pointerdown', down); b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
 });
 
 placeStars();
+for (let i = 0; i < CFG.ENEMIES; i++) makeEnemy();
 requestAnimationFrame(frame);
 Body.gate({
   title: 'からだアバター<br>はらっぱ ぼうけん', corner: 'tr', needFull: true,
-  lines: ['🏃 その場で <b>あしぶみ</b> … はしる', '↔ からだを <b>よこに かたむける</b> … まがる', '🦘 <b>とびあがる</b> … ジャンプ', '🙌 うでを うごかす … アバターも おなじ うごき', '⭐ ひかりの はしらの 下に ほしが あるよ'],
+  lines: ['🏃 その場で <b>あしぶみ</b> … はしる', '↔ からだを <b>よこに かたむける</b> … まがる', '🦘 <b>とびあがる</b> … ジャンプ', '👊 うでを <b>はやく つきだす</b> … パンチ', '🗡 <b>りょうてを あわせる</b> … けんを もつ。ふると きる', '⭐ ひかりの はしらの 下に ほしが あるよ'],
   onStart: async mode => {
-    if (mode === 'cam'){ $('tip').textContent = 'あしぶみ＝はしる　かたむける＝まがる　とぶ＝ジャンプ'; await Body.countdown(5); }
-    else { $('pad').style.display = 'flex'; $('tip').textContent = 'やじるしキー＋スペース でも うごくよ'; }
+    if (mode === 'cam'){ $('tip').textContent = 'あしぶみ＝はしる　かたむける＝まがる　りょうてを あわせる＝けん'; await Body.countdown(5); }
+    else { $('pad').style.display = 'flex'; $('tip').textContent = 'やじるし＋スペース、Z＝パンチ、X＝けん でも うごくよ'; }
     S.on = true; say(`ほしを ${stars.length}こ あつめよう！`, 3);
   }
 });
-window.__game = { S, CFG, tick, update, jump, stars, solids, arms, placeStars, renderer, scene, camera };
+window.__game = { S, CFG, tick, update, jump, punch, slash, strike, setSword, enemies, sword, fx, stars, solids, arms, placeStars, renderer, scene, camera };
 </script>
 </body>
 </html>
