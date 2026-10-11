@@ -154,6 +154,7 @@ function loop(ts){
   if (lm) B.feed(lm, dt); else clear();
   drawMirror(lm);
 }
+const CAM_OPT = { video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } } };
 B.start = async function(say, corner){
   say = say || (() => {});
   if (pose){ B.mode = 'cam'; return true; }
@@ -161,7 +162,7 @@ B.start = async function(say, corner){
   if (!video){
     say('カメラを じゅんび中…');
     let stream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } } }); }
+    try { stream = await navigator.mediaDevices.getUserMedia(CAM_OPT); }
     catch (e){ say('カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'); return false; }
     buildMirror(corner);
     video.srcObject = stream;
@@ -186,6 +187,16 @@ B.start = async function(say, corner){
   B.mode = 'cam';
   requestAnimationFrame(loop);
   return true;
+};
+// 別のゲームを 上に かさねて開く間、カメラを はなす（スマホは 同じカメラを 2か所で 使えないことがある）。resume で つなぎなおす
+B.pause = function(){
+  if (!video || !video.srcObject) return;
+  video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; clear();
+};
+B.resume = async function(){
+  if (!video || video.srcObject) return true;
+  try { video.srcObject = await navigator.mediaDevices.getUserMedia(CAM_OPT); await video.play(); lastT = 0; lastVT = -1; return true; }
+  catch (e){ console.error(e); return false; }
 };
 
 // ---- 入口の画面 ----
