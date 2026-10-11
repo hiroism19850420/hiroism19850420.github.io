@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>からだアバター はらっぱ ぼうけん</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#8fd3ff;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+#c{display:block;width:100%;height:100%}
+#hud{position:fixed;left:8px;top:8px;z-index:10;background:#0008;color:#fff;font-weight:bold;font-size:22px;padding:6px 14px;border-radius:14px;line-height:1.4}
+#hud small{font-size:14px;font-weight:normal}
+#msg{position:fixed;left:0;right:0;top:28%;z-index:10;text-align:center;color:#fff;font-weight:bold;font-size:min(9vw,48px);text-shadow:0 3px 0 #0008,0 0 12px #0008;pointer-events:none;opacity:0;transition:opacity .4s}
+#tip{position:fixed;left:0;right:0;bottom:8px;z-index:10;text-align:center;color:#fff;font-weight:bold;font-size:16px;text-shadow:0 2px 0 #0008;pointer-events:none}
+#pad{position:fixed;left:0;right:0;bottom:36px;z-index:20;display:none;justify-content:space-between;padding:0 10px;pointer-events:none}
+#pad div{display:flex;gap:8px}
+#pad button{pointer-events:auto;width:72px;height:72px;border-radius:50%;border:3px solid #fff;background:#0006;color:#fff;font:bold 18px sans-serif;white-space:nowrap;touch-action:none}
+#pad button.on{background:#ff7a2fcc}
+#err{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:#102040;color:#fff;padding:20px;text-align:center;font-size:18px}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">⭐ <span id="star">0</span> / <span id="need">10</span><br><small>🏃 <span id="dist">0</span> メートル　🏆 <span id="round">0</span> しゅう</small></div>
+<div id="msg"></div>
+<div id="tip"></div>
+<div id="pad">
+  <div><button data-k="left">◀</button><button data-k="right">▶</button></div>
+  <div><button data-k="run">はしる</button><button data-k="jump">とぶ</button></div>
+</div>
+<div id="err">3Dの しくみを よみこめませんでした。ネットに つながっているか たしかめて、もういちど ひらいてください。</div>
+<script src="body.js"></script>
+<script type="module">
+let THREE;
+try { THREE = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js'); }
+catch (e) { document.getElementById('err').style.display = 'flex'; throw e; }
+
+// ---- 調整する数値（長さはメートル、アバターの身長は 2.1） ----
+const CFG = {
+  SPEED: 7,          // 全力で走る速さ（m/秒）
+  ACCEL: 14,         // 走りだし・止まるときの 速さの変わり方
+  TURN: 2.0,         // 回る速さ（ラジアン/秒）
+  JUMP_V: 9,         // ジャンプの 初めの速さ（高さ 約1.7m）
+  BOUNCE_V: 14,      // ぴょんぴょんブロックで はねる速さ（高さ 約4m）
+  GRAVITY: 24,
+  // カメラ：足の動き（chikoku-gate と同じ見方）。直前 RUN_WIN 秒に ひざ・足首が 上下に動いた幅（肩はば単位）
+  RUN_WIN: 0.3, RUN_MIN: 0.1, RUN_FULL: 0.35,
+  // カメラ：体のかたむき（肩の線のかたむき＋腰に対する肩のずれ）。TILT_MIN より小さいと まっすぐ、TILT_FULL で 回しきり
+  TILT_MIN: 0.12, TILT_FULL: 0.4, LEAN_W: 0.3,
+  ARM_LEN: 1.45,     // うでを まっすぐ のばしたときの 肩から手首（肩はば単位）。短く見えたぶん 前に出す
+  STARS: 10, HALF: 58
+};
+
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// ---- 画面 ----
+const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fd3ff);
+scene.fog = new THREE.Fog(0x8fd3ff, 50, 130);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 300);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x88aa66, 1.5));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(30, 60, 20); scene.add(sun);
+function resize(){
+  const w = innerWidth || 800, h = innerHeight || 600;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.fov = w < h ? 75 : 60; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+const mat = c => new THREE.MeshLambertMaterial({ color: c });
+function box(w, h, d, color, x, y, z, parent){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), typeof color === 'number' ? mat(color) : color);
+  m.position.set(x, y, z); (parent || scene).add(m); return m;
+}
+let seed = 20261011;
+const rnd = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+
+// ---- せかい ----
+// solids：上に のれて、横からは ぶつかる箱（x0〜x1、z0〜z1、高さ h）。bounce は はねる台
+const solids = [];
+function solid(cx, cz, w, d, h, color, extra){
+  box(w, h, d, color, cx, h / 2, cz);
+  solids.push(Object.assign({ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2, h }, extra));
+}
+(function ground(){
+  const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+  const g = cv.getContext('2d');
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++){ g.fillStyle = (i + j) % 2 ? '#5ec24a' : '#56b843'; g.fillRect(i * 32, j * 32, 32, 32); }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(35, 35); tex.magFilter = THREE.NearestFilter; tex.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(280, 280), new THREE.MeshLambertMaterial({ map: tex }));
+  m.rotation.x = -Math.PI / 2; scene.add(m);
+  const H = CFG.HALF + 1.5;   // さく
+  [[0, -H, H * 2, 1], [0, H, H * 2, 1], [-H, 0, 1, H * 2], [H, 0, 1, H * 2]].forEach(([x, z, w, d]) => box(w, 1.2, d, 0xb07a3c, x, 0.6, z));
+})();
+// かいだん山（1mずつ とんで のぼる）。てっぺんに ほしが出る
+const HILLS = [[16, -22], [-26, -12], [22, 26], [-16, 32]];
+HILLS.forEach(([x, z]) => { solid(x, z, 9, 9, 1, 0xd9b36b); solid(x, z, 6, 6, 2, 0xc99a4e); solid(x, z, 3, 3, 3, 0xb9833a); });
+// いえ（屋根に のれる）と、となりの ぴょんぴょんブロック
+const HOUSES = [[-12, -30], [34, -4], [-36, 16]];
+HOUSES.forEach(([x, z], i) => {
+  solid(x, z, 6, 6, 3, [0xfff1c9, 0xcfe8ff, 0xffd6e0][i]);
+  box(6.6, 0.4, 6.6, [0xd9483b, 0x3b6fd9, 0xd93b9a][i], x, 3.0, z);
+  box(1.2, 2, 0.1, 0x7a4a22, x, 1, z + 3.03);
+  solid(x + 5, z, 2.4, 2.4, 0.3, 0xff5fa8, { bounce: true });
+});
+solid(6, 10, 2.4, 2.4, 0.3, 0xff5fa8, { bounce: true });   // スタートの近くにも 1つ
+const freeAt = (x, z, r) => Math.hypot(x, z) > 6 && !solids.some(s => x + r > s.x0 && x - r < s.x1 && z + r > s.z0 && z - r < s.z1);
+(function trees(){
+  let n = 0, guard = 0;
+  while (n < 40 && guard++ < 999){
+    const x = (rnd() * 2 - 1) * (CFG.HALF - 3), z = (rnd() * 2 - 1) * (CFG.HALF - 3);
+    if (!freeAt(x, z, 2.5)) continue;
+    const h = 2.5 + rnd() * 1.5;
+    box(0.8, h, 0.8, 0x8a5a2b, x, h / 2, z);
+    box(2.6, 2.2, 2.6, rnd() < 0.5 ? 0x2f9e44 : 0x37b24d, x, h + 1.1, z);
+    solids.push({ x0: x - 0.4, x1: x + 0.4, z0: z - 0.4, z1: z + 0.4, h: h + 2.2 });
+    n++;
+  }
+  for (let i = 0; i < 14; i++){   // くも
+    const x = (rnd() * 2 - 1) * 110, z = (rnd() * 2 - 1) * 110, y = 28 + rnd() * 14;
+    const m = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
+    box(9 + rnd() * 6, 2.5, 5, m, x, y, z); box(5, 2.5, 4, m, x + 3, y + 1.8, z);
+  }
+})();
+
+// ---- アバター（箱の人形。前は -Z） ----
+const avatar = new THREE.Group(); scene.add(avatar);
+const bodyG = new THREE.Group(); avatar.add(bodyG);
+const SKIN = 0xffd29b;
+box(0.8, 0.8, 0.4, 0x2f7df6, 0, 1.2, 0, bodyG);                       // どう
+const head = box(0.56, 0.56, 0.56, SKIN, 0, 1.9, 0, bodyG);
+box(0.62, 0.2, 0.62, 0xe03131, 0, 0.3, 0, head); box(0.62, 0.06, 0.3, 0xe03131, 0, 0.2, -0.4, head);   // ぼうし
+box(0.08, 0.12, 0.02, 0x222222, -0.13, 0.04, -0.29, head); box(0.08, 0.12, 0.02, 0x222222, 0.13, 0.04, -0.29, head);
+box(0.24, 0.05, 0.02, 0xc0392b, 0, -0.14, -0.29, head);
+function limb(x, y, color, w){
+  const p = new THREE.Group(); p.position.set(x, y, 0); bodyG.add(p);
+  box(w, 0.8, w, color, 0, -0.4, 0, p);
+  return p;
+}
+const arms = [limb(-0.56, 1.58, SKIN, 0.3), limb(0.56, 1.58, SKIN, 0.3)];   // 0＝左（うしろから見て 画面の左）
+const legs = [limb(-0.2, 0.8, 0x2b3a67, 0.38), limb(0.2, 0.8, 0x2b3a67, 0.38)];
+const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.55, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }));
+shadow.rotation.x = -Math.PI / 2; scene.add(shadow);
+
+// ---- ほし ----
+const stars = [];
+const starGeo = new THREE.OctahedronGeometry(0.55), starMat = new THREE.MeshLambertMaterial({ color: 0xffd400, emissive: 0xaa7700 });
+const beamGeo = new THREE.CylinderGeometry(0.4, 0.4, 30, 8), beamMat = new THREE.MeshBasicMaterial({ color: 0xfff27a, transparent: true, opacity: 0.5, depthWrite: false, fog: false });
+function placeStars(){
+  stars.forEach(s => scene.remove(s.g)); stars.length = 0;
+  const spots = [];
+  const pick = (arr, n) => arr.map(a => [rnd(), a]).sort((a, b) => a[0] - b[0]).slice(0, n).map(a => a[1]);
+  pick(HILLS, 2).forEach(([x, z]) => spots.push([x, 3, z]));
+  pick(HOUSES, 2).forEach(([x, z]) => spots.push([x, 3, z]));
+  let guard = 0;
+  while (spots.length < CFG.STARS && guard++ < 999){
+    const x = (rnd() * 2 - 1) * (CFG.HALF - 6), z = (rnd() * 2 - 1) * (CFG.HALF - 6);
+    if (!freeAt(x, z, 1.5) || Math.hypot(x - S.x, z - S.z) < 10 || spots.some(p => Math.hypot(p[0] - x, p[2] - z) < 12)) continue;
+    spots.push([x, 0, z]);
+  }
+  spots.forEach(([x, y, z]) => {
+    const g = new THREE.Group(); g.position.set(x, y, z);
+    const m = new THREE.Mesh(starGeo, starMat); m.position.y = 1.3; g.add(m);
+    const b = new THREE.Mesh(beamGeo, beamMat); b.position.y = 17; g.add(b);
+    scene.add(g); stars.push({ g, m, x, y, z });
+  });
+  S.got = 0; hud();
+}
+
+// ---- 音 ----
+let ac = null;
+function beep(f, t, type, vol, slide){
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    const o = ac.createOscillator(), g = ac.createGain(), n = ac.currentTime;
+    o.type = type || 'square'; o.frequency.setValueAtTime(f, n); if (slide) o.frequency.exponentialRampToValueAtTime(slide, n + t);
+    g.gain.setValueAtTime(vol || 0.12, n); g.gain.exponentialRampToValueAtTime(0.001, n + t);
+    o.connect(g).connect(ac.destination); o.start(n); o.stop(n + t);
+  } catch (e) {}
+}
+const sfx = {
+  jump: () => beep(300, 0.18, 'square', 0.1, 700),
+  bounce: () => beep(200, 0.3, 'triangle', 0.2, 1200),
+  star: () => { beep(988, 0.1, 'square', 0.12); setTimeout(() => beep(1319, 0.25, 'square', 0.12), 90); },
+  clear: () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.3, 'square', 0.13), i * 130))
+};
+
+// ---- 状態 ----
+const S = {
+  on: false, x: 0, y: 0, z: 0, vy: 0, yaw: 0, camYaw: Math.PI, speed: 0, ground: true, crouch: false,
+  got: 0, round: 0, dist: 0, phase: 0, t: 0,
+  key: { left: false, right: false, run: false },
+  cam: { run: 0, steer: 0, wall: 0 }   // カメラから読んだ「走る強さ 0〜1」「曲がる -1〜1」
+};
+function hud(){ $('star').textContent = S.got; $('need').textContent = stars.length || CFG.STARS; $('dist').textContent = Math.floor(S.dist); $('round').textContent = S.round; }
+let msgTimer = 0;
+function say(t, sec){ const m = $('msg'); m.textContent = t; m.style.opacity = 1; clearTimeout(msgTimer); msgTimer = setTimeout(() => { m.style.opacity = 0; }, (sec || 2.5) * 1000); }
+
+const R = 0.35, STEP = 0.35;   // 体の半径、そのまま のぼれる段差
+const over = (s, x, z) => x + R > s.x0 && x - R < s.x1 && z + R > s.z0 && z - R < s.z1;
+const blocked = (x, z, y) => solids.some(s => over(s, x, z) && s.h > y + STEP);
+function floorAt(x, z, y){ let top = null, h = 0; solids.forEach(s => { if (over(s, x, z) && s.h <= y + STEP && s.h > h){ h = s.h; top = s; } }); return { h, top }; }
+
+function jump(){
+  if (!S.on || !S.ground) return;
+  S.vy = CFG.JUMP_V; S.ground = false; sfx.jump();
+}
+
+const qA = new THREE.Quaternion(), vDown = new THREE.Vector3(0, -1, 0), vDir = new THREE.Vector3();
+function update(dt){
+  dt = Math.min(dt, 0.05);
+  S.t += dt;
+  const cam = Body.mode === 'cam';
+  let run = 0, steer = 0;
+  if (S.on){
+    if (cam){
+      if (performance.now() - S.cam.wall < 400 && Body.ok){ run = S.cam.run; steer = S.cam.steer; }
+    } else {
+      run = S.key.run ? 1 : 0; steer = (S.key.right ? 1 : 0) - (S.key.left ? 1 : 0);
+    }
+  }
+  S.yaw -= steer * CFG.TURN * dt;
+  const target = run * CFG.SPEED;
+  S.speed += clamp(target - S.speed, -CFG.ACCEL * dt, CFG.ACCEL * dt);
+  const fx = -Math.sin(S.yaw), fz = -Math.cos(S.yaw), step = S.speed * dt;
+  const ox = S.x, oz = S.z;
+  const nx = clamp(S.x + fx * step, -CFG.HALF, CFG.HALF); if (!blocked(nx, S.z, S.y)) S.x = nx;
+  const nz = clamp(S.z + fz * step, -CFG.HALF, CFG.HALF); if (!blocked(S.x, nz, S.y)) S.z = nz;
+  S.dist += Math.hypot(S.x - ox, S.z - oz);
+
+  const f = floorAt(S.x, S.z, S.y);
+  S.vy -= CFG.GRAVITY * dt;
+  S.y += S.vy * dt;
+  if (S.y <= f.h){
+    S.y = f.h;
+    if (f.top && f.top.bounce && S.vy < -1){ S.vy = CFG.BOUNCE_V; S.ground = false; sfx.bounce(); }
+    else { S.vy = 0; S.ground = true; }
+  } else if (S.y > f.h + 0.05) S.ground = false;
+
+  // ほし
+  for (const s of stars){
+    s.m.rotation.y += dt * 2.5; s.m.position.y = 1.3 + Math.sin(S.t * 3 + s.x) * 0.15;
+    if (!s.hit && Math.hypot(s.x - S.x, s.z - S.z) < 1.4 && S.y > s.y - 1 && S.y < s.y + 2.5){
+      s.hit = true; scene.remove(s.g); S.got++; sfx.star();
+      const left = stars.length - S.got;
+      if (left > 0) say(`⭐ ${S.got}こ！ あと ${left}こ`, 1.5);
+      else { S.round++; sfx.clear(); say('ぜんぶ あつめた！ すごい！', 3); setTimeout(() => { placeStars(); say('あたらしい ほしが でたよ！'); }, 3200); }
+      hud();
+    }
+  }
+  if ((S.t * 4 | 0) !== ((S.t - dt) * 4 | 0)) hud();
+
+  // アバターの うごき
+  avatar.position.set(S.x, S.y, S.z); avatar.rotation.y = S.yaw;
+  const k = S.speed / CFG.SPEED;
+  S.phase += dt * (4 + k * 9) * (k > 0.05 ? 1 : 0);
+  const sw = S.ground ? Math.sin(S.phase) * 0.9 * k : 0.5;
+  legs[0].rotation.x = sw; legs[1].rotation.x = S.ground ? -sw : -0.5;
+  S.crouch = cam && Body.ok && Body.crouch;
+  bodyG.scale.y += ((S.crouch ? 0.65 : 1) - bodyG.scale.y) * Math.min(1, dt * 12);
+  bodyG.position.y = S.ground ? Math.abs(Math.sin(S.phase)) * 0.08 * k : 0;
+  arms.forEach((a, i) => {
+    const h = Body.hands[i];
+    if (cam && Body.ok && h.vis){
+      // 手首が 肩から見て どこにあるか（px：画面の右が＋、py：下が＋）を そのまま うでの向きにする
+      const len = Math.hypot(h.px, h.py), fwd = Math.sqrt(Math.max(0, CFG.ARM_LEN * CFG.ARM_LEN - len * len));
+      vDir.set(h.px, -h.py, -fwd).normalize();
+      qA.setFromUnitVectors(vDown, vDir);
+    } else {
+      vDir.set(0, -Math.cos(sw), (i ? 1 : -1) * Math.sin(sw) * -1).normalize();
+      qA.setFromUnitVectors(vDown, vDir);
+    }
+    a.quaternion.slerp(qA, Math.min(1, dt * 18));
+  });
+  shadow.position.set(S.x, f.h + 0.02, S.z); shadow.scale.setScalar(clamp(1 - (S.y - f.h) * 0.15, 0.4, 1));
+
+  // カメラ：アバターの うしろから ついていく
+  let d = S.yaw - S.camYaw; d = Math.atan2(Math.sin(d), Math.cos(d));
+  S.camYaw += d * Math.min(1, dt * 3);
+  const back = 7.5, cx = S.x + Math.sin(S.camYaw) * back, cz = S.z + Math.cos(S.camYaw) * back;
+  camera.position.set(cx, S.y + 4.2, cz);
+  camera.lookAt(S.x, S.y + 1.7, S.z);
+}
+
+function tick(dt){ update(dt); renderer.render(scene, camera); }
+let last = 0;
+function frame(ts){ requestAnimationFrame(frame); const dt = last ? (ts - last) / 1000 : 0.016; last = ts; tick(dt); }
+
+// ---- カメラからの入力 ----
+let legH = [], steerS = 0;
+Body.on('pose', () => {
+  if (Body.mode !== 'cam') return;
+  const lm = Body.lm, u = Body.unit, see = i => lm[i].visibility == null || lm[i].visibility > 0.5;
+  let ids = [25, 26, 27, 28].filter(see); if (!ids.length) ids = [15, 16].filter(see);
+  const hy = (lm[23].y + lm[24].y) / 2, now = Body.now, row = { t: now };
+  ids.forEach(i => row[i] = (lm[i].y - hy) / u);
+  legH.push(row); while (legH.length && now - legH[0].t > CFG.RUN_WIN) legH.shift();
+  let m = 0;
+  ids.forEach(i => { let lo = 9, hi = -9; legH.forEach(r => { if (r[i] != null){ lo = Math.min(lo, r[i]); hi = Math.max(hi, r[i]); } }); m = Math.max(m, hi - lo); });
+  S.cam.run = m < CFG.RUN_MIN ? 0 : clamp(m / CFG.RUN_FULL, 0.5, 1);
+  const tilt = Body.roll + Body.lean * CFG.LEAN_W, a = Math.abs(tilt);
+  const raw = a < CFG.TILT_MIN ? 0 : Math.sign(tilt) * clamp((a - CFG.TILT_MIN) / (CFG.TILT_FULL - CFG.TILT_MIN), 0, 1);
+  steerS += (raw - steerS) * 0.35;
+  S.cam.steer = steerS; S.cam.wall = performance.now();
+});
+Body.on('jump', () => { if (Body.mode === 'cam') jump(); });
+
+// ---- カメラなしの入力 ----
+const KEYS = { ArrowLeft: 'left', a: 'left', ArrowRight: 'right', d: 'right', ArrowUp: 'run', w: 'run' };
+addEventListener('keydown', e => { if (e.key === ' '){ jump(); e.preventDefault(); } else if (KEYS[e.key]) S.key[KEYS[e.key]] = true; });
+addEventListener('keyup', e => { if (KEYS[e.key]) S.key[KEYS[e.key]] = false; });
+document.querySelectorAll('#pad button').forEach(b => {
+  const k = b.dataset.k;
+  const down = e => { e.preventDefault(); b.classList.add('on'); if (k === 'jump') jump(); else S.key[k] = true; };
+  const up = e => { e.preventDefault(); b.classList.remove('on'); if (k !== 'jump') S.key[k] = false; };
+  b.addEventListener('pointerdown', down); b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
+});
+
+placeStars();
+requestAnimationFrame(frame);
+Body.gate({
+  title: 'からだアバター<br>はらっぱ ぼうけん', corner: 'tr', needFull: true,
+  lines: ['🏃 その場で <b>あしぶみ</b> … はしる', '↔ からだを <b>よこに かたむける</b> … まがる', '🦘 <b>とびあがる</b> … ジャンプ', '🙌 うでを うごかす … アバターも おなじ うごき', '⭐ ひかりの はしらの 下に ほしが あるよ'],
+  onStart: async mode => {
+    if (mode === 'cam'){ $('tip').textContent = 'あしぶみ＝はしる　かたむける＝まがる　とぶ＝ジャンプ'; await Body.countdown(5); }
+    else { $('pad').style.display = 'flex'; $('tip').textContent = 'やじるしキー＋スペース でも うごくよ'; }
+    S.on = true; say(`ほしを ${stars.length}こ あつめよう！`, 3);
+  }
+});
+window.__game = { S, CFG, tick, update, jump, stars, solids, arms, placeStars, renderer, scene, camera };
+</script>
+</body>
+</html>
