@@ -25,7 +25,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#8fd3ff;font-family:"H
 <div id="hud">⭐ <span id="star">0</span> / <span id="need">10</span><br><small>🏃 <span id="dist">0</span> メートル　🏆 <span id="round">0</span> しゅう　👊 <span id="ko">0</span> ひき</small></div>
 <div id="msg"></div>
 <div id="tip"></div>
-<pre id="dbg" style="position:fixed;left:8px;top:84px;z-index:10;margin:0;color:#fff;background:#000a;font:14px/1.5 monospace;padding:4px 8px;border-radius:8px;pointer-events:none"></pre>
+<pre id="dbgbox" style="position:fixed;left:8px;top:84px;z-index:10;margin:0;color:#fff;background:#000a;font:14px/1.5 monospace;padding:4px 8px;border-radius:8px;pointer-events:none"></pre>
 <div id="pad">
   <div><button data-k="left">◀</button><button data-k="right">▶</button></div>
   <div class="g4"><button data-k="punch">パンチ</button><button data-k="sword">けん</button><button data-k="run">はしる</button><button data-k="jump">とぶ</button></div>
@@ -438,7 +438,7 @@ function update(dt){
   if (cam && S.on){
     const warn = Body.ok && !S.cam.legs;
     if (warn !== S.warn){ S.warn = warn; $('tip').textContent = warn ? '⚠ あしが うつる ところまで はなれてね（あしぶみで はしるよ）' : TIP_CAM; $('tip').style.color = warn ? '#ffe14d' : '#fff'; }
-    if (DEBUG) $('dbg').textContent = `あし ${dbg.m.toFixed(2)} / ${dbg.min}  はしる ${run.toFixed(2)}  あし見える ${S.cam.legs ? '○' : '×'}\nかたむき ${(Body.roll + Body.lean * CFG.LEAN_W).toFixed(2)}  まがる ${steer.toFixed(2)}\n手の間 ${dbg.gap.toFixed(2)}  けん ${S.sword ? '○' : '×'}  パンチ ${dbg.why}`;
+    if (DEBUG) $('dbgbox').textContent = `あし ${dbg.m.toFixed(2)} / ${dbg.min}  はしる ${run.toFixed(2)}  あし見える ${S.cam.legs ? '○' : '×'}\nかたむき ${(Body.roll + Body.lean * CFG.LEAN_W).toFixed(2)}  まがる ${steer.toFixed(2)}\n手の間 ${dbg.gap.toFixed(2)}  けん ${S.sword ? '○' : '×'}  パンチ ${dbg.why}`;
   }
   shadow.position.set(S.x, f.h + 0.02, S.z); shadow.scale.setScalar(clamp(1 - (S.y - f.h) * 0.15, 0.4, 1));
 
