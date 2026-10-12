@@ -120,6 +120,8 @@ const CFG = {
   SWORD_RANGE: 4.1, SWORD_COS: -0.2, SWORD_GAP: 0.3, SWORD_DMG: 3,
   SWORD_LEN: 2.0,     // さすまたの ぼうの長さ
   SWORD_UP: 1.4,      // けんを 上に立てる つよさ（大きいほど、むねの前で持っても 刃が 頭の上に出る）
+  SEA_ENEMIES: 6,    // よこはまに いる うみの てきの 数
+  PARK_ENEMIES: 6,   // ちばの ゆうえんちに いる てきの 数
   ENEMIES: 14, ENEMY_SEE: 14,                              // 同時にいる数、これより近いと よってくる
   // せんとう：てきに BATTLE_START まで 近づくと、その場に 立ったまま 戦闘モードに なる。BATTLE_JOIN 以内の てきも 加わる（さいだい BATTLE_FOES）。
   // てきは BATTLE_DIST 前に ならぶ。BATTLE_MAX 秒 かかると てきが にげて おわる。おわってから BATTLE_COOL 秒は 始まらない
@@ -374,7 +376,9 @@ const NOOKS = [
 ];
 const SHOP = { x: -4, z: 21 }, CAMP = { x: 11, z: -8 }, DOJO = { x: 10, z: 25 }, WORK = { x: 32, z: -30, w: 13, d: 11 };
 const KEEP = NOOKS.map(n => ({ x: n.x, z: n.z, r: 8.5 })).concat([{ x: SHOP.x, z: SHOP.z, r: 8 }, { x: CAMP.x, z: CAMP.z, r: 4 }, { x: DOJO.x, z: DOJO.z, r: 7.5 }, { x: WORK.x, z: WORK.z, r: 11 }]);
-const safe = (x, z) => Math.hypot(x - SHOP.x, z - SHOP.z) < 7.5 || Math.hypot(x - WORK.x, z - WORK.z) < 12 || Math.hypot(x - DOJO.x, z - DOJO.z) < 7.5 || Math.hypot(x - CAMP.x, z - CAMP.z) < 5.5;
+const AREA = {}, SAFE = [];   // AREA：はらっぱ いがいの まちの てき（種類と 動ける 範囲）。SAFE：てきが 入らない 場所（あとから 足す ぶん）
+const safe = (x, z) => SAFE.some(q => Math.hypot(x - q.x, z - q.z) < q.r) || Math.hypot(x - SHOP.x, z - SHOP.z) < 7.5 || Math.hypot(x - WORK.x, z - WORK.z) < 12 || Math.hypot(x - DOJO.x, z - DOJO.z) < 7.5 || Math.hypot(x - CAMP.x, z - CAMP.z) < 5.5
+  || (x > 200 && (Math.hypot(x - 290, z - 6) < 8 || Math.hypot(x - 296, z + 8) < 6 || Math.hypot(x - 280, z + 13) < 5.5 || Math.hypot(x - 307, z + 18) < 6));   // よこはま：おりる 所、おじさん、ドンカ道場、やさしい さかな
 const freeAt = (x, z, r) => Math.hypot(x, z) > 6 && !KEEP.some(k => Math.hypot(x - k.x, z - k.z) < k.r + r) && !nearGate(x, z, r) && !inPond(x, z, r + 1.5) && !inLane(x, z, r + 1) && !solids.some(s => x + r > s.x0 && x - r < s.x1 && z + r > s.z0 && z - r < s.z1);
 (function nature(){
   // 木：まつ（三角を かさねる）と、まるい木
@@ -667,22 +671,24 @@ function animEnemy(e){
     const th = Math.sin(t * 12);
     P.arms[0].rotation.x = warn ? -2.7 + th * 0.15 : air ? -0.6 : -0.9 - Math.max(0, th) * 0.5;      // むねを たたく
     P.arms[1].rotation.x = warn ? -2.7 - th * 0.15 : air ? -0.6 : -0.9 - Math.max(0, -th) * 0.5;
-  }
+  } else if (P.anim) P.anim(e, t, warn, air);                // うみの てきは 形と いっしょに 動きも 持っている
 }
-function makeEnemy(){
+// home：すむ まち（'yokohama' なら うみの てき）
+function makeEnemy(home){
   const g = new THREE.Group(), m = new THREE.MeshLambertMaterial({ color: 0x4cd964 }), iris = new THREE.MeshLambertMaterial({ color: 0x1d7a4f });
   scene.add(g);
   const e = { g, m, iris, x: 0, y: 0, z: 0, vy: 0, hx: 0, hz: 0, kx: 0, kz: 0, wait: 0, hp: 1, size: 1, flash: 0, dead: 0, sq: 0, foe: false, atk: 0, atkT: 0, sx: 0, sz: 0, ph: rnd() * 9 };
-  enemies.push(e); placeEnemy(e);
+  e.home = home || 'home'; enemies.push(e); placeEnemy(e);
 }
 // T0 を わたすと その 種類に する（どろの手が よぶ なかま）
 function placeEnemy(e, T0){
   for (let n = 0; n < 99; n++){
-    const x = (rnd() * 2 - 1) * (CFG.HALF - 4), z = (rnd() * 2 - 1) * (CFG.HALF - 4);
-    if (!freeAt(x, z, 1.5) || Math.hypot(x - S.x, z - S.z) < 12) continue;
+    const A = AREA[e.home];
+    const x = A ? A.x0 + rnd() * (A.x1 - A.x0) : (rnd() * 2 - 1) * (CFG.HALF - 4), z = A ? A.z0 + rnd() * (A.z1 - A.z0) : (rnd() * 2 - 1) * (CFG.HALF - 4);
+    if ((A ? blocked(x, z, 0) || safe(x, z) : !freeAt(x, z, 1.5)) || Math.hypot(x - S.x, z - S.z) < 12) continue;
     e.x = x; e.z = z; break;
   }
-  const pool = TIERS.filter(t => t.lv <= S.lv); let r = rnd() * pool.reduce((a, t) => a + t.w, 0);
+  const pool = (AREA[e.home] ? AREA[e.home].tiers : TIERS).filter(t => t.lv <= S.lv); let r = rnd() * pool.reduce((a, t) => a + t.w, 0);
   const T = T0 || pool.find(t => (r -= t.w) < 0) || pool[0];
   e.tier = T; e.big = T.horns; e.size = T.size; e.hp = e.maxHp = T.hp;
   e.color = T.color; e.m.color.setHex(e.color); e.iris.color.setHex(T.iris);
@@ -712,7 +718,8 @@ function updateEnemies(dt){
       }
     } else { e.vy -= 20 * dt; e.y = Math.max(0, e.y + e.vy * dt); mx += e.hx * dt; mz += e.hz * dt; if (e.y === 0) e.sq = 0.3; }
     e.sq *= Math.max(0, 1 - dt * 7);
-    const nx = clamp(e.x + mx, -CFG.HALF, CFG.HALF), nz = clamp(e.z + mz, -CFG.HALF, CFG.HALF);
+    const A = AREA[e.home];                                // ほかの まちの てきは その まちの 中だけ
+    const nx = A ? clamp(e.x + mx, A.x0 - 1, A.mx1 || A.x1 + 1) : clamp(e.x + mx, -CFG.HALF, CFG.HALF), nz = A ? clamp(e.z + mz, A.z0 - 1, A.z1 + 1) : clamp(e.z + mz, -CFG.HALF, CFG.HALF);
     if (!blocked(nx, e.z, 0) && !safe(nx, e.z)) e.x = nx;      // ラーメンやと テントの まわりには 入ってこない
     if (!blocked(e.x, nz, 0) && !safe(e.x, nz)) e.z = nz;
     if (e.flash > 0){ e.flash -= dt; e.m.color.setHex(e.flash > 0 ? 0xffffff : e.color); }
@@ -1169,8 +1176,9 @@ function updateNooks(dt){
 function castField(id){
   const by = k => NOOKS.find(n => n.kind === k && !n.ob.gone && near(n.ob.x, n.ob.z, CFG.FIELD_RANGE));
   const fire = by('fire'), grass = by('grass'), can = k => S.lv >= SPELLS[k].lv, kn = known();
+  const ice = tw() === YK && !st('medaka') && near(ICE.x - ICE.w / 2, ICE.z, 13);       // よこはまの こおった 海の そば
   if (id && !can(id)) id = null;
-  if (!id) id = fire && can('ice') ? 'ice' : grass && can('fire') ? 'fire' : kn.length ? kn[S.spellIdx++ % kn.length] : null;
+  if (!id) id = fire && can('ice') ? 'ice' : (grass || ice) && can('fire') ? 'fire' : kn.length ? kn[S.spellIdx++ % kn.length] : null;
   S.charge = 0; S.heard = null; S.spellCD = CFG.MAGIC_CD; listen(false);
   if (!id){ sfx.bump(); say('まだ じゅもんを しらない… レベルを あげよう', 1.8); return false; }
   const sp = SPELLS[id];
@@ -1181,8 +1189,8 @@ function castField(id){
     fx.push({ m, life: T * 1.4, max: T * 1.4, vx: (to[0] - x) / T, vy: (to[1] - y) / T, vz: (to[2] - z) / T, grow: 0, grav: 0 }); later(T, () => { m.visible = false; }); };
   if (id === 'thunder'){ sfx.thunder(); whiteout(0.5, 300); [-1.6, 0, 1.6].forEach(o => pillar({ x: tx - az * o, z: tz + ax * o }, 0xfff27a)); }
   else if (id === 'fire'){
-    const to = grass ? [grass.ob.x, 1, grass.ob.z] : [tx, 0.4, tz], T = 0.35; sfx.fire(); ball(0xff7a2f, S.x, S.y + 3.1, S.z, 0.5, T, to);
-    later(T, () => { burst(to[0], to[1], to[2], 0xff7a2f, 10, 8); burst(to[0], to[1], to[2], 0xffe35a, 6, 5); if (grass && !grass.ob.gone) clearOb(grass, 0xff7a2f); });
+    const to = grass ? [grass.ob.x, 1, grass.ob.z] : ice ? [ICE.x - 4, 0.5, ICE.z] : [tx, 0.4, tz], T = 0.35; sfx.fire(); ball(0xff7a2f, S.x, S.y + 3.1, S.z, 0.5, T, to);
+    later(T, () => { burst(to[0], to[1], to[2], 0xff7a2f, 10, 8); burst(to[0], to[1], to[2], 0xffe35a, 6, 5); if (grass && !grass.ob.gone) clearOb(grass, 0xff7a2f); else if (ice) meltIce(); });
   } else if (id === 'ice'){
     const to = fire ? [fire.ob.x, fire.ob.z] : [tx, tz]; sfx.ice(); whiteout(0.3, 300);
     for (let i = 0; i < 4; i++) burst(to[0] + (rnd() - 0.5) * 3, 0.6 + rnd(), to[1] + (rnd() - 0.5) * 3, 0xa8ecff, 6, 5);
@@ -1478,7 +1486,8 @@ function updateDojo(dt){
     }
   } else if (z.t > 4) pFoes().forEach(e => hurt(e, 99));     // fin：まだ のこっていたら かたづける
 }
-$('talk').addEventListener('pointerdown', e => { const n = e.target && e.target.dataset && e.target.dataset.n; if (n != null){ e.preventDefault(); answerQuiz(+n); } else if (e.target && e.target.dataset && e.target.dataset.say === 'work' && S.job && S.job.ph === 'ask'){ e.preventDefault(); S.job.yes = true; } });
+$('talk').addEventListener('pointerdown', e => { const n = e.target && e.target.dataset && e.target.dataset.n; if (n != null){ e.preventDefault(); answerQuiz(+n); } else if (e.target && e.target.dataset && e.target.dataset.say === 'work' && S.job && S.job.ph === 'ask'){ e.preventDefault(); S.job.yes = true; }
+  else if (e.target && e.target.dataset && e.target.dataset.say === 'come'){ e.preventDefault(); callAdult(); } });
 for (let i = 0; i < CFG.WEEDS; i++){ const w = { g: weedT.clone() }; scene.add(w.g); weeds.push(w); }
 for (let i = 0; i < CFG.FOODS; i++) foods.push({});
 // ---- おつかいカード と ブック ----
@@ -1499,6 +1508,11 @@ const CARDS = [
   { id: 'sea',    icon: '🌊', name: 'うみだ！',          how: 'よこはまの うみに 足を 入れる', ok: () => st('sea') >= 1 },
   { id: 'shell',  icon: '🐚', name: 'よこはまの ひとだすけ', how: 'よこはまで こまっている 人を 見つけて、たすける', ok: () => st('shell') >= 1 },
   { id: 'donka',  icon: '🥁', name: 'ドンカ めいじん', how: 'よこはまの かんらんしゃの 下の わに 入って、ドンカ道場で 1きょく たたく', ok: () => st('donka') >= 1 },
+  { id: 'seafoe', icon: '🐟', name: 'うみの てき たいじ', how: 'よこはまに いる うみの てき（あるく さかな・カニ・タコ）を 1ぴき たおす', ok: () => st('ko_fish') + st('ko_crab') + st('ko_octo') >= 1 },
+  { id: 'medaka', icon: '🏫', name: 'メダカを たすけた',  how: 'よこはまで こまっている さかなを 見つけて、たすける', ok: () => st('medaka') >= 1 },
+  { id: 'parkfoe', icon: '🎈', name: 'ゆうえんちの てき たいじ', how: 'ちばの ゆうえんちに いる てき（ふうせん・ポップコーン・ぬいぐるみの くま）を 1ぴき たおす', ok: () => st('ko_balloon') + st('ko_popcorn') + st('ko_teddy') >= 1 },
+  { id: 'maigo',  icon: '👧', name: 'まいごを たすけた',  how: 'ちばで こまっている 子を 見つけて、たすける', ok: () => st('maigo') >= 1 },
+  { id: 'ball',   icon: '🎪', name: 'ボールころがし',    how: 'ちばの テントの 前の わに 入って、かたむきボールで あそぶ', ok: () => st('ball') >= 1 },
   { id: 'fluff',  icon: '✨', name: 'よるの おしごと',   how: 'よるに しごとばで ひかる ワタを あつめる', ok: () => st('fluff') >= 1 },
   { id: 'rock',   icon: '🪨', name: 'いわ くだき',       how: 'きたの ひろばの いわを さすまたで 3かい たたく', ok: () => st('rock') >= 1 },
   { id: 'hand',   icon: '🖐️', name: 'どろの手 たいじ',   how: 'レベル3から 出てくる どろの手を たおす', ok: () => st('ko_hand') >= 1 },
@@ -1564,6 +1578,7 @@ addEventListener('keydown', e => {
   if (e.key === 'b') openBook(!bookOpen); else if (e.key === 'Escape' && bookOpen) openBook(false);
   else if (e.key === 'm' && !bookOpen) showMap(!mapOpen);
   else if (e.key === 'v' && !bookOpen) callRide();
+  else if (e.key === 'Enter' && S.lost && S.lost.ph === 'heard') callAdult();
   else if (S.ride && S.ride.ph === 'ask' && /^[1-9]$/.test(e.key)){ const t = TOWNS.filter(t => S.open[t.id])[+e.key - 1]; if (t) S.ride.pick = t.id; }
   else if (bookOpen && (e.key === 'n' || e.key === 'PageDown')) turnPage(1); else if (bookOpen && (e.key === 'p' || e.key === 'PageUp')) turnPage(-1);
 });
@@ -1596,8 +1611,10 @@ setInterval(() => {
 const cmdAt = {};
 function voiceCmd(n, fin){
   if (S.battle || talking() || (Body.mode === 'cam' && !handUp())) return false;
-  try { if (speechSynthesis.speaking) return false; } catch (e) {}       // 読み上げの 声は めいれいに しない
   const now = performance.now(), ok = k => { if (now - (cmdAt[k] || 0) < 1800) return false; cmdAt[k] = now; return true; };
+  // ちば：おとなに こえを かける（相手の せりふの 読み上げが おわる前でも きく。せりふに この ことばは 出てこない）
+  if (/キテ|来テ|コッチ|マイゴ|迷子|ツイテ|スミマセン|オネガイ/.test(n) && S.lost && S.lost.ph === 'heard' && tw() === CB){ if (ok('come')) callAdult(); return true; }
+  try { if (speechSynthesis.speaking) return false; } catch (e) {}       // 読み上げの 声は めいれいに しない
   if (/チズ|地図|マップ|map/.test(n)){
     const off = /シマ|仕舞|トジ|閉|ケシ|ケス|消|カクス/.test(n), on = /ダス|ダシ|出|ヒラ|開|ミセ|見セ/.test(n);
     if ((off || on || fin) && ok('map')) showMap(off ? false : on ? true : !mapOpen);   // 「ちず」だけなら 言いおわってから 切りかえる
@@ -1622,7 +1639,7 @@ const PLACES = [
 const P = id => PLACES.find(p => p.id === id);
 // つぎの カードの ために 行く 場所
 const nearestTo = arr => arr.slice().sort((a, b) => Math.hypot(a.x - S.x, a.z - S.z) - Math.hypot(b.x - S.x, b.z - S.z))[0];
-const foeSpot = kind => nearestTo(enemies.filter(e => !(e.dead > 0) && e.g.visible && (!kind || e.tier.kind === kind)));
+const foeSpot = kind => nearestTo(enemies.filter(e => e.home === 'home' && !(e.dead > 0) && e.g.visible && (!kind || e.tier.kind === kind)));
 const starSpot = () => nearestTo(stars.filter(s => !s.hit));
 const AT = {
   star: starSpot, stars: starSpot, ko: () => foeSpot(), lv2: () => foeSpot(), lv10: () => foeSpot(), hand: () => foeSpot('hand'), golem: () => foeSpot('golem'), beast: () => foeSpot('beast'),
@@ -1663,6 +1680,10 @@ function drawTownMap(){
   [['🎡', 'かんらんしゃ', T.cx - 20, T.cz - 22], ['🥁', 'ドンカ道場', T.cx - 20, T.cz - 13], ['🧱', 'あかレンガ', T.cx - 16, T.cz + 16], ['⚓', 'おじさん', yk.ox + 2.6, yk.oz], ['🚢', 'ふね', T.cx + 30, T.cz + 9], ['🏖', 'すなはま', SEA_X - 4, T.cz + 22]].forEach(([ic, nm, x, z]) => {
     g.fillStyle = '#fffbe9'; g.beginPath(); g.arc(X(x), Z(z), 22, 0, 7); g.fill(); g.font = '28px sans-serif'; g.fillStyle = '#fff'; g.fillText(ic, X(x), Z(z) + 2);
     g.font = 'bold 17px sans-serif'; g.lineWidth = 4; g.strokeStyle = '#102040'; g.strokeText(nm, X(x), Z(z) + 36); g.fillStyle = '#fff'; g.fillText(nm, X(x), Z(z) + 36); });
+  if (!st('medaka')){ g.fillStyle = '#eaf8ff'; g.fillRect(X(ICE.x - ICE.w / 2), Z(ICE.z - ICE.d / 2), X(ICE.x + ICE.w / 2) - X(ICE.x - ICE.w / 2), Z(ICE.z + ICE.d / 2) - Z(ICE.z - ICE.d / 2));
+    if (S.mkHeard){ const k = 0.5 + 0.5 * Math.sin(performance.now() / 350), gr = g.createRadialGradient(X(ICE.x - 4), Z(ICE.z), 4, X(ICE.x - 4), Z(ICE.z), 60);     // さかなの ひとりごとを 聞いた あとは、こおりが 少し 光る
+      gr.addColorStop(0, `rgba(255,255,170,${0.5 + k * 0.3})`); gr.addColorStop(1, 'rgba(255,255,170,0)'); g.fillStyle = gr; g.fillRect(X(ICE.x - 4) - 64, Z(ICE.z) - 64, 128, 128); } }
+  g.font = '26px sans-serif'; g.fillStyle = '#fff'; g.fillText('🏫', X(mk.sx), Z(mk.sz)); g.fillText('🐟', X(mk.nx), Z(mk.nz));
   if (S.npc && S.npc.ph === 'heard'){                        // ひとりごとを 聞いた あとは、すなはまが 少し 光る
     const k = 0.5 + 0.5 * Math.sin(performance.now() / 350), gr = g.createRadialGradient(X(SEA_X - 4), Z(T.cz + 22), 4, X(SEA_X - 4), Z(T.cz + 22), 46);
     gr.addColorStop(0, `rgba(255,255,170,${0.55 + k * 0.3})`); gr.addColorStop(1, 'rgba(255,255,170,0)'); g.fillStyle = gr; g.fillRect(X(SEA_X - 4) - 50, Z(T.cz + 22) - 50, 100, 100);
@@ -1677,7 +1698,7 @@ function drawTownMap(){
   $('mapgoal').textContent = goal ? `つぎ：${goal.c.icon} ${goal.c.how}` : '✋ 手を あげて「のりもの」で ほかの まちへ';
 }
 function drawMap(){
-  if (tw() !== TOWNS[0]){ drawTownMap(); return; }
+  if (tw() !== TOWNS[0]){ (tw() === CB ? drawChibaMap : drawTownMap)(); return; }
   const N = 640, H = CFG.HALF + 3, px = v => (v + H) / (H * 2) * N, g = mg; if (mcv.width !== N){ mcv.width = mcv.height = N; }
   g.fillStyle = '#5fb84f'; g.fillRect(0, 0, N, N);
   g.lineCap = g.lineJoin = 'round'; g.strokeStyle = '#d0ae74'; g.lineWidth = 12;
@@ -1719,7 +1740,8 @@ function updateGuide(dt){
 const TOWNS = [
   { id: 'home',     name: 'はじまりの はらっぱ', al: ['ハジマリ', 'ハラッパ', 'グンマ', '群馬', 'オウチ', 'ホム'], lon: 139.0, lat: 36.55, cx: 0, cz: 0, half: CFG.HALF, sx: 0, sz: 3, yaw: 0, lx: -92, ly: -26 },
   { id: 'yokohama', name: 'よこはま', al: ['ヨコハマ', '横浜', 'カナガワ', '神奈川'], lon: 139.64, lat: 35.44, cx: 300, cz: 0, half: 34, sx: 290, sz: 6, yaw: -Math.PI / 2, lx: -70, ly: 30 },
-  { id: 'chiba',    name: 'ちば', al: ['チバ', '千葉'], lon: 140.25, lat: 35.5, soon: true, lx: 62, ly: 8 }
+  { id: 'chiba',    name: 'ちば', al: ['チバ', '千葉'], lon: 140.25, lat: 35.5, cx: 0, cz: 300, half: 34, sx: 0, sz: 326, yaw: 0, lx: 62, ly: 8 },
+  { id: 'niigata',  name: 'にいがた', al: ['ニイガタ', '新潟'], lon: 139.0, lat: 37.9, soon: true, lx: -78, ly: -12 }
 ];
 const tw = () => S.tw || TOWNS[0];
 const YK = TOWNS[1], SEA_X = YK.cx + 12;                     // これより 東（+x）は 海
@@ -1872,7 +1894,7 @@ function updateRide(dt){
     if (!r.moved && q >= 0.5){ r.moved = true; whiteout(1, 900); const t = r.to; S.tw = t; S.x = t.sx; S.z = t.sz; S.yaw = S.camYaw = t.yaw; r.y0 = 0; bump('ride'); last = 0; }
     if (q >= 1){ r.ph = 'drop'; r.t = 0; r.from = RIDE.H + 40; } }
   else { const q = ease(Math.min(1, r.t / RIDE.DROP)); lift = r.from * (1 - q); grip(q < 0.92);
-    if (r.t >= RIDE.DROP + 0.5){ S.y = r.y0; S.ride = null; claw.visible = false; if (r.to){ sfx.clear(); say(`⚓ ${r.to.name}に ついた！`, 3); speak(`${r.to.name}に、つきました！`); } return; }
+    if (r.t >= RIDE.DROP + 0.5){ S.y = r.y0; S.ride = null; claw.visible = false; if (r.to){ sfx.clear(); say(`🚁 ${r.to.name}に ついた！`, 3); speak(`${r.to.name}に、つきました！`); } return; }
     if (r.t > RIDE.DROP){ lift = 0; cy = (r.t - RIDE.DROP) * 30; } }
   S.y = r.y0 + lift; claw.position.set(S.x, S.y + 2.25 * bodyG.scale.y + cy, S.z);
 }
@@ -1901,7 +1923,262 @@ function drawJapan(){
 $('jmapv').addEventListener('pointerdown', e => { const id = e.target && e.target.dataset && e.target.dataset.town; if (id && S.ride){ e.preventDefault(); S.ride.pick = id; } });
 function updateTowns(dt){
   if (S.on && S.cards.length >= 5) openTown('yokohama');     // カードが 5まいで よこはまが ひらく
-  updateRide(dt); updateYokohama(dt);
+  updateRide(dt); updateYokohama(dt); updateSea(dt); updateChiba(dt);
+}
+// ---- よこはまの うみの てき：足で あるく さかな、カニ、タコ（どれも この ゲームの ために 作った形）----
+const SEA_TIERS = [
+  { kind: 'fish', hp: 2,  exp: 2, atk: 1, coin: 3,  size: 1.2, color: 0x5aa9e6, iris: 0x1d4fa8, icon: '🐟', lv: 1, w: 6, vy: 0.3, sq: 0.4 },
+  { kind: 'crab', hp: 5,  exp: 5, atk: 2, coin: 7,  size: 1.4, color: 0xe8523a, iris: 0x6a1a10, icon: '🦀', lv: 2, w: 4, vy: 0.08, sq: 0.25 },
+  { kind: 'octo', hp: 10, exp: 9, atk: 4, coin: 12, size: 1.7, color: 0xb06ad8, iris: 0x4a1a70, icon: '🐙', lv: 4, w: 3, vy: 0.35, sq: 0.6 }
+];
+Object.assign(NAME, { fish: 'あるく さかな', crab: 'カニ', octo: 'タコ' });
+AREA.yokohama = { tiers: SEA_TIERS, x0: YK.cx - 32, x1: SEA_X - 1, z0: YK.cz - 31, z1: YK.cz + 31, mx1: SEA_X + 3 };   // りくと なみうちぎわ だけ
+// あるく さかな：からだは さかな、下に 足が 2本。あるくと 足が 前後に うごく
+E_BUILD.fish = function(g, m, iris){
+  const { ball, cap, eyes } = eParts(g), fin = E_MAT.belly;
+  lit(ball(m, 0.27, 0.36, 0.52, 0, 0.72, 0)); ball(fin, 0.2, 0.2, 0.4, 0, 0.6, -0.04);
+  const tail = new THREE.Group(); tail.position.set(0, 0.74, 0.5); g.add(tail); tail.add(lit(ball(m, 0.04, 0.3, 0.24, 0, 0, 0.18)));
+  lit(ball(m, 0.03, 0.18, 0.26, 0, 1.08, 0.05)); for (const s of [-1, 1]) lit(ball(m, 0.03, 0.12, 0.18, s * 0.27, 0.62, 0.02)).rotation.z = s * 0.7;
+  eyes(iris, 0.17, 0.82, -0.36, 0.85, 0.75);
+  const mo = new THREE.Mesh(E_MOUTH, E_MAT.mouth); mo.position.set(0, 0.62, -0.5); mo.rotation.z = Math.PI; mo.scale.setScalar(0.8); g.add(mo);
+  const legs = [-1, 1].map(s => { const pv = new THREE.Group(); pv.position.set(s * 0.13, 0.42, 0.02); g.add(pv); pv.add(lit(cap(E_MAT.horn, 0.05, 0.22, 0, -0.18, 0))); pv.add(lit(ball(E_MAT.mouth, 0.09, 0.06, 0.14, 0, -0.38, -0.05))); return pv; });
+  return { anim(e, t, warn, air){ const sw = air || warn ? Math.sin(t * (warn ? 26 : 14)) * 0.8 : Math.sin(t * 2) * 0.1; legs[0].rotation.x = sw; legs[1].rotation.x = -sw; tail.rotation.y = Math.sin(t * 7) * 0.5; } };
+};
+// カニ：ひらたい からだ、大きな はさみ、目は ぼうの 先。よこに ゆれて、はさみを ちょきちょき
+E_BUILD.crab = function(g, m, iris){
+  const { ball, cap } = eParts(g);
+  lit(ball(m, 0.52, 0.24, 0.36, 0, 0.42, 0)); ball(E_MAT.belly, 0.36, 0.1, 0.26, 0, 0.3, -0.06);
+  for (const s of [-1, 1]){
+    cap(m, 0.035, 0.2, s * 0.17, 0.74, -0.2, 0); ball(E_MAT.white, 0.085, 0.085, 0.085, s * 0.17, 0.9, -0.2); ball(E_MAT.pupil, 0.045, 0.05, 0.03, s * 0.17, 0.9, -0.275);
+    for (let i = 0; i < 3; i++) lit(cap(m, 0.04, 0.26, s * 0.56, 0.24, -0.1 + i * 0.17, s * 0.9));
+  }
+  const mo = new THREE.Mesh(E_MOUTH, E_MAT.dark); mo.position.set(0, 0.42, -0.36); mo.rotation.z = Math.PI; g.add(mo);
+  const arms = [-1, 1].map(s => { const pv = new THREE.Group(); pv.position.set(s * 0.5, 0.5, -0.2); g.add(pv); pv.add(lit(cap(m, 0.06, 0.2, s * 0.12, 0.08, -0.08, s * -0.9)));
+    const up = lit(ball(m, 0.17, 0.11, 0.22, s * 0.3, 0.26, -0.22)), lo = lit(ball(m, 0.14, 0.07, 0.2, s * 0.3, 0.14, -0.24)); pv.add(up); pv.add(lo); pv.up = up; return pv; });
+  return { anim(e, t, warn, air){ const sn = Math.sin(t * (warn ? 24 : 6)); arms.forEach((a, i) => { a.up.rotation.x = Math.max(0, i ? sn : -sn) * 0.6; a.rotation.z = warn ? (i ? -0.5 : 0.5) : 0; }); e.g.rotation.z = air ? Math.sin(t * 16) * 0.12 : 0; } };
+};
+// タコ：まるい 頭に 足が 6本。足を くねくね、口は とがっている
+E_BUILD.octo = function(g, m, iris){
+  const { ball, cap, eyes } = eParts(g);
+  lit(ball(m, 0.42, 0.46, 0.42, 0, 0.82, 0)); ball(E_MAT.gloss, 0.14, 0.08, 0.02, -0.2, 1.12, -0.3).rotation.set(-0.6, 0.5, 0);
+  eyes(iris, 0.17, 0.84, -0.385, 0.85, 0.3); for (const s of [-1, 1]) ball(E_MAT.blush, 0.07, 0.04, 0.02, s * 0.3, 0.68, -0.33);
+  lit(cap(m, 0.07, 0.1, 0, 0.62, -0.44, 0, Math.PI / 2));
+  const legs = [0, 1, 2, 3, 4, 5].map(i => { const a = i / 6 * Math.PI * 2 + 0.5, pv = new THREE.Group(); pv.position.set(Math.cos(a) * 0.3, 0.44, Math.sin(a) * 0.3); pv.rotation.y = -a; g.add(pv);
+    pv.add(lit(cap(m, 0.085, 0.3, 0.14, -0.14, 0, 0.8))); pv.add(lit(cap(m, 0.065, 0.22, 0.4, -0.36, 0, 1.25))); return pv; });
+  return { anim(e, t, warn){ legs.forEach((l, i) => { l.rotation.z = Math.sin(t * (warn ? 18 : 4) + i * 1.1) * (warn ? 0.5 : 0.22); }); } };
+};
+
+// ---- こおった 海と、やさしい さかな ----
+// 海の きたがわが こおっていて、メダカたちが 沖の がっこうに 行けない。やさしい さかなの ひとりごとを 聞いて、自分で 気づいて、ファイヤーで こおりを とかす。
+// とかした あとは、やさしい さかなが 会うたびに たいりょくを かいふく してくれる
+const ICE = { x: SEA_X + 9, z: YK.cz - 22, w: 18, d: 16 }, mk = { next: 0, t: -1, fish: [] };
+(function buildIce(){
+  const g = new THREE.Group(); scene.add(g); mk.g = g;
+  const ice = new THREE.Mesh(new THREE.BoxGeometry(ICE.w, 0.34, ICE.d), new THREE.MeshPhongMaterial({ color: 0xdff6ff, transparent: true, opacity: 0.9, shininess: 140, specular: 0xffffff })); ice.position.set(ICE.x, 0.2, ICE.z); ice.receiveShadow = true; g.add(ice);
+  const chunk = new THREE.DodecahedronGeometry(1, 0), cm = new THREE.MeshPhongMaterial({ color: 0xbfeaff, flatShading: true, shininess: 100 });
+  for (let i = 0; i < 9; i++){ const c = lit(new THREE.Mesh(chunk, cm)); c.position.set(ICE.x + (rnd() - 0.5) * ICE.w, 0.5, ICE.z + (rnd() - 0.5) * ICE.d); c.scale.set(0.5 + rnd() * 0.7, 0.4 + rnd() * 0.8, 0.5 + rnd() * 0.7); c.rotation.y = rnd() * 6; g.add(c); }
+  mk.s = { x0: ICE.x - ICE.w / 2, x1: ICE.x + ICE.w / 2, z0: ICE.z - ICE.d / 2, z1: ICE.z + ICE.d / 2, h: 0.33 }; solids.push(mk.s);   // こおりの 上は 歩ける
+  // 沖の 小さな しまと、メダカの がっこう
+  mk.sx = ICE.x + 16; mk.sz = ICE.z;
+  const isle = lit(new THREE.Mesh(new THREE.CylinderGeometry(3, 3.4, 0.6, 16), mat(0xe9d9a6))); isle.position.set(mk.sx, 0.2, mk.sz); scene.add(isle);
+  box(3, 1.8, 2.2, 0xfff1c9, mk.sx, 1.4, mk.sz); box(3.4, 0.3, 2.6, 0xd0243a, mk.sx, 2.45, mk.sz); box(0.5, 0.9, 0.08, 0x7a4a22, mk.sx - 1.52, 0.95, mk.sz); box(0.08, 1.6, 0.08, 0x8b939c, mk.sx + 1, 3.3, mk.sz); box(0.7, 0.4, 0.04, 0xffd23f, mk.sx + 1.38, 3.85, mk.sz);
+  for (const dz of [-0.6, 0.6]) box(0.06, 0.5, 0.5, 0x7fc8f0, mk.sx - 1.52, 1.6, mk.sz + dz);
+  // メダカ（こおりの 岸に とりのこされて ぴちぴち）
+  const body = mat(0xffa64d), fin = mat(0xffe08a);
+  for (let i = 0; i < 6; i++){ const f = new THREE.Group(); const b = lit(new THREE.Mesh(E_BALL, body)); b.scale.set(0.09, 0.11, 0.26); f.add(b); const t = new THREE.Mesh(E_BALL, fin); t.scale.set(0.02, 0.1, 0.1); t.position.z = 0.3; f.add(t);
+    for (const s of [-1, 1]){ const e = new THREE.Mesh(E_BALL, E_MAT.pupil); e.scale.setScalar(0.03); e.position.set(s * 0.07, 0.03, -0.17); f.add(e); }
+    f.scale.setScalar(1.6); const x = SEA_X + 0.8 + rnd() * 2, z = ICE.z - 5 + i * 2; f.position.set(x, 0.46, z); scene.add(f); mk.fish.push({ g: f, x, z, ph: rnd() * 6 }); }
+  // やさしい さかな：ピンクの あるく さかな。青い ぼうしと かばん
+  const A = new THREE.Group(); mk.nx = SEA_X - 5; mk.nz = ICE.z + 4; A.position.set(mk.nx, 0, mk.nz); A.rotation.y = Math.PI / 2; A.scale.setScalar(1.5); scene.add(A);
+  mk.P = E_BUILD.fish(A, mat(0xff9db8), mat(0x8a2f5a)); { const { ball, cap } = eParts(A); lit(ball(mat(0x3b8bff), 0.2, 0.09, 0.22, 0, 1.16, -0.16)); ball(mat(0x3b8bff), 0.2, 0.02, 0.14, 0, 1.11, -0.36); lit(ball(mat(0xffd23f), 0.1, 0.14, 0.16, 0.3, 0.6, 0.12)); cap(mat(0x7a4a22), 0.015, 0.5, 0.1, 0.84, 0.1, 0.9); }
+  mk.npc = A; solids.push({ x0: mk.nx - 0.5, x1: mk.nx + 0.5, z0: mk.nz - 0.5, z1: mk.nz + 0.5, h: 2 });
+})();
+function meltIce(){
+  if (st('medaka')) return;
+  bump('medaka'); mk.t = 0; solids.splice(solids.indexOf(mk.s), 1); scene.remove(mk.g); sfx.ice();
+  for (let i = 0; i < 10; i++) burst(ICE.x + (rnd() - 0.5) * ICE.w, 0.6 + rnd(), ICE.z + (rnd() - 0.5) * ICE.d, 0xffffff, 6, 5);
+  later(0.9, () => { sfx.clear(); say('🔥 こおりが とけた！ メダカたちが およぎだした', 4); });
+  later(5, () => { mk.next = S.t + 14; S.hp = maxHp(); S.mp = maxMp(); hud(); sfx.win();
+    talk('🐟 やさしい さかな「わあ、こおりが とけた！ メダカたちが がっこうに いけるよ。<br><b>ありがとう！</b> おれいに げんきを わけて あげるね」<small>❤ たいりょくも 🔮MPも まんたん。これからは 会うたびに かいふく してくれる</small>', 8);
+    speak('わあ、こおりが とけた！ メダカたちが、がっこうに いけるよ。ありがとう！ おれいに、げんきを わけて あげるね。'); });
+}
+function updateSea(dt){
+  mk.npc.position.y = Math.abs(Math.sin(S.t * 2.2)) * 0.08; mk.P.anim({ g: mk.npc }, S.t, false, false); mk.npc.rotation.z = 0;
+  const done = st('medaka');
+  if (done && mk.t < 0){ mk.t = 99; if (mk.g.parent){ solids.splice(solids.indexOf(mk.s), 1); scene.remove(mk.g); } }   // つづきから：もう とけている
+  if (done) mk.t += dt;
+  mk.fish.forEach((f, i) => {
+    if (!done){ f.g.position.set(f.x, 0.46 + Math.abs(Math.sin(S.t * 9 + f.ph)) * 0.12, f.z); f.g.rotation.z = Math.sin(S.t * 14 + f.ph) * 0.7; return; }
+    // とけた あと：がっこうへ およいで、しまの まわりを 回る
+    const q = clamp((mk.t - i * 0.3) / 5, 0, 1), a = S.t * 0.8 + i * 1.05, tx = mk.sx + Math.cos(a) * 4.6, tz = mk.sz + Math.sin(a) * 4.6;
+    const x = f.x + (tx - f.x) * q, z = f.z + (tz - f.z) * q; f.g.rotation.z = 0; f.g.rotation.y = Math.atan2(-(x - f.g.position.x), -(z - f.g.position.z)) || 0; f.g.position.set(x, 0.2 + Math.sin(S.t * 3 + f.ph) * 0.06, z);
+  });
+  if (tw() !== YK || !S.on || S.ride || S.battle || S.t < S.busyT) return;
+  const d = Math.hypot(S.x - mk.nx, S.z - mk.nz);
+  if (d > 6 || S.t < mk.next) return;
+  mk.next = S.t + 14;
+  if (done){ S.hp = maxHp(); S.mp = maxMp(); hud(); sfx.eat(); talk('🐟 やさしい さかな「こんにちは！ げんきを わけて あげるね」<small>❤ たいりょくも 🔮MPも まんたん</small>', 4); speak('こんにちは！ げんきを わけて あげるね。'); return; }
+  mk.heard = (mk.heard || 0) + 1; S.mkHeard = 1;
+  if (mk.heard % 2){ talk('🐟 やさしい さかな「たいへんだ… うみが こおって しまって、メダカたちが がっこうに いけないよ…」', 7); speak('たいへんだ。うみが こおって しまって、メダカたちが、がっこうに いけないよ。'); }
+  else { talk('🐟 やさしい さかな「なにか あたたかい ものが あれば、こおりが とけるのになあ…」', 6); speak('なにか、あたたかい ものが あれば、こおりが とけるのになあ。'); }
+}
+// ---- ちば：ゆうえんち。門、メリーゴーラウンド、コーヒーカップ（どちらも かざり）、テントの 中に かたむきボール ----
+const CB = TOWNS.find(t => t.id === 'chiba'), cb = { adults: [], next: 0 };
+// ゆうえんちの てき：ふうせん、ポップコーン、ぬいぐるみの くま（どれも この ゲームの ために 作った形）
+const PARK_TIERS = [
+  { kind: 'balloon', hp: 2,  exp: 2,  atk: 1, coin: 3,  size: 1.2, color: 0xff5a8a, iris: 0x7a1030, icon: '🎈', lv: 1, w: 6, vy: 1.3, sq: 0.5 },
+  { kind: 'popcorn', hp: 5,  exp: 5,  atk: 2, coin: 7,  size: 1.3, color: 0xfff2c8, iris: 0x7a4a22, icon: '🍿', lv: 2, w: 4, vy: 0.5, sq: 0.6 },
+  { kind: 'teddy',   hp: 12, exp: 10, atk: 4, coin: 14, size: 1.8, color: 0xc98a4e, iris: 0x3a2410, icon: '🧸', lv: 4, w: 3, vy: 0.3, sq: 0.4 }
+];
+Object.assign(NAME, { balloon: 'ふうせん', popcorn: 'ポップコーン', teddy: 'ぬいぐるみの くま' });
+AREA.chiba = { tiers: PARK_TIERS, x0: CB.cx - 32, x1: CB.cx + 32, z0: CB.cz - 32, z1: CB.cz + 16 };
+SAFE.push({ x: CB.sx, z: CB.sz, r: 9 }, { x: CB.cx - 6, z: CB.cz + 12, r: 6 }, { x: CB.cx, z: CB.cz - 18, r: 5.5 });
+// ふうせん：ふわふわ うく。下に ひも
+E_BUILD.balloon = function(g, m, iris){
+  const { ball, cap, eyes } = eParts(g);
+  const b = new THREE.Group(); g.add(b); const bb = lit(ball(m, 0.42, 0.5, 0.42, 0, 0.95, 0)); b.add(bb); b.add(ball(m, 0.08, 0.07, 0.08, 0, 0.44, 0));
+  b.add(ball(E_MAT.gloss, 0.12, 0.16, 0.02, -0.2, 1.15, -0.32)); cap(E_MAT.white, 0.012, 0.36, 0, 0.2, 0, 0);
+  const fg = new THREE.Group(); b.add(fg); const p2 = eParts(fg); p2.eyes(iris, 0.15, 0.98, -0.39, 0.8, 0.2); const mo = new THREE.Mesh(E_MOUTH, E_MAT.mouth); mo.position.set(0, 0.8, -0.41); mo.rotation.z = Math.PI; fg.add(mo);
+  return { anim(e, t, warn){ b.position.y = 0.25 + Math.sin(t * 2.4) * 0.12; b.rotation.z = Math.sin(t * (warn ? 20 : 1.6)) * (warn ? 0.25 : 0.12); b.scale.setScalar(warn ? 1.12 + Math.sin(t * 22) * 0.06 : 1); } };
+};
+// ポップコーン：しましまの はこから ポップコーンが あふれている。はねると つぶが ゆれる
+E_BUILD.popcorn = function(g, m, iris){
+  const { ball, eyes } = eParts(g), red = mat(0xe8523a), white = mat(0xffffff);
+  for (let i = 0; i < 5; i++) box(0.17, 0.6, 0.62, i % 2 ? white : red, -0.34 + i * 0.17, 0.32, 0, g);
+  const pops = []; for (let i = 0; i < 9; i++){ const a = i / 9 * 6.283, r = i < 6 ? 0.26 : 0.1, o = lit(ball(m, 0.17, 0.15, 0.17, Math.cos(a) * r, 0.7 + (i < 6 ? 0 : 0.16) + (i % 2) * 0.05, Math.sin(a) * r * 0.8)); pops.push(o); }
+  eyes(iris, 0.16, 0.38, -0.32, 0.8); const mo = new THREE.Mesh(E_MOUTH, E_MAT.mouth); mo.position.set(0, 0.2, -0.325); mo.rotation.z = Math.PI; g.add(mo);
+  return { anim(e, t, warn, air){ pops.forEach((o, i) => { o.position.y = 0.7 + (i < 6 ? 0 : 0.16) + (i % 2) * 0.05 + Math.abs(Math.sin(t * (warn ? 20 : air ? 12 : 3) + i)) * (warn ? 0.22 : air ? 0.14 : 0.03); }); } };
+};
+// ぬいぐるみの くま：まるい からだと 耳、ぬい目、リボン。うでを ぱたぱた
+E_BUILD.teddy = function(g, m, iris){
+  const { ball, cap, eyes } = eParts(g), pad = E_MAT.belly;
+  lit(ball(m, 0.42, 0.44, 0.38, 0, 0.5, 0)); ball(pad, 0.26, 0.28, 0.1, 0, 0.46, -0.31); lit(ball(m, 0.36, 0.33, 0.33, 0, 1.08, -0.02)); ball(pad, 0.15, 0.12, 0.1, 0, 0.98, -0.3); ball(E_MAT.pupil, 0.05, 0.04, 0.03, 0, 1.03, -0.39);
+  for (const s of [-1, 1]){ lit(ball(m, 0.13, 0.13, 0.08, s * 0.28, 1.36, 0)); ball(pad, 0.07, 0.07, 0.03, s * 0.28, 1.36, -0.07); lit(ball(m, 0.15, 0.13, 0.2, s * 0.24, 0.1, -0.12)); ball(pad, 0.08, 0.07, 0.03, s * 0.24, 0.1, -0.31); }
+  eyes(iris, 0.14, 1.14, -0.325, 0.6); cap(E_MAT.dark, 0.012, 0.3, 0.02, 0.5, -0.4, 0); lit(ball(mat(0xd0243a), 0.16, 0.08, 0.06, 0, 0.84, -0.3));
+  const arms = [-1, 1].map(s => { const pv = new THREE.Group(); pv.position.set(s * 0.42, 0.72, 0); g.add(pv); pv.add(lit(ball(m, 0.13, 0.24, 0.14, s * 0.06, -0.2, -0.02))); return pv; });
+  return { anim(e, t, warn, air){ const sw = Math.sin(t * (warn ? 22 : 5)); arms[0].rotation.z = warn ? -2.4 : -0.3 - Math.max(0, sw) * 0.9; arms[1].rotation.z = warn ? 2.4 : 0.3 + Math.max(0, -sw) * 0.9; e.g.rotation.z = air ? sw * 0.1 : 0; } };
+};
+// ひと（この ゲームの ために 作った形）：まるい からだ、ぼうし、かばん。hat・bag は 色
+function makePerson(x, z, o){
+  const A = new THREE.Group(); A.position.set(x, 0, z); A.scale.setScalar(o.s || 1); scene.add(A);
+  const { ball, cap, eyes } = eParts(A), skin = mat(0xffd9b0);
+  lit(ball(mat(o.cloth), 0.46, 0.6, 0.42, 0, 0.85, 0)); lit(ball(skin, 0.38, 0.37, 0.36, 0, 1.72, 0)); lit(ball(mat(o.hair), 0.4, 0.3, 0.38, 0, 1.84, 0.06));
+  eyes(mat(0x3a2a1a), 0.14, 1.72, -0.34, 0.65); for (const s of [-1, 1]){ ball(E_MAT.blush, 0.06, 0.035, 0.02, s * 0.24, 1.6, -0.3); lit(cap(mat(o.cloth), 0.1, 0.3, s * 0.52, 0.95, 0, 0)); lit(cap(skin, 0.11, 0.26, s * 0.18, 0.2, 0, 0)); }
+  if (o.hat != null){ lit(ball(mat(o.hat), 0.42, 0.2, 0.4, 0, 2.02, 0)); lit(ball(mat(o.hat), 0.56, 0.04, 0.54, 0, 1.94, 0)); }
+  if (o.bag != null){ lit(ball(mat(o.bag), 0.2, 0.24, 0.14, 0.58, 0.72, -0.1)); cap(mat(o.bag), 0.02, 0.5, 0.52, 1.1, -0.08, 0.2); }
+  if (o.cry){ for (const s of [-1, 1]){ ball(mat(0x8fd8ff), 0.035, 0.09, 0.02, s * 0.2, 1.56, -0.345); lit(ball(mat(o.hair), 0.13, 0.13, 0.13, s * 0.42, 1.9, 0.1)); } const mo = new THREE.Mesh(E_MOUTH, E_MAT.mouth); mo.position.set(0, 1.5, -0.35); A.add(mo); }
+  else { const mo = new THREE.Mesh(E_MOUTH, E_MAT.mouth); mo.position.set(0, 1.56, -0.35); mo.rotation.z = Math.PI; mo.scale.setScalar(0.8); A.add(mo); }
+  return A;
+}
+const iro = c => ({ あか: 'あかい', あお: 'あおい', きいろ: 'きいろい' }[c] || c + 'の');   // 「みどりの ぼうし」「あかい ぼうし」
+const COL = { あか: 0xe0243a, あお: 0x2f6fe0, きいろ: 0xffd23f, みどり: 0x3aa84a, ピンク: 0xff8fc0 };
+(function buildChiba(){
+  const X = CB.cx, Z = CB.cz, H = CB.half;
+  const flatAt = (w, d, color, x, y, z) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat(color)); m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); m.receiveShadow = true; scene.add(m); };
+  flatAt(H * 2 + 6, H * 2 + 6, 0xf7e7c6, X, 0.015, Z); flatAt(7, H * 2, 0xffc8d8, X, 0.02, Z); flatAt(H * 2, 6, 0xc8e8ff, X, 0.022, Z - 2);
+  [[X - H - 0.5, Z, 0.3, H * 2 + 2], [X + H + 0.5, Z, 0.3, H * 2 + 2], [X, Z - H - 0.5, H * 2 + 2, 0.3]].forEach(([x, z, w, d]) => { box(w, 0.16, d, 0xffffff, x, 1.0, z); box(w, 0.16, d, 0xffffff, x, 0.55, z); });
+  // 門
+  const gz = Z + 20; [-5, 5].forEach(dx => { solid(X + dx, gz, 1.4, 1.4, 6, 0xff8fc0); box(1.8, 0.5, 1.8, 0xffd23f, X + dx, 6.25, gz); const c = lit(new THREE.Mesh(new THREE.ConeGeometry(1.2, 2, 4), flat(0x3b9bff))); c.position.set(X + dx, 7.5, gz); c.rotation.y = Math.PI / 4; scene.add(c); });
+  const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 220; const c = cv.getContext('2d'); c.fillStyle = '#3b9bff'; c.fillRect(0, 0, 1024, 220); c.strokeStyle = '#ffd23f'; c.lineWidth = 16; c.strokeRect(8, 8, 1008, 204);
+  c.fillStyle = '#fff'; c.font = 'bold 140px "Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('★ ゆうえんち ★', 512, 118, 960);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; [0, Math.PI].forEach(r => { const m = new THREE.Mesh(new THREE.PlaneGeometry(9, 1.9), new THREE.MeshBasicMaterial({ map: tex })); m.position.set(X, 5.4, gz + (r ? -0.16 : 0.16)); m.rotation.y = r; scene.add(m); });
+  box(9, 1.9, 0.26, 0x1e2f5a, X, 5.4, gz);
+  // メリーゴーラウンド（のれる 台。うまが 上下しながら 回る）
+  const mx = X - 16, mz = Z + 2; solid(mx, mz, 8.4, 8.4, 0.4, null); const base = lit(new THREE.Mesh(new THREE.CylinderGeometry(5, 5.2, 0.4, 24), mat(0xffe08a))); base.position.set(mx, 0.2, mz); scene.add(base);
+  const mg2 = new THREE.Group(); mg2.position.set(mx, 0, mz); scene.add(mg2); cb.merry = mg2; cb.horses = [];
+  { const pole = lit(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 5, 12), mat(0xffffff))); pole.position.y = 2.9; mg2.add(pole); }
+  const roof = lit(new THREE.Mesh(new THREE.ConeGeometry(5.6, 2.4, 12), flat(0xff5a8a))); roof.position.y = 6.4; mg2.add(roof); const rim = lit(new THREE.Mesh(new THREE.CylinderGeometry(5.6, 5.6, 0.4, 24), mat(0xffd23f))); rim.position.y = 5.2; mg2.add(rim);
+  for (let i = 0; i < 6; i++){ const a = i / 6 * 6.283, h = new THREE.Group(); h.position.set(Math.cos(a) * 3.6, 0, Math.sin(a) * 3.6); h.rotation.y = -a; mg2.add(h); const hc = [0xffffff, 0xffc8d8, 0xc8e8ff][i % 3];
+    box(0.1, 5, 0.1, 0xffd23f, 0, 2.7, 0, h); const b = new THREE.Group(); h.add(b); const P2 = eParts(b); lit(P2.ball(mat(hc), 0.26, 0.3, 0.6, 0, 0, 0)); lit(P2.ball(mat(hc), 0.2, 0.3, 0.2, 0, 0.42, -0.55)); lit(P2.ball(mat(hc), 0.14, 0.14, 0.26, 0, 0.56, -0.8)); P2.ball(mat(0xd0243a), 0.28, 0.06, 0.3, 0, 0.3, 0);
+    for (const s of [-1, 1]) for (const dz of [-0.35, 0.35]) lit(P2.cap(mat(hc), 0.06, 0.3, s * 0.14, -0.4, dz, 0)); cb.horses.push({ b, ph: i * 1.05 }); }
+  // コーヒーカップ（回る 台。カップも くるくる）
+  const kx = X + 16, kz = Z + 2; solid(kx, kz, 8.4, 8.4, 0.3, null); const plat = new THREE.Group(); plat.position.set(kx, 0, kz); scene.add(plat); cb.cups = plat; cb.cup = [];
+  { const pl = lit(new THREE.Mesh(new THREE.CylinderGeometry(5, 5.2, 0.3, 24), mat(0xc8e8ff))); pl.position.y = 0.15; plat.add(pl); }
+  [0xff5a8a, 0xffd23f, 0x4cd964, 0x3b9bff].forEach((col, i) => { const a = i / 4 * 6.283, k = new THREE.Group(); k.position.set(Math.cos(a) * 2.8, 0.3, Math.sin(a) * 2.8); plat.add(k);
+    const wall = lit(new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.0, 1.1, 16, 1, true), new THREE.MeshLambertMaterial({ color: col, side: THREE.DoubleSide }))); wall.position.y = 0.6; k.add(wall); const bot = lit(new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 0.1, 16), mat(0xffffff))); bot.position.y = 0.1; k.add(bot);
+    const hd = lit(new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.1, 6, 12), mat(col))); hd.position.set(1.5, 0.6, 0); k.add(hd); cb.cup.push(k); });
+  // ふうせんの たば と はた（かざり）
+  [[X - 9, Z + 16], [X + 9, Z + 16], [X - 26, Z - 14], [X + 26, Z - 12]].forEach(([x, z], k) => { box(0.12, 2.4, 0.12, 0xffffff, x, 1.2, z); [0xff5a5a, 0xffd23f, 0x3b9bff, 0x4cd964].forEach((col, i) => { const b = lit(new THREE.Mesh(E_BALL, mat(col))); b.scale.set(0.4, 0.5, 0.4); b.position.set(x + (i - 1.5) * 0.5, 3 + (i % 2) * 0.5 + k * 0.1, z + (i % 2) * 0.3); scene.add(b); }); });
+  // ポップコーンの やたい
+  solid(X + 24, Z + 12, 3, 2, 1.2, 0xe8523a); box(3.4, 0.2, 2.4, 0xffffff, X + 24, 3, Z + 12); [-1.4, 1.4].forEach(dx => box(0.12, 1.8, 0.12, 0xffffff, X + 24 + dx, 2.1, Z + 13)); box(1.2, 0.9, 1, 0xfff2c8, X + 24, 1.65, Z + 12);
+  // テント（かたむきボールの 入口の うしろ）
+  const tent = lit(new THREE.Mesh(new THREE.ConeGeometry(7, 7, 10), flat(0xe0243a))); tent.position.set(X, 3.5, Z - 27); scene.add(tent); const tw2 = lit(new THREE.Mesh(new THREE.ConeGeometry(7.02, 7, 10, 1, true, 0, Math.PI), flat(0xffffff))); tw2.position.copy(tent.position); tw2.rotation.y = 0.314; tw2.scale.set(1.002, 1.002, 1.002); scene.add(tw2);
+  solids.push({ x0: X - 5, x1: X + 5, z0: Z - 32, z1: Z - 22.5, h: 6 });
+  // かたむきボールの 光る わ
+  const gm = { key: 'ball', name: 'かたむきボール', px: X, pz: Z - 18, color: 0xffb02f, pub: '../katamuki-ball-zenshin/', dev: '../katamuki-ball/', town: 'chiba', t: 0, n: 0, armed: true };
+  gm.ring = new THREE.Mesh(new THREE.TorusGeometry(CFG.NEST_R, 0.16, 8, 32), new THREE.MeshBasicMaterial({ color: gm.color })); gm.ring.rotation.x = Math.PI / 2; gm.ring.position.set(gm.px, 0.2, gm.pz); scene.add(gm.ring);
+  gm.beam = new THREE.Mesh(new THREE.CylinderGeometry(CFG.NEST_R, CFG.NEST_R, 6, 28, 1, true), new THREE.MeshBasicMaterial({ color: gm.color, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false })); gm.beam.position.set(gm.px, 3, gm.pz); scene.add(gm.beam);
+  GAMES.push(gm); sign('🎪 かたむきボール', X + 5.5, Z - 16);
+  // まいごの 子 と、おとな 4人（ぼうしと かばんの 色が ちがう。だれが おかあさんかは 毎回 かわる）
+  cb.kx = X - 6; cb.kz = Z + 12; cb.kid = makePerson(cb.kx, cb.kz, { s: 0.7, cloth: 0xffe08a, hair: 0x5a3418, cry: true }); cb.kid.rotation.y = Math.PI;
+  solids.push({ x0: cb.kx - 0.4, x1: cb.kx + 0.4, z0: cb.kz - 0.4, z1: cb.kz + 0.4, h: 1.6 });
+  const looks = [['あか', 'きいろ'], ['あか', 'あお'], ['あお', 'きいろ'], ['みどり', 'ピンク']].sort(() => Math.random() - 0.5), spots = [[X - 26, Z - 6], [X + 26, Z - 4], [X - 12, Z - 22], [X + 13, Z - 24]];
+  const says = ['ポップコーン、おいしいなあ', 'つぎは どれに のろうかな', 'いい てんきだねえ', 'かんらんしゃは ないのかしら'];
+  spots.forEach(([x, z], i) => { const [hat, bag] = looks[i], g = makePerson(x, z, { cloth: [0xb7d7ff, 0xffd0e0, 0xd8f0c0, 0xf0e0ff][i], hair: [0x3a2410, 0x6a3a18, 0x2a2a2a, 0x8a5a2b][i], hat: COL[hat], bag: COL[bag] });
+    g.rotation.y = Math.atan2(-(X - x), -(Z - z)); cb.adults.push({ g, x, z, hx: x, hz: z, hat, bag, say: says[i], next: 0 }); });
+  cb.mom = cb.adults[Math.floor(Math.random() * 4)];
+})();
+// まいご：子どもの ひとりごと（おかあさんの ぼうしと かばんの 色）を 聞いて、合う 人を さがし、こえを かけて つれてくる
+// S.lost：null → heard（聞いた） → lead（おとなを つれている）。おわると st('maigo')
+function callAdult(){
+  const L = S.lost; if (tw() !== CB || !L || L.ph !== 'heard' || S.battle) return false;
+  const a = cb.adults.find(a => near(a.x, a.z, 4.5)); if (!a) return false;
+  L.ph = 'lead'; L.who = a; sfx.draw(); talk(`🙋 ${iro(a.hat)} ぼうしの 人「えっ、まいごが いるの？ わかった、いっしょに いきましょう」`, 4); speak('えっ、まいごが いるの？ わかった、いっしょに いきましょう。');
+  return true;
+}
+function updateChiba(dt){
+  cb.merry.rotation.y += dt * 0.5; for (const h of cb.horses) h.b.position.y = 1.5 + Math.sin(S.t * 2 + h.ph) * 0.5;
+  cb.cups.rotation.y -= dt * 0.4; for (const k of cb.cup) k.rotation.y += dt * 2;
+  if (tw() !== CB) return;
+  cb.kid.rotation.z = st('maigo') ? 0 : Math.sin(S.t * 9) * 0.05;
+  const L = S.lost, done = st('maigo');
+  // ついてくる おとな
+  if (L && L.ph === 'lead'){
+    const a = L.who, d = Math.hypot(S.x - a.x, S.z - a.z);
+    if (d > 2.4 && !S.battle){ const step = Math.min(d - 2.2, dt * 6.5); a.x += (S.x - a.x) / d * step; a.z += (S.z - a.z) / d * step; a.g.rotation.y = Math.atan2(-(S.x - a.x), -(S.z - a.z)); a.g.position.y = Math.abs(Math.sin(S.t * 9)) * 0.1; }
+    a.g.position.x = a.x; a.g.position.z = a.z;
+    if (Math.hypot(a.x - cb.kx, a.z - cb.kz) < 4.5 && near(cb.kx, cb.kz, 6)){
+      if (a === cb.mom){
+        S.lost = null; bump('maigo'); S.coin += 30; hud(); sfx.win(); a.x = cb.kx + 1.3; a.z = cb.kz; a.g.position.set(a.x, 0, a.z); a.g.rotation.y = Math.PI;
+        talk('👧「おかあさーん！」<br>👩「ああ、よかった！ <b>つれてきて くれて ありがとう！</b>」<small>おれいに 🪙30 もらった</small>', 6); speak('おかあさーん！ ああ、よかった！ つれてきて くれて、ありがとう！');
+        later(6.5, () => openTown('niigata'));
+      } else {
+        L.ph = 'heard'; L.who = null; sfx.bump(); a.back = true;
+        talk(`👧「ちがう… おかあさんじゃ ない…<br>おかあさんは <b>${iro(cb.mom.hat)} ぼうし</b>で、<b>${cb.mom.bag}の かばん</b>なの…」`, 6); speak(`ちがう。おかあさんじゃ ない。おかあさんは、${iro(cb.mom.hat)} ぼうしで、${cb.mom.bag}の かばんなの。`);
+      }
+    }
+  }
+  for (const a of cb.adults) if (a.back){ const d = Math.hypot(a.hx - a.x, a.hz - a.z); if (d < 0.3){ a.back = false; a.g.position.y = 0; } else { a.x += (a.hx - a.x) / d * dt * 4; a.z += (a.hz - a.z) / d * dt * 4; a.g.position.set(a.x, Math.abs(Math.sin(S.t * 9)) * 0.1, a.z); a.g.rotation.y = Math.atan2(-(a.hx - a.x), -(a.hz - a.z)); } }
+  if (!S.on || S.ride || S.battle || S.t < S.busyT) return;
+  // 子どもの ひとりごと
+  if (near(cb.kx, cb.kz, 6) && S.t > cb.next && !(L && L.ph === 'lead')){
+    cb.next = S.t + 14;
+    if (done){ talk('👧「あのね、おかあさんと メリーゴーラウンドに のるの！ ありがとう！」', 4); speak('あのね、おかあさんと、メリーゴーラウンドに のるの！ ありがとう！'); }
+    else { if (!L) S.lost = { ph: 'heard', who: null };
+      talk(`👧 小さな 子「うえーん… おかあさんと はぐれちゃった…<br>おかあさんは <b>${iro(cb.mom.hat)} ぼうし</b>で、<b>${cb.mom.bag}の かばん</b>を もってるの…」`, 8); speak(`うえーん。おかあさんと、はぐれちゃった。おかあさんは、${iro(cb.mom.hat)} ぼうしで、${cb.mom.bag}の かばんを、もってるの。`); }
+    return;
+  }
+  // おとなの ひとりごと（子どもの 話を 聞いた あとは、こえの かけ方も 出す）
+  for (const a of cb.adults){
+    if (a.back || (L && L.who === a) || !near(a.x, a.z, 4.5) || S.t < a.next) continue;
+    a.next = S.t + 12; const mom = a === cb.mom && !done, line = done && a === cb.mom ? 'さっきは ありがとう！' : mom ? 'あの子ったら、どこに いったのかしら… しんぱいだわ' : a.say;
+    talk(`🙋 ${iro(a.hat)} ぼうしの 人「${line}」` + (L && L.ph === 'heard' ? '<small>✋ 手を あげて「きて ください」と いうと、つれて いける</small><div id="qz"><button data-say="come" style="width:auto;padding:0 14px;font-size:18px">きて ください</button></div>' : ''), 6); speak(line);
+    break;
+  }
+}
+function drawChibaMap(){
+  const N = 640, T = tw(), H = T.half + 3, X = v => (v - T.cx + H) / (H * 2) * N, Z = v => (v - T.cz + H) / (H * 2) * N, g = mg; if (mcv.width !== N){ mcv.width = mcv.height = N; }
+  g.fillStyle = '#f7e7c6'; g.fillRect(0, 0, N, N); g.fillStyle = '#ffc8d8'; g.fillRect(X(T.cx - 3.5), 0, X(T.cx + 3.5) - X(T.cx - 3.5), N); g.fillStyle = '#c8e8ff'; g.fillRect(0, Z(T.cz - 5), N, Z(T.cz + 1) - Z(T.cz - 5));
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  const mark = (ic, nm, x, z) => { g.fillStyle = '#fffbe9'; g.beginPath(); g.arc(X(x), Z(z), 22, 0, 7); g.fill(); g.font = '28px sans-serif'; g.fillStyle = '#fff'; g.fillText(ic, X(x), Z(z) + 2);
+    if (nm){ g.font = 'bold 17px sans-serif'; g.lineWidth = 4; g.strokeStyle = '#102040'; g.strokeText(nm, X(x), Z(z) + 36); g.fillStyle = '#fff'; g.fillText(nm, X(x), Z(z) + 36); } };
+  mark('🎠', 'メリーゴーラウンド', T.cx - 16, T.cz + 2); mark('☕', 'コーヒーカップ', T.cx + 16, T.cz + 2); mark('🎪', 'かたむきボール', T.cx, T.cz - 20); mark('🚪', 'もん', T.cx, T.cz + 20); mark('🍿', '', T.cx + 24, T.cz + 12);
+  if (!st('maigo')) mark('👧', '', cb.kx, cb.kz);
+  if (S.lost && !st('maigo')){ const k = 0.5 + 0.5 * Math.sin(performance.now() / 350);          // 子どもの 話を 聞いた あとは、人の いる 所が 少し 光る（だれが おかあさんかは 出さない）
+    for (const a of cb.adults){ const gr = g.createRadialGradient(X(a.x), Z(a.z), 3, X(a.x), Z(a.z), 30); gr.addColorStop(0, `rgba(255,255,170,${0.5 + k * 0.3})`); gr.addColorStop(1, 'rgba(255,255,170,0)'); g.fillStyle = gr; g.fillRect(X(a.x) - 32, Z(a.z) - 32, 64, 64); g.font = '22px sans-serif'; g.fillStyle = '#fff'; g.fillText('🙋', X(a.x), Z(a.z)); } }
+  g.font = 'bold 24px sans-serif'; g.fillStyle = '#ff5a5a'; g.fillText('きた ↑', N / 2, 20); g.fillStyle = '#102040'; g.font = 'bold 22px sans-serif'; g.fillText('🎡 ちば', 70, 24);
+  g.save(); g.translate(X(S.x), Z(S.z)); g.rotate(-S.yaw); g.fillStyle = '#ff3a5a'; g.strokeStyle = '#fff'; g.lineWidth = 4; g.beginPath(); g.moveTo(0, -20); g.lineTo(14, 14); g.lineTo(0, 6); g.lineTo(-14, 14); g.closePath(); g.fill(); g.stroke(); g.restore();
+  $('mapgoal').textContent = '✋ 手を あげて「のりもの」で ほかの まちへ';
 }
 let lifeReady = false;
 function updateLife(dt){
@@ -2000,6 +2277,7 @@ const S = {
   sword: false, pArm: 0, pAnim: 0, sAnim: 0, pNext: 0,
   lv: 1, exp: 0, cdUntil: {},
   hp: CFG.HP_BASE, coin: 0, clock: 0, night: false, nk: -1, item: {},   // もちもの（rice：新潟の おこめ、curry：石川の カレーこ。どちらも まだ 手に 入らない）
+  lost: null,   // ちばの まいご
   tw: null, open: { home: 1 }, ride: null, npc: null,   // tw：今いる まち、open：行ける まち、ride：のりものの とちゅう、npc：よこはまの たのまれごと
   cards: [], st: {}, seen: {},   // seen：行ったことの ある 場所（地図に 出る）。cards：もっている カード、st：カードの 条件に 使う 回数
   busyT: 0, ask: null, quiz: null, job: null, heardNum: null, hintT: -9,   // busyT：この時刻まで 動けない（ねる・たべる）、ask：ラーメンやの やりとり
@@ -2218,6 +2496,7 @@ async function closeNest(){
   S.x = gm.px + ux * (CFG.NEST_R + 2.5); S.z = gm.pz + uz * (CFG.NEST_R + 2.5); S.y = 0; S.vy = 0; S.speed = 0; S.sv = 0;
   S.yaw = S.camYaw = Math.atan2(-ux, -uz); last = 0;
   if (gm.key === 'donka' && gm.clears > 0) bump('donka');
+  if (gm.key === 'ball') bump('ball');
   const got = gm.key === 'hold' || gm.key === 'donka' ? gm.clears : gm.won ? 5 : gm.top;   // ホールド：クリアした ステージの数。クエスト：たおした ボスの数（さいごまで いくと 5）
   if (got > 0){ S.medal += got; hud(); sfx.clear(); say(`${gm.name} 🏅 +${got}！ おかえり！`, 3.5); }
   else say(`${tw().name}に もどったよ`, 2);
@@ -2356,6 +2635,8 @@ document.querySelectorAll('#pad button').forEach(b => {
 placeStars();
 loadGame(); hud(); bookLine();
 for (let i = 0; i < CFG.ENEMIES; i++) makeEnemy();
+for (let i = 0; i < CFG.SEA_ENEMIES; i++) makeEnemy('yokohama');
+for (let i = 0; i < CFG.PARK_ENEMIES; i++) makeEnemy('chiba');
 requestAnimationFrame(frame);
 Body.gate({
   title: 'からだアバター<br>はらっぱ ぼうけん', corner: 'tr', needFull: true,
@@ -2366,7 +2647,7 @@ Body.gate({
     S.on = true; say(`ほしを ${stars.length}こ あつめよう！`, 3);
   }
 });
-window.__game = { TOWNS, tw, yk, callRide, rideTo, openTown, pickShell, drawJapan, voiceCmd, showMap, turnPage, PLACES, findGoal, get goal(){ return goal; }, get mapOpen(){ return mapOpen; }, get bookOpen(){ return bookOpen; }, get bookPage(){ return bookPage; }, CARDS, saveGame, loadGame, openBook, SAVE_KEY, startPractice, pFoes, WORK, work, addFluff, DOJO, dojo, hearNumber, answerQuiz, QUIZ, NOOKS, SHOP, CAMP, foods, weeds, fluffs, castField, updateLife, heal, faint, callAlly, shop, gainExp, atk, TIERS, placeEnemy, cast, hear, primeMic, SPELLS, orb, startBattle, endBattle, arena, S, CFG, tick, update, jump, punch, slash, strike, setSword, enemies, sword, fx, stars, solids, arms, legs, bodyG, logs, lift, lite, sun, POND, LANE, TOWER, GAMES, openNest, closeNest, get nest(){ return nest; }, placeStars, renderer, scene, camera, cry: () => { S.bumpT = S.t; } };
+window.__game = { CB, cb, callAdult, PARK_TIERS, AREA, SEA_TIERS, ICE, mk, meltIce, TOWNS, tw, yk, callRide, rideTo, openTown, pickShell, drawJapan, voiceCmd, showMap, turnPage, PLACES, findGoal, get goal(){ return goal; }, get mapOpen(){ return mapOpen; }, get bookOpen(){ return bookOpen; }, get bookPage(){ return bookPage; }, CARDS, saveGame, loadGame, openBook, SAVE_KEY, startPractice, pFoes, WORK, work, addFluff, DOJO, dojo, hearNumber, answerQuiz, QUIZ, NOOKS, SHOP, CAMP, foods, weeds, fluffs, castField, updateLife, heal, faint, callAlly, shop, gainExp, atk, TIERS, placeEnemy, cast, hear, primeMic, SPELLS, orb, startBattle, endBattle, arena, S, CFG, tick, update, jump, punch, slash, strike, setSword, enemies, sword, fx, stars, solids, arms, legs, bodyG, logs, lift, lite, sun, POND, LANE, TOWER, GAMES, openNest, closeNest, get nest(){ return nest; }, placeStars, renderer, scene, camera, cry: () => { S.bumpT = S.t; } };
 </script>
 </body>
 </html>
