@@ -90,7 +90,7 @@ catch (e) { document.getElementById('err').style.display = 'flex'; throw e; }
 // ---- 調整する数値（長さはメートル、アバターの身長は 2.1） ----
 const CFG = {
   SPEED: 7,          // 全力で走る速さ（m/秒）
-  ACCEL: 14,         // 走りだし・止まるときの 速さの変わり方
+  ACCEL: 26,         // 走りだし・止まるときの 速さの変わり方（大きいほど すぐ 走りだし、すぐ 止まる）
   TURN: 2.0,         // 回る速さ（ラジアン/秒）
   JUMP_V: 9,         // ジャンプの 初めの速さ（高さ 約1.7m）
   BOUNCE_V: 14,      // ぴょんぴょんブロックで はねる速さ（高さ 約4m）
@@ -98,10 +98,12 @@ const CFG = {
   // カメラ：足ぶみ。「左足と右足の高さの差」（ひざ どうし・足首 どうし、肩はば単位）が 直前 RUN_WIN 秒に どれだけ変わったか。
   // 左右が 入れかわりで 上がらないと 走らない（体のゆれ・ジャンプ・カメラのぶれ・うでの動きでは 走らない）。
   // RUN_MIN より小さいと 止まる、RUN_FULL で 全力。足が うつっていないときは 走らない
-  RUN_WIN: 0.45, RUN_MIN: 0.25, RUN_FULL: 0.6, LEG_VIS: 0.6,
+  RUN_WIN: 0.4, RUN_MIN: 0.17, RUN_FULL: 0.4, LEG_VIS: 0.6,
+  RUN_SMOOTH: 0.75,  // 足の高さの ならし（1 に近いほど 動きに すぐ ついていく。小さいほど ぶれに 強い）
+  RUN_LOW: 0.65,     // 走りだした ときの いちばん おそい 速さ（全力の 何ばいか）
   // 立ち止まって 体をかたむけている間は、これ以上 大きく足ぶみしないと 歩きださない（その場で 向きを変えられるように）。
   // RUN_KEEP 秒 走りつづけた後なら、かたむけても そのまま 走りながら 曲がれる
-  RUN_MIN_TURN: 0.45, RUN_KEEP: 0.4,
+  RUN_MIN_TURN: 0.32, RUN_KEEP: 0.4,
   // カメラ：体のかたむき（肩の線のかたむき＋腰に対する肩のずれ）。TILT_MIN より小さいと まっすぐ、TILT_FULL で 回しきり
   TILT_MIN: 0.12, TILT_FULL: 0.4, LEAN_W: 0.3,
   // カメラ：よこっとび（サイドステップ）。腰のまん中が 直前 SIDE_WIN 秒に 横へ SIDE_MIN（肩はば単位）より 動いたら、その向きへ 向きを変えずに 横に動く。
@@ -2398,8 +2400,9 @@ function update(dt){
   if (AV.face) AV.face(S.t, S.t - S.bumpT < CFG.CRY);   // まるたに 当たると しばらく 泣き顔
   updateBattle(dt); updateSpell(dt); updateEnemies(dt); updateLife(dt); updateFx(dt);
   if (cam && S.on){
-    const warn = Body.ok && !S.cam.legs;
-    if (warn !== S.warn && !S.battle){ S.warn = warn; $('tip').textContent = warn ? '⚠ あしが うつる ところまで はなれてね（あしぶみで はしるよ）' : TIP_CAM; $('tip').style.color = warn ? '#ffe14d' : '#fff'; }
+    // 2：からだが カメラに うつっていない、1：足が うつっていない、0：だいじょうぶ
+    const warn = !Body.ok ? 2 : !S.cam.legs ? 1 : 0;
+    if (warn !== S.warn && !S.battle){ S.warn = warn; $('tip').textContent = warn === 2 ? '⚠ カメラに からだが うつっていないよ。右上の 小さい えいぞうを 見ながら、ぜんしんが 入る ところまで はなれてね' : warn ? '⚠ あしが うつる ところまで はなれてね（あしぶみで はしるよ）' : TIP_CAM; $('tip').style.color = warn ? '#ffe14d' : '#fff'; }
     if (DEBUG) $('dbgbox').textContent = `あし ${dbg.m.toFixed(2)} / ${dbg.min}  はしる ${run.toFixed(2)}  あし見える ${S.cam.legs ? '○' : '×'}\nかたむき ${(Body.roll + Body.lean * CFG.LEAN_W).toFixed(2)}  まがる ${steer.toFixed(2)}  よこ ${dbg.side.toFixed(2)} / ${CFG.SIDE_MIN}\n手の間 ${dbg.gap.toFixed(2)}  さすまた ${S.sword ? '○' : '×'}  パンチ ${dbg.why}`;
   }
   shadow.position.set(S.x, f.h + 0.02, S.z); shadow.scale.setScalar(clamp(1 - (S.y - f.h) * 0.15, 0.4, 1));
@@ -2526,7 +2529,7 @@ Body.on('pose', () => {
     seen++;
     // 同じがわの腰から見た高さの、左右の差（体をかたむけたり とんだりしても 変わらない）
     const d = ((lm[l].y - lm[23].y) - (lm[r].y - lm[24].y)) / u;
-    legS[l] = legS[l] == null ? d : legS[l] + (d - legS[l]) * 0.5;
+    legS[l] = legS[l] == null ? d : legS[l] + (d - legS[l]) * CFG.RUN_SMOOTH;
     row[l] = legS[l];
   });
   S.cam.legs = seen > 0;
@@ -2555,7 +2558,7 @@ Body.on('pose', () => {
   // 立ち止まってからの よこっとび（反復横とび）の間と その後 SIDE_HOLD 秒は、足が 動いても 前に走らない
   const hop = now - sideLast < CFG.SIDE_HOLD && !sideRun;
   if (hop) legH.length = 0;
-  S.cam.run = m < min || hop ? 0 : clamp(m / CFG.RUN_FULL, 0.5, 1);
+  S.cam.run = m < min || hop ? 0 : clamp(m / CFG.RUN_FULL, CFG.RUN_LOW, 1);
   dbg.m = m; dbg.min = min;
   if (S.cam.run){ if (runFrom == null) runFrom = now; runLast = now; }
   const raw = a < CFG.TILT_MIN ? 0 : Math.sign(tilt) * clamp((a - CFG.TILT_MIN) / (CFG.TILT_FULL - CFG.TILT_MIN), 0, 1);
