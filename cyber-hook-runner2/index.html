@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>Cyber Hook Runner 2 -NEON VELOCITY- Ver4.0</title>
+<title>Cyber Hook Runner 2 -NEON VELOCITY- Ver4.0.1</title>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
 <style>
 html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;}
@@ -12,7 +12,13 @@ html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;touch-a
 <body>
 <script>
 // ============================================================
-// Cyber Hook Runner 2 -NEON VELOCITY- Ver 4.0 (Stage 1: Feel + Pulse Bash)
+// Cyber Hook Runner 2 -NEON VELOCITY- Ver 4.0.1 (Stage 1: Feel + Pulse Bash)
+// ------------------------------------------------------------
+// CHANGELOG
+//  4.0.1 作業0の不具合修正
+//        - 再フック猶予中に、直前に離したアンカーへ引き戻される誤フックを除外
+//        - ミサイルの出現位置をズーム後の表示範囲の左端外側へ補正
+//  4.0   第1段階：移動の感触とパルスバッシュ
 // ============================================================
 const W=960,H=600;
 const LAVA_Y=560,PR=14;
@@ -192,7 +198,7 @@ class GameScene extends Phaser.Scene{
       t:0,biome:0,camX:0,zoomV:1,missileT:12,missileWarn:0,beepT:0,missFb:false,cause:'',
       genX:0,lastY:140,wind:0,grav:G_BASE,flashA:0,flashC:0xffffff,scanT:0,
       bashAim:null,aimT:0,aim:[0.8,-0.6],pressPtr:null,pressX:0,pressY:0,
-      lastBashT:-9,linkFlag:false,rehookT:0,bashHint:false,bashTaught:false
+      lastBashT:-9,linkFlag:false,rehookT:0,lastAnchor:null,bashHint:false,bashTaught:false
     });
     this.bgRGB=rgb(BIOMES[0].bg);
     this.anchors=[];this.coins=[];this.items=[];this.lasers=[];this.gates=[];
@@ -329,7 +335,7 @@ class GameScene extends Phaser.Scene{
     let best=null,bs=1e9;
     const back=this.rehookT>0?REHOOK_BACK:HOOK_BACK;
     for(const a of this.anchors){
-      if(a.dead) continue;
+      if(a.dead||(this.rehookT>0&&a===this.lastAnchor)) continue;
       const dx=a.x-this.px;
       if(dx<-back||dx>HOOK_FWD) continue;
       const d=Math.hypot(dx,this.py-a.y);
@@ -378,7 +384,7 @@ class GameScene extends Phaser.Scene{
   }
   releaseHook(){
     const a=this.anchor; if(!a) return;
-    this.anchor=null; this.releases++;
+    this.anchor=null; this.lastAnchor=a; this.releases++;
     const nx=this.px-a.x,ny=this.py-a.y,d=Math.hypot(nx,ny)||1;
     const ang=Math.atan2(ny,nx);
     const low=Math.abs(ang-Math.PI/2)<0.35;
@@ -619,7 +625,7 @@ class GameScene extends Phaser.Scene{
       if(this.missileT<=1.1&&this.missileWarn<=0) this.missileWarn=1.1;
       if(this.missileT<=0){
         this.missileT=20-8*this.k()+(this.assist?6:0); this.missileWarn=0;
-        this.missiles.push({x:this.camX-60,y:this.py,vx:300,vy:0,life:6,alive:true,minD:999,hit:false,nearDone:false,reflect:false});
+        this.missiles.push({x:this.camX+W/2-W/(2*this.zoomV)-60,y:this.py,vx:300,vy:0,life:6,alive:true,minD:999,hit:false,nearDone:false,reflect:false});
       }
     }
     if(this.missileWarn>0){
