@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>Cyber Hook Runner 2 -NEON VELOCITY- Ver4.0</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<style>
+html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;}
+</style>
+</head>
+<body>
+<script>
+// ============================================================
+// Cyber Hook Runner 2 -NEON VELOCITY- Ver 4.0 (Stage 1: Feel + Pulse Bash)
+// ============================================================
+const W=960,H=600;
+const LAVA_Y=560,PR=14;
+const G_BASE=980,G_ZERO=1060;
+const BOOST=420,PERFECT_MUL=1.5,PERFECT_TIME=0.5;
+const REEL=45,REEL_FAST=900,MIN_LEN=65,MAX_LEN=380,LAVA_MARGIN=75;
+const DAMP=0.9985,VMAX=1250;
+const DASH_VX=620,DASH_CD=2.5,DASH_TIME=0.25;
+const HOOK_RANGE=520,HOOK_BACK=60,HOOK_FWD=500;
+const REHOOK=0.22,REHOOK_BACK=220;
+const BASH_R=115,BASH_V=1050,BASH_SLOW=0.05,BASH_MAX=1.5,LINK_T=1.0;
+const SNAP_VN=160,SNAP_KEEP=0.9;
+const COIN_SPEED=60,MAGNET_R=140,NEAR_R=42;
+const COMBO_TIME=3.0;
+const MISSILE_START=2500,MISSILE_ACC=260;
+const HP_START=3,HP_MAX=5,INV_TIME=1.6;
+const PMAX=320;
+const SEED_C=0x9dffd8;
+const FONT='"Consolas","Menlo","Courier New",monospace';
+
+const BIOMES=[
+  {x:0,    name:'NEON BOOT SECTOR',jp:'第1区画 ネオン起動区',bg:0x0b0c10,acc:0x00f0ff,grid:0x123848,root:0},
+  {x:4000, name:'CYBER SANDSTORM', jp:'第2区画 電脳砂嵐',  bg:0x141020,acc:0xffbe0b,grid:0x44321a,root:3},
+  {x:9000, name:'CRIMSON CIRCUIT', jp:'第3区画 深紅回路',  bg:0x180c12,acc:0xff2d95,grid:0x4a1430,root:5},
+  {x:15000,name:'SECTOR ZERO',     jp:'第4区画 零号区域',  bg:0x050508,acc:0xffffff,grid:0x2c2c3c,root:-2},
+];
+const MISSION_POOL=[
+  {text:'コイン30枚獲得',     chk:s=>s.coinCount>=30},
+  {text:'ニアミス5回',        chk:s=>s.nearCount>=5},
+  {text:'コンボ8達成',        chk:s=>s.maxCombo>=8},
+  {text:'エアトリック3回',    chk:s=>s.trickCount>=3},
+  {text:'第3区画へ到達',      chk:s=>s.biome>=2},
+  {text:'ノーダッシュで500m', chk:s=>s.maxNoDash>=500},
+  {text:'ループ2回',          chk:s=>s.loopCount>=2},
+  {text:'パーフェクト5回',    chk:s=>s.perfectCount>=5},
+  {text:'LOW POINT 5回',     chk:s=>s.lowCount>=5},
+  {text:'パルスバッシュ6回',  chk:s=>s.bashCount>=6},
+  {text:'BASH LINK 3回',     chk:s=>s.linkCount>=3},
+  {text:'FLOW CHAIN 1回',    chk:s=>s.flowCount>=1},
+];
+const CAUSE_JP={lava:'プラズマ床へ墜落',laser:'レーザー接触',gate:'レーザーゲート接触',missile:'ミサイル直撃'};
+const ADVICE={
+  lava:'TIP: 低空の「光の種」でパルスバッシュすれば落下から復帰できる',
+  laser:'TIP: レーザーの中心核はバッシュで破壊できる',
+  gate:'TIP: ミサイルをバッシュで跳ね返すとゲートを壊せる',
+  missile:'TIP: 迫るミサイルこそバッシュの足場。押して、逆方向へ射出',
+  none:'TIP: バッシュ直後にフック → 真下で離すと FLOW CHAIN +400'
+};
+
+function segDist(px,py,x1,y1,x2,y2){
+  const dx=x2-x1,dy=y2-y1,l2=dx*dx+dy*dy||1;
+  let t=((px-x1)*dx+(py-y1)*dy)/l2; t=t<0?0:t>1?1:t;
+  return Math.hypot(px-(x1+dx*t),py-(y1+dy*t));
+}
+function hash(n){const s=Math.sin(n*127.1+311.7)*43758.5453;return s-Math.floor(s);}
+function hex(c){return '#'+c.toString(16).padStart(6,'0');}
+function rgb(c){return [(c>>16)&255,(c>>8)&255,c&255];}
+function loadStats(){
+  let s={}; try{s=JSON.parse(localStorage.getItem('cyberHookStats2')||'{}')||{};}catch(e){}
+  return Object.assign({plays:0,coins:0,bestDist:0,recent:[],causes:[],lowRate:0},s);
+}
+function saveStats(s){try{localStorage.setItem('cyberHookStats2',JSON.stringify(s));}catch(e){}}
+
+// ------------------------------------------------------------
+// サウンド
+// ------------------------------------------------------------
+class Synth{
+  constructor(){this.ctx=null;this.voices=0;this.root=0;this.intense=false;this.step=0;this.nextT=0;}
+  init(){
+    const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+    if(this.ctx){ if(this.ctx.state==='suspended') this.ctx.resume(); return; }
+    this.ctx=new AC();
+    this.master=this.ctx.createGain(); this.master.gain.value=0.35; this.master.connect(this.ctx.destination);
+    this.sfx=this.ctx.createGain(); this.sfx.connect(this.master);
+    this.bgm=this.ctx.createGain(); this.bgm.gain.value=0.0001; this.bgm.connect(this.master);
+    const len=Math.floor(this.ctx.sampleRate*0.5);
+    this.nbuf=this.ctx.createBuffer(1,len,this.ctx.sampleRate);
+    const d=this.nbuf.getChannelData(0); for(let i=0;i<len;i++) d[i]=Math.random()*2-1;
+    this.nextT=this.ctx.currentTime+0.05;
+    setInterval(()=>this.schedule(),25);
+  }
+  tone(type,f0,f1,dur,vol,delay=0){
+    if(!this.ctx||this.voices>=8) return;
+    const t=this.ctx.currentTime+delay;
+    const o=this.ctx.createOscillator(),g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t);
+    if(f1!==f0) o.frequency.exponentialRampToValueAtTime(Math.max(1,f1),t+dur);
+    g.gain.setValueAtTime(0.0001,t); g.gain.linearRampToValueAtTime(vol,t+0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g); g.connect(this.sfx);
+    this.voices++; o.onended=()=>{this.voices--;o.disconnect();g.disconnect();};
+    o.start(t); o.stop(t+dur+0.03);
+  }
+  noise(dur,vol,hp=0,t=null,dest=null){
+    if(!this.ctx) return;
+    if(t===null) t=this.ctx.currentTime;
+    const s=this.ctx.createBufferSource(); s.buffer=this.nbuf;
+    const g=this.ctx.createGain();
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    if(hp){const f=this.ctx.createBiquadFilter(); f.type='highpass'; f.frequency.value=hp; s.connect(f); f.connect(g);}
+    else s.connect(g);
+    g.connect(dest||this.sfx); s.start(t); s.stop(t+dur+0.03);
+  }
+  bnote(type,f0,f1,t,dur,vol){
+    const o=this.ctx.createOscillator(),g=this.ctx.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,t);
+    if(f1!==f0) o.frequency.exponentialRampToValueAtTime(f1,t+dur);
+    g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.connect(g); g.connect(this.bgm); o.start(t); o.stop(t+dur+0.03);
+  }
+  schedule(){
+    const c=this.ctx; if(!c) return;
+    const spb=60/132/4;
+    if(this.nextT<c.currentTime-0.2) this.nextT=c.currentTime+0.05;
+    const BASS=[0,null,12,0, 0,null,10,0, 0,null,7,0, 3,5,7,10];
+    const LEAD=[12,19,24,19,15,19,22,19];
+    while(this.nextT<c.currentTime+0.12){
+      const t=this.nextT,s=this.step%16;
+      const root=55*Math.pow(2,this.root/12);
+      if(s%4===0) this.bnote('sine',150,40,t,0.14,0.5);
+      if(BASS[s]!==null){const f=root*Math.pow(2,BASS[s]/12); this.bnote('sawtooth',f,f,t,spb*0.9,0.09);}
+      if(s%2===0) this.noise(0.035,s%4===2?0.07:0.04,7000,t,this.bgm);
+      if(s===4||s===12) this.noise(0.12,0.12,1500,t,this.bgm);
+      if(this.intense&&s%2===0){const f=root*2*Math.pow(2,LEAD[(s/2)%8]/12); this.bnote('square',f,f,t,spb*1.6,0.035);}
+      this.nextT+=spb; this.step++;
+    }
+  }
+  bgmLevel(v,time=0.4){ if(!this.ctx) return; const t=this.ctx.currentTime,g=this.bgm.gain;
+    g.cancelScheduledValues(t); g.setValueAtTime(Math.max(0.0001,g.value),t); g.linearRampToValueAtTime(Math.max(0.0001,v),t+time); }
+  bgmIn(){this.bgmLevel(0.8);}
+  bgmOut(){this.bgmLevel(0.0001);}
+  hook(){this.tone('sawtooth',220,880,0.09,0.3);}
+  release(){this.tone('sine',520,180,0.12,0.4);}
+  coin(combo){const b=Math.min(440+combo*60,1200); this.tone('triangle',b,b,0.07,0.28); this.tone('triangle',b*1.5,b*1.5,0.09,0.22,0.05);}
+  crash(){this.tone('sawtooth',140,35,0.4,0.5); this.noise(0.3,0.35);}
+  dash(){this.tone('sawtooth',880,1760,0.07,0.26); this.noise(0.12,0.12,3000);}
+  near(){this.tone('sine',1200,1200,0.05,0.3); this.tone('sine',1200,1200,0.08,0.1,0.06);}
+  shield(){this.tone('square',330,660,0.15,0.2);}
+  warn(){this.tone('square',1560,1560,0.05,0.15);}
+  perfect(){[660,990,1320].forEach((f,i)=>this.tone('triangle',f,f,0.07,0.26,i*0.06));}
+  miss(){this.tone('square',160,90,0.09,0.15);}
+  hurt(){this.tone('square',300,70,0.28,0.3); this.noise(0.2,0.25,800);}
+  brk(){this.noise(0.15,0.3,2500); this.tone('triangle',600,200,0.12,0.2);}
+  item(){[523,659,784,1046].forEach((f,i)=>this.tone('sine',f,f,0.08,0.22,i*0.045));}
+  trick(n){const b=[523,659,880][Math.min(n,3)-1]; this.tone('triangle',b,b*2,0.15,0.28);}
+  zone(){this.tone('sawtooth',110,880,0.6,0.2); this.noise(0.5,0.12,4000);}
+  bounce(){this.tone('sine',200,700,0.2,0.35);}
+  bashIn(){this.tone('sine',900,220,0.35,0.3); this.noise(0.3,0.12,1500); this.bgmLevel(0.25,0.1);}
+  bash(){this.tone('sawtooth',180,1400,0.16,0.3); this.tone('triangle',880,1760,0.2,0.22,0.03); this.noise(0.2,0.22,2500); this.bgmLevel(0.8,0.15);}
+  link(){this.tone('triangle',988,1976,0.12,0.25);}
+  flow(){[784,988,1175,1568].forEach((f,i)=>this.tone('triangle',f,f,0.1,0.25,i*0.05));}
+}
+const synth=new Synth();
+
+// ------------------------------------------------------------
+// メインシーン
+// ------------------------------------------------------------
+class GameScene extends Phaser.Scene{
+  constructor(){super('game');}
+
+  create(){
+    this.stats=loadStats();
+    this.high=parseInt(localStorage.getItem('cyberHookHighScore2')||'0')||0;
+    const last=this.stats.recent.slice(-3);
+    const avg=last.length?last.reduce((a,b)=>a+b,0)/last.length:999;
+    this.assist=last.length>0&&avg<250;
+    this.kAdj=(this.assist?-0.15:0)+(this.stats.lowRate>0.35?0.1:0);
+    Object.assign(this,{
+      px:150,py:260,vx:380,vy:-150,anchor:null,wireLen:0,holding:false,spaceDown:false,
+      started:false,dead:false,resultReady:false,
+      hp:HP_START,inv:0,shield:false,magnetT:0,multiT:0,slowT:0,hitStop:0,deadSlow:0,
+      dashCD:0,dashTimer:0,perfectT:0,combo:0,maxCombo:0,comboT:0,
+      coinCount:0,nearCount:0,trickCount:0,perfectCount:0,lowCount:0,loopCount:0,releases:0,
+      bashCount:0,linkCount:0,flowCount:0,
+      distScore:0,coinScore:0,trickScore:0,nearScore:0,techScore:0,
+      maxX:150,noDashFrom:150,maxNoDash:0,rot:0,spin:0,rotAcc:0,trickChain:0,loopAcc:0,lastLoopAng:0,
+      t:0,biome:0,camX:0,zoomV:1,missileT:12,missileWarn:0,beepT:0,missFb:false,cause:'',
+      genX:0,lastY:140,wind:0,grav:G_BASE,flashA:0,flashC:0xffffff,scanT:0,
+      bashAim:null,aimT:0,aim:[0.8,-0.6],pressPtr:null,pressX:0,pressY:0,
+      lastBashT:-9,linkFlag:false,rehookT:0,bashHint:false,bashTaught:false
+    });
+    this.bgRGB=rgb(BIOMES[0].bg);
+    this.anchors=[];this.coins=[];this.items=[];this.lasers=[];this.gates=[];
+    this.missiles=[];this.parts=[];this.trail=[];this.seeds=[];
+    this.missions=Phaser.Utils.Array.Shuffle(MISSION_POOL.slice()).slice(0,3).map(m=>({text:m.text,chk:m.chk,done:false}));
+
+    // チュートリアル帯
+    [[330,150],[560,130],[800,160],[1040,140]].forEach(([x,y])=>this.addAnchor(x,y,'normal'));
+    [[680,440],[1160,420]].forEach(([x,y])=>this.addSeed(x,y));
+    this.genX=1040;this.lastY=140;
+    while(this.genX<W+900) this.spawnChunk();
+
+    // 背景の光の粒
+    this.motes=[];
+    for(let i=0;i<46;i++) this.motes.push({x:Math.random()*W,y:Math.random()*H,z:0.15+Math.random()*0.6,ph:Math.random()*6.28,r:1+Math.random()*2});
+
+    // 描画レイヤ
+    this.gBg=this.add.graphics().setScrollFactor(0).setDepth(-10);
+    this.gGlow=this.add.graphics().setDepth(-2).setBlendMode(Phaser.BlendModes.ADD);
+    this.g=this.add.graphics();
+    this.uiCam=this.cameras.add(0,0,W,H);
+    this.uiCam.ignore([this.gBg,this.gGlow,this.g]);
+    this.gUi=this.ui(this.add.graphics().setDepth(50));
+    this.gFlash=this.ui(this.add.graphics().setDepth(300));
+    const T=(x,y,s,c,ox=0.5,oy=0.5)=>this.ui(this.add.text(x,y,'',{fontFamily:FONT,fontSize:s+'px',color:c,align:'center'}).setOrigin(ox,oy).setDepth(100));
+    this.txtScore=T(16,10,22,'#00f0ff',0,0);
+    this.txtCombo=T(W/2,58,32,'#ffbe0b');
+    this.txtZone=T(W/2,H/2-120,42,'#ffffff').setAlpha(0);
+    this.txtZoneJp=T(W/2,H/2-75,20,'#ffffff').setAlpha(0);
+    this.txtGuide=T(W/2,H/2+70,20,'#c9d1d9');
+    this.txtGuide.setText('HOLD [CLICK / TAP / SPACE] でフック、離して発射\n光の種・ミサイル・レーザー核の近くで押す → PULSE BASH\nSHIFT / X / 右クリック / 2本指 でダッシュ');
+    this.txtMission=T(W-16,12,14,'#8b949e',1,0).setAlign('right');
+    this.txtStatus=T(16,H-26,14,'#c9d1d9',0,0);
+    this.txtStamp=T(W/2,H/2-20,36,'#ffffff').setAlpha(0);
+    this.txtWarn=T(70,H/2,18,'#ff3355').setAlpha(0);
+    this.txtHint=T(W/2,H-64,18,'#9dffd8').setAlpha(0);
+    this.txtAdvice=T(W/2,H-100,16,'#ffbe0b');
+    let adv=ADVICE.none;
+    if(this.stats.causes.length){
+      const cnt={};this.stats.causes.forEach(c=>cnt[c]=(cnt[c]||0)+1);
+      adv=ADVICE[Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]]||adv;
+    }
+    this.txtAdvice.setText(adv+(this.assist?'\n[ASSIST MODE] アンカー間隔短縮・光の種と回復オーブ増量':''));
+
+    // 入力
+    this.input.addPointer(2);
+    if(this.input.mouse) this.input.mouse.disableContextMenu();
+    this.input.on('pointerdown',p=>{
+      synth.init();
+      if(this.dead){ if(this.resultReady) this.scene.restart(); return; }
+      if(p.rightButtonDown()||(this.pointersDown()>1&&!this.bashAim)){ this.doDash(); return; }
+      if(this.pointersDown()>1) return;
+      this.press(p);
+    });
+    this.input.on('pointerup',()=>{ if(this.pointersDown()===0&&!this.spaceDown) this.unpress(); });
+    const kb=this.input.keyboard;
+    kb.addCapture('SPACE,SHIFT,UP,DOWN,LEFT,RIGHT');
+    this.cur=kb.createCursorKeys();
+    this.kW=kb.addKey('W');this.kA=kb.addKey('A');this.kS=kb.addKey('S');this.kD=kb.addKey('D');
+    kb.on('keydown-SPACE',e=>{
+      if(e.repeat) return; synth.init();
+      if(this.dead){ if(this.resultReady) this.scene.restart(); return; }
+      this.spaceDown=true; this.press(null);
+    });
+    kb.on('keyup-SPACE',()=>{ this.spaceDown=false; if(this.pointersDown()===0) this.unpress(); });
+    kb.on('keydown-SHIFT',e=>{ if(!e.repeat){synth.init(); this.doDash();} });
+    kb.on('keydown-X',e=>{ if(!e.repeat){synth.init(); this.doDash();} });
+  }
+
+  ui(o){ this.cameras.main.ignore(o); return o; }
+  pointersDown(){ return this.input.manager.pointers.filter(p=>p.isDown).length; }
+  k(){ return Phaser.Math.Clamp(Phaser.Math.Clamp((this.maxX-1500)/20000,0,1)+this.kAdj,0,1); }
+  total(){ return Math.floor(this.distScore+this.coinScore+this.trickScore+this.nearScore+this.techScore); }
+
+  // ---------------- ステージ生成 ----------------
+  addAnchor(x,y,type){ this.anchors.push({x,y,baseY:y,type,phase:Math.random()*6.28,life:1.2,dead:false,used:false}); }
+  addSeed(x,y){ this.seeds.push({x,y,cd:0,ph:Math.random()*6.28}); }
+  spawnChunk(){
+    const k=this.k();
+    for(let i=0;i<6;i++){
+      const prevX=this.genX,prevY=this.lastY;
+      const gap=Phaser.Math.Between(200,Math.floor(230+130*k))-(this.assist?30:0);
+      const x=prevX+gap;
+      const y=Phaser.Math.Clamp(prevY+Phaser.Math.Between(-80,80),90,250);
+      let type='normal';
+      if(x>900){const r=Math.random(); if(r<0.15)type='move'; else if(r<0.27)type='brittle'; else if(r<0.32)type='gold';}
+      this.addAnchor(x,y,type);
+      this.genX=x;this.lastY=y;
+      const mx=(prevX+x)/2;
+      if(Math.random()<0.85-0.2*k+(this.assist?0.1:0)){
+        const r=Math.min(200,LAVA_Y-LAVA_MARGIN-y-10);
+        [-0.45,0,0.45].forEach(th=>this.coins.push({x:x+Math.sin(th)*r,y:y+Math.cos(th)*r,got:false}));
+      }
+      // 光の種（低空の救済＆連携足場）
+      if(x>1300&&Math.random()<0.28+(this.assist?0.12:0)-0.08*k)
+        this.addSeed(prevX+gap*0.2,Phaser.Math.Between(390,470));
+      // アイテム
+      const ir=Math.random(),iy=Math.min(prevY,y)+140;
+      const heal=this.assist?0.05:0.02;
+      let it=null;
+      if(ir<0.04)it='magnet'; else if(ir<0.07)it='shield'; else if(ir<0.09)it='slow';
+      else if(ir<0.11)it='multi'; else if(ir<0.11+heal)it='heal';
+      if(it&&x>700) this.items.push({x:mx,y:iy,type:it,got:false});
+      // 障害物
+      if(x>9000&&i===3&&Math.random()<0.5+0.3*k){
+        this.gates.push({x:mx,cy0:310,amp:100,gap:200-30*k,phase:Math.random()*6.28,minD:999,hit:false,nearDone:false,dead:false});
+      } else if(x>1600&&Math.random()<Math.min(0.65,0.35+0.3*k-(this.assist?0.1:0))){
+        const sp=(0.6+1.6*k)*Phaser.Math.FloatBetween(0.6,1)*(Math.random()<0.5?-1:1);
+        this.lasers.push({x:mx,y:Phaser.Math.Between(330,470),len:Phaser.Math.Between(70,120),
+          ang:Math.random()*6.28,spd:sp,alive:true,minD:999,hit:false,nearDone:false});
+      }
+    }
+  }
+
+  // ---------------- 操作 ----------------
+  press(p){
+    if(!this.started){
+      this.started=true; synth.bgmIn();
+      this.tweens.add({targets:[this.txtGuide,this.txtAdvice],alpha:0,duration:300,delay:2500});
+    }
+    this.holding=true; this.missFb=false;
+    if(p){ this.pressPtr=p; this.pressX=p.x; this.pressY=p.y; } else this.pressPtr=null;
+    if(this.anchor||this.bashAim) return;
+    const b=this.findBash();
+    if(b){ this.startBash(b); return; }
+    this.tryHook(true);
+  }
+  unpress(){
+    this.holding=false;
+    if(this.bashAim){ this.launchBash(); return; }
+    if(this.anchor) this.releaseHook();
+  }
+  findAnchor(){
+    let best=null,bs=1e9;
+    const back=this.rehookT>0?REHOOK_BACK:HOOK_BACK;
+    for(const a of this.anchors){
+      if(a.dead) continue;
+      const dx=a.x-this.px;
+      if(dx<-back||dx>HOOK_FWD) continue;
+      const d=Math.hypot(dx,this.py-a.y);
+      if(d>HOOK_RANGE) continue;
+      const s=d+(dx<0&&this.rehookT<=0?150:0);
+      if(s<bs){bs=s;best=a;}
+    }
+    return best;
+  }
+  findBash(){
+    let best=null,bd=BASH_R;
+    const test=(kind,ref,x,y)=>{ const d=Math.hypot(x-this.px,y-this.py); if(d<bd){bd=d;best={kind,ref,x,y};} };
+    for(const s of this.seeds) if(s.cd<=0) test('seed',s,s.x,s.y);
+    for(const m of this.missiles) if(m.alive&&!m.reflect) test('missile',m,m.x,m.y);
+    for(const l of this.lasers) if(l.alive) test('laser',l,l.x,l.y);
+    return best;
+  }
+  tryHook(fb){
+    if(this.dead) return;
+    const a=this.findAnchor();
+    if(a) this.attach(a);
+    else if(fb&&!this.missFb){ this.missFb=true; this.flash(0xff3355,0.18); synth.miss(); }
+  }
+  attach(a){
+    const d=Math.hypot(this.px-a.x,this.py-a.y),dx=a.x-this.px;
+    this.anchor=a; this.wireLen=Math.max(MIN_LEN,d); this.rehookT=0;
+    this.combo++; this.maxCombo=Math.max(this.maxCombo,this.combo); this.comboT=0;
+    synth.intense=this.combo>=10;
+    this.trickChain=0; this.rotAcc=0; this.spin=0;
+    this.loopAcc=0; this.lastLoopAng=Math.atan2(this.py-a.y,this.px-a.x);
+    if(this.t-this.lastBashT<LINK_T){
+      this.linkFlag=true; this.linkCount++; this.techScore+=150;
+      this.stamp('BASH LINK +150','#9dffd8'); synth.link();
+    } else if(this.vy>0&&dx>30&&dx<280&&d>110&&d<360){
+      this.perfectT=PERFECT_TIME; this.perfectCount++; this.techScore+=30;
+      this.stamp('PERFECT! +30','#00f0ff'); synth.perfect();
+    }
+    if(a.type==='gold'&&!a.used){
+      a.used=true;
+      const mult=this.multiT>0?2:1;
+      this.coinCount+=3; this.coinScore+=150*this.combo*mult;
+      this.burst(a.x,a.y,16,0xffd700,-150); synth.coin(this.combo);
+    }
+    this.burst(this.px,this.py,10,0x00f0ff);
+    synth.hook(); this.popCombo();
+  }
+  releaseHook(){
+    const a=this.anchor; if(!a) return;
+    this.anchor=null; this.releases++;
+    const nx=this.px-a.x,ny=this.py-a.y,d=Math.hypot(nx,ny)||1;
+    const ang=Math.atan2(ny,nx);
+    const low=Math.abs(ang-Math.PI/2)<0.35;
+    let hm=1.12;
+    if(low){
+      hm=1.25; this.lowCount++; this.techScore+=50;
+      if(this.linkFlag){ this.flowCount++; this.techScore+=400; this.stamp('FLOW CHAIN +450','#ffffff'); synth.flow(); this.flash(0x9dffd8,0.25); }
+      else this.stamp('LOW POINT! +50','#88ffcc');
+    }
+    this.linkFlag=false;
+    this.vx*=hm;
+    if(this.vy<0) this.vy*=1.15; else this.vy-=120;
+    const w=(nx*this.vy-ny*this.vx)/(d*d);
+    this.spin=Phaser.Math.Clamp(w*2,-16,16);
+    this.rotAcc=0; this.rehookT=REHOOK;
+    this.comboT=COMBO_TIME+(this.py>480?1.5:0);
+    this.clampSpeed();
+    synth.release();
+  }
+
+  // ---------------- パルスバッシュ ----------------
+  startBash(b){
+    if(this.anchor) this.releaseHook();
+    this.bashAim=b; this.aimT=0; this.aim=this.aimDir();
+    this.inv=Math.max(this.inv,0.2);
+    synth.bashIn();
+    if(!this.bashTaught){ this.bashTaught=true; }
+  }
+  aimDir(){
+    let dx=0,dy=0;
+    const p=this.pressPtr;
+    if(p&&p.isDown){ dx=p.x-this.pressX; dy=p.y-this.pressY; }
+    if(Math.hypot(dx,dy)<18){
+      const c=this.cur;
+      dx=((c.right.isDown||this.kD.isDown)?1:0)-((c.left.isDown||this.kA.isDown)?1:0);
+      dy=((c.down.isDown||this.kS.isDown)?1:0)-((c.up.isDown||this.kW.isDown)?1:0);
+    }
+    if(dx===0&&dy===0) return this.aim&&this.aimT>0?this.aim:[0.8,-0.6];
+    const l=Math.hypot(dx,dy); return [dx/l,dy/l];
+  }
+  launchBash(){
+    const b=this.bashAim; if(!b) return;
+    this.bashAim=null;
+    const [ax,ay]=this.aim;
+    this.px=b.x; this.py=b.y;
+    this.vx=ax*BASH_V; this.vy=ay*BASH_V;
+    if(b.kind==='seed'){ b.ref.cd=2.2; this.burst(b.x,b.y,18,SEED_C,0,120); }
+    if(b.kind==='missile'){
+      const m=b.ref; m.reflect=true; m.vx=-ax*760; m.vy=-ay*760; m.life=2.5;
+      this.burst(b.x,b.y,14,0xff8833,0,150);
+    }
+    if(b.kind==='laser'){ b.ref.alive=false; this.techScore+=60; this.burst(b.x,b.y,26,0xff3355,0,200); synth.brk(); }
+    this.bashCount++; this.techScore+=100;
+    this.combo++; this.maxCombo=Math.max(this.maxCombo,this.combo); this.comboT=COMBO_TIME;
+    synth.intense=this.combo>=10; this.popCombo();
+    this.dashCD=0; this.inv=Math.max(this.inv,0.35);
+    this.lastBashT=this.t; this.rehookT=REHOOK; this.linkFlag=false;
+    this.trickChain=0; this.rotAcc=0; this.spin=ax>=0?7:-7;
+    this.trail.length=0;
+    for(let i=0;i<10;i++) this.addPart({x:b.x-ax*i*16,y:b.y-ay*i*16,vx:0,vy:0,life:0.25,max:0.25,c:SEED_C,line:true,ax,ay});
+    this.cameras.main.shake(90,0.006); this.zoomV=Math.min(this.zoomV,0.93);
+    this.stamp(b.kind==='seed'?'PULSE BASH +100':(b.kind==='missile'?'REFLECT +100':'CORE BREAK +160'),'#9dffd8');
+    synth.bash();
+  }
+
+  doDash(){
+    if(this.dead||!this.started||this.dashCD>0||this.bashAim) return;
+    this.vx=Math.min(this.vx+DASH_VX,VMAX); this.vy*=0.35;
+    this.dashCD=DASH_CD; this.dashTimer=DASH_TIME;
+    this.noDashFrom=this.px; this.zoomV=Math.min(this.zoomV,0.92);
+    synth.dash();
+    for(let i=0;i<8;i++) this.addPart({x:this.px-i*14,y:this.py+(i%3-1)*6,vx:0,vy:0,life:0.3,max:0.3,c:0xffbe0b,line:true,ax:1,ay:0});
+  }
+  clampSpeed(){ const s=Math.hypot(this.vx,this.vy); if(s>VMAX){this.vx*=VMAX/s;this.vy*=VMAX/s;} }
+
+  // ---------------- 演出 ----------------
+  addPart(p){ if(this.parts.length<PMAX) this.parts.push(p); }
+  burst(x,y,n,c,bias=-60,grav=400){
+    for(let i=0;i<n;i++){
+      const a=Math.random()*6.28,s=80+Math.random()*240;
+      this.addPart({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s+bias,life:0.4+Math.random()*0.4,max:0.8,c,grav,line:false});
+    }
+  }
+  stamp(text,color='#ffffff'){
+    const s=this.txtStamp; this.tweens.killTweensOf(s);
+    s.setText(text).setColor(color).setAlpha(1).setScale(0.5);
+    this.tweens.add({targets:s,scale:1,duration:220,ease:'Back.easeOut'});
+    this.tweens.add({targets:s,alpha:0,duration:400,delay:450});
+  }
+  popCombo(){
+    if(this.combo<2) return;
+    const c=this.txtCombo; this.tweens.killTweensOf(c);
+    c.setText(this.combo+'x COMBO').setScale(0.3);
+    this.tweens.add({targets:c,scale:1,duration:250,ease:'Back.easeOut'});
+  }
+  flash(c,a){ this.flashC=c; this.flashA=a; }
+
+  // ---------------- メインループ ----------------
+  update(time,delta){
+    const dt=Math.min(delta/1000,0.033);
+    if(this.hitStop>0)this.hitStop-=dt;
+    if(this.slowT>0)this.slowT-=dt;
+    if(this.deadSlow>0)this.deadSlow-=dt;
+    let ts=1;
+    if(this.slowT>0)ts=0.4;
+    if(this.hitStop>0)ts=Math.min(ts,0.35);
+    if(this.bashAim)ts=BASH_SLOW;
+    if(this.dead)ts=this.deadSlow>0?0.2:1;
+    const sdt=dt*ts;
+
+    if(this.bashAim&&!this.dead){
+      this.aimT+=dt;
+      this.aim=this.aimDir();
+      const b=this.bashAim;
+      if(b.kind==='missile'){ b.x=b.ref.x; b.y=b.ref.y; }
+      const f=Math.min(1,dt*18);
+      this.px+=(b.x-this.px)*f; this.py+=(b.y-this.py)*f;
+      this.trail.push({x:this.px,y:this.py}); if(this.trail.length>16) this.trail.shift();
+      this.t+=sdt;
+      if(this.aimT>=BASH_MAX){ this.holding=false; this.launchBash(); }
+    } else if(this.started&&!this.dead){
+      if(this.holding&&!this.anchor) this.tryHook(false);
+      this.step(sdt);
+    } else this.t+=sdt;
+
+    this.updateWorld(sdt,dt);
+    const tg=rgb(BIOMES[this.biome].bg),f=Math.min(1,dt*4);
+    for(let i=0;i<3;i++) this.bgRGB[i]+=(tg[i]-this.bgRGB[i])*f;
+    this.drawBg(dt); this.render(); this.drawUi();
+  }
+
+  step(dt){
+    this.t+=dt;
+    const gT=this.biome>=3?G_ZERO:G_BASE;
+    this.grav+=(gT-this.grav)*Math.min(1,dt*2);
+    this.vy+=this.grav*dt;
+    if(this.biome===1){ this.wind=50+130*Math.sin(this.t*0.5)*Math.sin(this.t*0.17+1); this.vx+=this.wind*dt; }
+    else this.wind=0;
+    for(const a of this.anchors) if(a.type==='move') a.y=a.baseY+Math.sin(this.t*Math.PI+a.phase)*40;
+    for(const s of this.seeds) if(s.cd>0) s.cd-=dt;
+    if(this.rehookT>0) this.rehookT-=dt;
+
+    if(this.anchor&&this.anchor.type==='brittle'){
+      const a=this.anchor; a.life-=dt;
+      if(a.life<=0){ a.dead=true; this.burst(a.x,a.y,12,0xff3355); synth.brk(); this.releaseHook(); }
+    }
+    if(this.anchor){
+      const a=this.anchor,nx=this.px-a.x,ny=this.py-a.y,d=Math.hypot(nx,ny)||0.001;
+      let tx=-ny/d,ty=nx/d;
+      if(ny>0){ if(tx<0){tx=-tx;ty=-ty;} }
+      else if(tx*this.vx+ty*this.vy<0){tx=-tx;ty=-ty;}
+      const pw=BOOST*(this.perfectT>0||this.linkFlag?PERFECT_MUL:1);
+      this.vx+=tx*pw*dt; this.vy+=ty*pw*dt;
+      const maxL=Math.max(MIN_LEN,Math.min(MAX_LEN,LAVA_Y-LAVA_MARGIN-a.y));
+      if(this.wireLen>maxL) this.wireLen=Math.max(maxL,this.wireLen-REEL_FAST*dt);
+      else this.wireLen=Math.max(MIN_LEN,this.wireLen-REEL*dt);
+      const ang=Math.atan2(ny,nx);
+      let da=ang-this.lastLoopAng;
+      if(da>Math.PI)da-=2*Math.PI; if(da<-Math.PI)da+=2*Math.PI;
+      this.loopAcc+=da; this.lastLoopAng=ang; this.rot=ang;
+      if(Math.abs(this.loopAcc)>=Math.PI*2){
+        this.loopAcc=0; this.loopCount++; this.techScore+=200;
+        this.stamp('LOOP! +200','#ff2d95'); synth.trick(2);
+      }
+    } else {
+      if(this.dashTimer<=0){ const f=Math.pow(DAMP,dt*60); this.vx*=f; this.vy*=f; }
+      this.rot+=this.spin*dt; this.rotAcc+=this.spin*dt; this.spin*=Math.pow(0.7,dt);
+      if(Math.abs(this.rotAcc)>=Math.PI*2){
+        this.rotAcc=0; this.trickChain++; this.trickCount++;
+        const pts=[150,400,1000][Math.min(this.trickChain,3)-1];
+        this.trickScore+=pts; this.stamp('AIR TRICK +'+pts,'#ffbe0b'); synth.trick(this.trickChain);
+      }
+      if(this.comboT>0){ this.comboT-=dt; if(this.comboT<=0) this.combo=0; }
+    }
+
+    if(this.dashTimer>0)this.dashTimer-=dt;
+    if(this.dashCD>0)this.dashCD-=dt;
+    if(this.perfectT>0)this.perfectT-=dt;
+    if(this.inv>0)this.inv-=dt;
+    if(this.magnetT>0)this.magnetT-=dt;
+    if(this.multiT>0)this.multiT-=dt;
+
+    this.clampSpeed();
+    this.px+=this.vx*dt; this.py+=this.vy*dt;
+    // ロープ拘束：強い張りは速度を保ったまま接線へ変換（勢いの引き継ぎ）
+    if(this.anchor){
+      const a=this.anchor,nx=this.px-a.x,ny=this.py-a.y,d=Math.hypot(nx,ny)||0.001;
+      if(d>this.wireLen){
+        const ux=nx/d,uy=ny/d;
+        this.px=a.x+ux*this.wireLen; this.py=a.y+uy*this.wireLen;
+        const vn=this.vx*ux+this.vy*uy;
+        if(vn>0){
+          const sp=Math.hypot(this.vx,this.vy);
+          this.vx-=vn*ux; this.vy-=vn*uy;
+          if(vn>SNAP_VN){
+            const tsp=Math.hypot(this.vx,this.vy);
+            if(tsp>30){ const keep=sp*SNAP_KEEP; if(keep>tsp){ this.vx*=keep/tsp; this.vy*=keep/tsp; } }
+          }
+        }
+      }
+    }
+    if(this.py<-500){ this.py=-500; if(this.vy<0)this.vy=0; }
+
+    this.trail.push({x:this.px,y:this.py}); if(this.trail.length>16) this.trail.shift();
+    this.maxX=Math.max(this.maxX,this.px);
+    this.distScore=(this.maxX-150)/10;
+    this.maxNoDash=Math.max(this.maxNoDash,(this.px-this.noDashFrom)/10);
+
+    let b=0; for(let i=0;i<BIOMES.length;i++) if(this.px>=BIOMES[i].x) b=i;
+    if(b>this.biome){
+      this.biome=b; const B=BIOMES[b];
+      this.txtZone.setText(B.name).setColor(hex(B.acc)).setAlpha(1);
+      this.txtZoneJp.setText(B.jp).setAlpha(1);
+      this.tweens.add({targets:[this.txtZone,this.txtZoneJp],alpha:0,duration:1200,delay:600});
+      this.scanT=0.6; synth.root=B.root; synth.zone();
+    }
+
+    this.updateMissiles(dt);
+    this.collide();
+    if(this.dead) return;
+
+    if(this.py>LAVA_Y-PR){
+      this.anchor=null;
+      this.py=LAVA_Y-PR; this.vy=-980; this.vx=Math.max(this.vx,320);
+      this.trickChain=0; this.spin=0; this.rehookT=REHOOK;
+      this.burst(this.px,LAVA_Y,20,0xff2266,-200); synth.bounce();
+      if(this.inv<=0){
+        if(this.shield){ this.shield=false; this.inv=0.8; this.stamp('SHIELD SAVE!','#66aaff'); synth.shield(); }
+        else this.damage('lava');
+      }
+    }
+    for(const m of this.missions) if(!m.done&&m.chk(this)){ m.done=true; synth.item(); }
+  }
+
+  updateMissiles(dt){
+    if(this.px>MISSILE_START){
+      this.missileT-=dt;
+      if(this.missileT<=1.1&&this.missileWarn<=0) this.missileWarn=1.1;
+      if(this.missileT<=0){
+        this.missileT=20-8*this.k()+(this.assist?6:0); this.missileWarn=0;
+        this.missiles.push({x:this.camX-60,y:this.py,vx:300,vy:0,life:6,alive:true,minD:999,hit:false,nearDone:false,reflect:false});
+      }
+    }
+    if(this.missileWarn>0){
+      this.missileWarn-=dt; this.beepT-=dt;
+      if(this.beepT<=0){ synth.warn(); this.beepT=0.3; }
+    }
+    const vmax=this.biome>=3?560:480;
+    for(const m of this.missiles){
+      if(!m.alive) continue;
+      if(m.reflect){
+        m.x+=m.vx*dt; m.y+=m.vy*dt; m.life-=dt;
+        for(const l of this.lasers){
+          if(!l.alive) continue;
+          const dx=Math.cos(l.ang)*l.len/2,dy=Math.sin(l.ang)*l.len/2;
+          if(segDist(m.x,m.y,l.x-dx,l.y-dy,l.x+dx,l.y+dy)<16){
+            l.alive=false; this.techScore+=50; this.burst(l.x,l.y,20,0xff3355,0,200); synth.brk(); this.stamp('LASER DOWN +50','#ff8833');
+          }
+        }
+        for(const gt of this.gates){
+          if(!gt.dead&&Math.abs(m.x-gt.x)<14){ gt.dead=true; this.techScore+=120; this.burst(gt.x,m.y,30,0xff2d95,0,200); synth.brk(); this.stamp('GATE BREAK +120','#ff2d95'); }
+        }
+        if(m.life<=0||m.y>LAVA_Y){ m.alive=false; this.burst(m.x,m.y,12,0xff8833); }
+        continue;
+      }
+      const dx=this.px-m.x,dy=this.py-m.y,d=Math.hypot(dx,dy)||1;
+      m.vx+=dx/d*MISSILE_ACC*dt*3; m.vy+=dy/d*MISSILE_ACC*dt*3;
+      const s=Math.hypot(m.vx,m.vy); if(s>vmax){m.vx*=vmax/s;m.vy*=vmax/s;}
+      m.x+=m.vx*dt; m.y+=m.vy*dt; m.life-=dt;
+      if(d<200){ this.beepT-=dt; if(this.beepT<=0){synth.warn(); this.beepT=0.3;} }
+      if(m.life<=0){ m.alive=false; this.burst(m.x,m.y,12,0xff8833); }
+    }
+  }
+
+  // ---------------- 衝突 ----------------
+  collide(){
+    const mult=this.multiT>0?2:1;
+    for(const c of this.coins){
+      if(c.got) continue;
+      const dx=this.px-c.x,dy=this.py-c.y; let d=Math.hypot(dx,dy);
+      if(this.magnetT>0&&d<MAGNET_R){ c.x+=dx*0.25; c.y+=dy*0.25; d*=0.75; }
+      if(d<PR+9){
+        c.got=true; this.coinCount++;
+        this.coinScore+=50*Math.max(1,this.combo)*mult;
+        this.vx=Math.min(this.vx+COIN_SPEED,VMAX);
+        this.burst(c.x,c.y,8,0xffd700,-120); synth.coin(this.combo);
+      }
+    }
+    for(const it of this.items){
+      if(it.got||Math.hypot(this.px-it.x,this.py-it.y)>PR+14) continue;
+      it.got=true; synth.item();
+      if(it.type==='magnet'){ this.magnetT=8; this.stamp('MAGNET!','#ff88ff'); }
+      if(it.type==='shield'){ this.shield=true; this.stamp('SHIELD!','#66aaff'); synth.shield(); }
+      if(it.type==='slow'){ this.slowT=3; this.stamp('BULLET TIME!','#ffffff'); }
+      if(it.type==='multi'){ this.multiT=20; this.stamp('SCORE x2!','#ffbe0b'); }
+      if(it.type==='heal'){ this.hp=Math.min(HP_MAX,this.hp+1); this.stamp('+1 HP','#44ff88'); }
+      this.burst(it.x,it.y,12,0xffffff);
+    }
+    for(const l of this.lasers){
+      if(!l.alive||Math.abs(l.x-this.px)>220) continue;
+      const dx=Math.cos(l.ang)*l.len/2,dy=Math.sin(l.ang)*l.len/2;
+      const d=segDist(this.px,this.py,l.x-dx,l.y-dy,l.x+dx,l.y+dy);
+      this.checkObs(l,d,l.x+l.len/2,'laser'); if(this.dead) return;
+    }
+    for(const gt of this.gates){
+      if(gt.dead||Math.abs(gt.x-this.px)>220) continue;
+      const cy=gt.cy0+Math.sin(this.t*1.6+gt.phase)*gt.amp;
+      const d=Math.min(segDist(this.px,this.py,gt.x,-1000,gt.x,cy-gt.gap/2),
+                       segDist(this.px,this.py,gt.x,cy+gt.gap/2,gt.x,LAVA_Y));
+      this.checkObs(gt,d,gt.x,'gate'); if(this.dead) return;
+    }
+    for(const m of this.missiles){
+      if(!m.alive||m.reflect) continue;
+      const d=Math.hypot(this.px-m.x,this.py-m.y);
+      if(d<PR+8&&this.inv<=0){ m.alive=false; m.hit=true; this.burst(m.x,m.y,20,0xff8833); this.hit(null,'missile'); if(this.dead) return; continue; }
+      m.minD=Math.min(m.minD,d);
+      if(!m.nearDone&&!m.hit&&m.minD<NEAR_R&&d>NEAR_R+40){ m.nearDone=true; this.nearMiss(); }
+    }
+  }
+  checkObs(o,d,passX,cause){
+    if(d<PR+2){ if(!o.hit&&this.inv<=0){ o.hit=true; this.hit(o,cause); } return; }
+    o.minD=Math.min(o.minD,d);
+    if(!o.nearDone&&this.px>passX+PR+10){
+      o.nearDone=true;
+      if(!o.hit&&o.minD<NEAR_R) this.nearMiss();
+    }
+  }
+  nearMiss(){
+    this.nearCount++; this.nearScore+=80;
+    this.stamp('CLOSE! +80','#ffffff'); this.hitStop=0.25;
+    this.burst(this.px,this.py,6,0xffffff); synth.near();
+  }
+  hit(o,cause){
+    if(this.inv>0) return;
+    if(this.shield){
+      this.shield=false; this.inv=0.8;
+      if(o&&o.alive!==undefined) o.alive=false;
+      if(o&&o.dead!==undefined) o.dead=true;
+      this.burst(o?o.x:this.px,o&&o.y?o.y:this.py,24,0xff2d95);
+      this.cameras.main.shake(120,0.008); synth.crash(); this.stamp('SHIELD BREAK!','#66aaff');
+      return;
+    }
+    this.damage(cause);
+  }
+  damage(cause){
+    this.hp--; this.combo=0; this.trickChain=0; this.inv=INV_TIME; this.linkFlag=false;
+    synth.intense=false;
+    this.cameras.main.shake(200,0.012); this.flash(0xff0033,0.3); synth.hurt();
+    if(this.hp<=0){ this.die(cause); return; }
+    this.stamp('-1 HP','#ff3355');
+  }
+  die(cause){
+    if(this.dead) return;
+    this.dead=true; this.cause=cause; this.anchor=null; this.bashAim=null; this.deadSlow=0.5;
+    this.burst(this.px,this.py,45,0xff2d95,-150);
+    this.cameras.main.shake(300,0.02); this.flash(0xffffff,0.9);
+    synth.crash(); synth.bgmOut(); synth.intense=false;
+    const s=this.stats, dist=Math.floor(this.distScore);
+    s.plays++; s.coins+=this.coinCount; s.bestDist=Math.max(s.bestDist,dist);
+    s.recent.push(dist); if(s.recent.length>10) s.recent.shift();
+    s.causes.push(cause); if(s.causes.length>10) s.causes.shift();
+    s.lowRate=s.lowRate*0.7+(this.lowCount/Math.max(1,this.releases))*0.3;
+    saveStats(s);
+    this.time.delayedCall(700,()=>this.showResult());
+  }
+
+  // ---------------- ワールド更新 ----------------
+  updateWorld(sdt,dt){
+    while(this.genX<this.camX+W+700) this.spawnChunk();
+    const lim=this.camX-400;
+    this.anchors=this.anchors.filter(a=>a.x>lim&&!a.dead);
+    this.coins=this.coins.filter(c=>c.x>lim&&!c.got);
+    this.items=this.items.filter(i=>i.x>lim&&!i.got);
+    this.lasers=this.lasers.filter(l=>l.x>lim&&l.alive);
+    this.gates=this.gates.filter(g=>g.x>lim&&!g.dead);
+    this.seeds=this.seeds.filter(s=>s.x>lim);
+    this.missiles=this.missiles.filter(m=>m.alive);
+    for(const l of this.lasers) l.ang+=l.spd*sdt;
+    for(const p of this.parts){
+      p.life-=dt;
+      if(!p.line){ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=(p.grav||400)*dt; }
+    }
+    this.parts=this.parts.filter(p=>p.life>0);
+    if(this.flashA>0) this.flashA=Math.max(0,this.flashA-dt*4);
+    if(this.scanT>0) this.scanT-=dt;
+    let target=this.px-300; if(this.vx>800) target+=40;
+    this.camX+=(target-this.camX)*(1-Math.pow(0.88,dt*60));
+    const sp=Math.hypot(this.vx,this.vy);
+    const zt=this.bashAim?1.05:(this.dashTimer>0?0.9:(sp>900?0.94:1));
+    this.zoomV+=(zt-this.zoomV)*Math.min(1,dt*(this.bashAim?8:4));
+    const cam=this.cameras.main; cam.setZoom(this.zoomV); cam.scrollX=this.camX; cam.scrollY=0;
+  }
+
+  // ---------------- 描画 ----------------
+  drawBg(dt){
+    const b=this.gBg; b.clear();
+    const [r,gg,bl]=this.bgRGB.map(Math.round);
+    b.fillStyle((r<<16)|(gg<<8)|bl,1).fillRect(-80,-80,W+160,H+160);
+    const B=BIOMES[this.biome];
+    // 光の粒（最遠景）
+    for(const m of this.motes){
+      const x=((m.x-this.camX*m.z*0.3)%W+W)%W, y=m.y+Math.sin(this.t*0.8+m.ph)*12;
+      const a=0.25+0.25*Math.sin(this.t*2+m.ph);
+      b.fillStyle(B.acc===0xffffff?SEED_C:B.acc,a*0.5).fillCircle(x,y,m.r*3);
+      b.fillStyle(0xffffff,a).fillCircle(x,y,m.r*0.8);
+    }
+    // ビル群
+    const off=this.camX*0.2,bw=70;
+    for(let i=Math.floor((off-80)/bw);i<=Math.ceil((off+W+80)/bw);i++){
+      const h=120+hash(i)*260,x=i*bw-off;
+      b.fillStyle(0x000000,0.45).fillRect(x,LAVA_Y-h,bw-8,h);
+      for(let j=0;j<4;j++){
+        const hv=hash(i*13+j*7);
+        if(hv>0.55&&Math.floor(this.t*2+hv*10)%5!==0)
+          b.fillStyle(B.acc,0.22).fillRect(x+8+(j%2)*28,LAVA_Y-h+16+Math.floor(j/2)*30+hash(i)*40,14,8);
+      }
+    }
+    const o2=this.camX*0.5;
+    b.lineStyle(1,B.grid,0.5);
+    for(let x=-((o2%120)+120);x<W+120;x+=120) b.lineBetween(x,-80,x,H+80);
+    for(let y=40;y<H;y+=80) b.lineBetween(-80,y,W+80,y);
+    if(this.biome===1){
+      b.lineStyle(1,0xffbe0b,0.35);
+      for(let i=0;i<18;i++){
+        const y=hash(i)*500+20, x=((hash(i+50)*W-this.t*(200+this.wind*2))%(W+200)+W+200)%(W+200)-100;
+        const len=30+Math.abs(this.wind)*0.3;
+        b.lineBetween(x,y,x+(this.wind>=0?len:-len),y);
+      }
+    }
+  }
+
+  render(){
+    const g=this.g,gl=this.gGlow; g.clear(); gl.clear();
+    const t=this.t,cx=this.camX,L0=cx-140,L1=cx+W+140;
+    // プラズマ床
+    gl.fillStyle(0xff2266,0.06).fillRect(L0,LAVA_Y-70,L1-L0,70);
+    gl.fillStyle(0xff2266,0.08).fillRect(L0,LAVA_Y-30,L1-L0,30);
+    g.fillStyle(0xff2266,0.9); g.beginPath(); g.moveTo(L0,H+120);
+    for(let x=L0;x<=L1;x+=20) g.lineTo(x,LAVA_Y+Math.sin(t*4+x*0.05)*6);
+    g.lineTo(L1,H+120); g.closePath(); g.fillPath();
+    g.lineStyle(3,0xffaacc,0.9); g.beginPath();
+    for(let x=L0;x<=L1;x+=20){ const y=LAVA_Y+Math.sin(t*4+x*0.05)*6; x===L0?g.moveTo(x,y):g.lineTo(x,y); }
+    g.strokePath();
+    for(let i=0;i<14;i++){
+      const bx=cx-100+((i*97+t*30)%(W+200)), by=LAVA_Y+28-((t*40+i*37)%30);
+      g.fillStyle(0xffccdd,0.5).fillCircle(bx,by,2+(i%3));
+    }
+    const free=!this.anchor&&!this.dead&&!this.bashAim;
+    const lock=free?this.findAnchor():null;
+    const bt=free&&this.started?this.findBash():null;
+    this.bashHint=!!bt;
+    // アンカー
+    for(const a of this.anchors){
+      let col=0x00f0ff;
+      if(a.type==='move')col=0x88ffcc;
+      if(a.type==='gold')col=a.used?0x886f00:0xffd700;
+      if(a.type==='brittle')col=0xff6688;
+      gl.fillStyle(col,0.07).fillCircle(a.x,a.y,28);
+      g.lineStyle(1,col,0.18).lineBetween(a.x,-600,a.x,a.y-10);
+      g.fillStyle(col,1).fillCircle(a.x,a.y,7);
+      g.lineStyle(2,col,0.6).strokeCircle(a.x,a.y,11);
+      if(a.type==='brittle'){
+        const blink=a.life<0.4&&Math.floor(t*10)%2;
+        g.lineStyle(3,0xff3355,blink?1:0.7); g.beginPath();
+        g.arc(a.x,a.y,16,-Math.PI/2,-Math.PI/2+Math.PI*2*Math.max(0,a.life/1.2),false); g.strokePath();
+      }
+      if(a===lock&&!bt){
+        const lc=a.type==='brittle'?0xff3355:(a.type==='gold'?0xffd700:0xffbe0b);
+        g.lineStyle(2,lc,0.9).strokeCircle(a.x,a.y,15+Math.sin(t*8)*4);
+        for(let s=0.1;s<0.95;s+=0.08) g.fillStyle(lc,0.45).fillCircle(this.px+(a.x-this.px)*s,this.py+(a.y-this.py)*s,1.6);
+      }
+    }
+    // 光の種
+    for(const s of this.seeds){
+      const ready=s.cd<=0,a=ready?1:0.25;
+      const r=ready?7+Math.sin(t*4+s.ph)*1.5:4;
+      gl.fillStyle(SEED_C,ready?0.10:0.03).fillCircle(s.x,s.y,42);
+      gl.fillStyle(SEED_C,ready?0.18:0.05).fillCircle(s.x,s.y,20);
+      for(let i=0;i<4;i++){
+        const an=t*1.5+s.ph+i*Math.PI/2;
+        g.fillStyle(SEED_C,0.85*a).fillCircle(s.x+Math.cos(an)*13,s.y+Math.sin(an)*13,2.5);
+      }
+      g.fillStyle(0xffffff,a).fillCircle(s.x,s.y,r);
+      if(!ready){ g.lineStyle(2,SEED_C,0.6); g.beginPath(); g.arc(s.x,s.y,17,-Math.PI/2,-Math.PI/2+Math.PI*2*(1-s.cd/2.2),false); g.strokePath(); }
+    }
+    // コイン
+    for(const c of this.coins){
+      const p=1+Math.sin(t*6+c.x)*0.2;
+      gl.fillStyle(0xffd700,0.08).fillCircle(c.x,c.y,16);
+      g.fillStyle(0xffd700,1).fillCircle(c.x,c.y,6*p);
+      g.lineStyle(1,0xffd700,0.5).strokeCircle(c.x,c.y,9*p);
+    }
+    // アイテム
+    const IC={magnet:0xff88ff,shield:0x66aaff,slow:0xffffff,multi:0xffbe0b,heal:0x44ff88};
+    for(const it of this.items){
+      const c=IC[it.type];
+      gl.fillStyle(c,0.1).fillCircle(it.x,it.y,26);
+      g.fillStyle(c,0.9).fillCircle(it.x,it.y,10);
+      g.lineStyle(2,c,0.6).strokeCircle(it.x,it.y,15+Math.sin(t*5)*3);
+      g.fillStyle(0x000000,0.8);
+      if(it.type==='heal'){ g.fillRect(it.x-6,it.y-2,12,4); g.fillRect(it.x-2,it.y-6,4,12); }
+      else g.fillCircle(it.x,it.y,3);
+    }
+    // レーザー
+    for(const l of this.lasers){
+      const dx=Math.cos(l.ang)*l.len/2,dy=Math.sin(l.ang)*l.len/2;
+      gl.lineStyle(14,0xff3355,0.12).lineBetween(l.x-dx,l.y-dy,l.x+dx,l.y+dy);
+      g.lineStyle(3,0xff6688,1).lineBetween(l.x-dx,l.y-dy,l.x+dx,l.y+dy);
+      g.fillStyle(0xffffff,1).fillCircle(l.x,l.y,4);
+      g.lineStyle(1,0xffffff,0.5).strokeCircle(l.x,l.y,8);
+    }
+    // ゲート
+    for(const gt of this.gates){
+      const cy=gt.cy0+Math.sin(t*1.6+gt.phase)*gt.amp,top=cy-gt.gap/2,bot=cy+gt.gap/2;
+      gl.lineStyle(16,0xff2d95,0.1).lineBetween(gt.x,-600,gt.x,top).lineBetween(gt.x,bot,gt.x,LAVA_Y);
+      g.lineStyle(3,0xff88cc,1).lineBetween(gt.x,-600,gt.x,top).lineBetween(gt.x,bot,gt.x,LAVA_Y);
+      g.fillStyle(0xffffff,1).fillRect(gt.x-8,top-4,16,6).fillRect(gt.x-8,bot-2,16,6);
+    }
+    // ミサイル
+    for(const m of this.missiles){
+      const a=Math.atan2(m.vy,m.vx),c=Math.cos(a),s=Math.sin(a);
+      const col=m.reflect?SEED_C:0xff8833;
+      gl.fillStyle(col,0.15).fillCircle(m.x,m.y,24);
+      g.fillStyle(m.reflect?0xffffff:0xffcc00,0.6+Math.random()*0.4).fillCircle(m.x-c*14,m.y-s*14,5+Math.random()*3);
+      g.fillStyle(col,1).fillTriangle(m.x+c*14,m.y+s*14,m.x-c*8-s*7,m.y-s*8+c*7,m.x-c*8+s*7,m.y-s*8-c*7);
+    }
+    // バッシュ可能ターゲット表示
+    if(bt){
+      const rr=22+Math.sin(t*10)*3;
+      for(let i=0;i<8;i++){
+        const a0=i/8*Math.PI*2+t*2;
+        g.lineStyle(2,SEED_C,0.9); g.beginPath(); g.arc(bt.x,bt.y,rr,a0,a0+0.45,false); g.strokePath();
+      }
+    }
+    // バッシュ照準
+    if(this.bashAim){
+      const b=this.bashAim,[ax,ay]=this.aim;
+      g.lineStyle(2,0xffffff,0.9).strokeCircle(b.x,b.y,BASH_R*(1-Math.min(1,this.aimT/BASH_MAX))*0.6+18);
+      let x=b.x,y=b.y,vx=ax*BASH_V,vy=ay*BASH_V;
+      const st=1/40;
+      for(let i=1;i<=28;i++){
+        vy+=this.grav*st; x+=vx*st; y+=vy*st;
+        if(i%2===0) g.fillStyle(SEED_C,1-i/30).fillCircle(x,y,3.2-i*0.07);
+      }
+      g.lineStyle(3,0xffffff,1).lineBetween(b.x,b.y,b.x+ax*60,b.y+ay*60);
+      g.fillStyle(0xffffff,1).fillTriangle(b.x+ax*72,b.y+ay*72,b.x+ax*56-ay*9,b.y+ay*56+ax*9,b.x+ax*56+ay*9,b.y+ay*56-ax*9);
+      if(b.kind==='missile'){ g.lineStyle(2,0xff8833,0.8).lineBetween(b.x,b.y,b.x-ax*90,b.y-ay*90); }
+      gl.fillStyle(SEED_C,0.12).fillCircle(b.x,b.y,70);
+    }
+    // ワイヤー
+    if(this.anchor){
+      const a=this.anchor,hot=this.perfectT>0||this.linkFlag;
+      gl.lineStyle(8,hot?SEED_C:0x00f0ff,0.12).lineBetween(a.x,a.y,this.px,this.py);
+      g.lineStyle(2,hot?0xffffff:0x00f0ff,0.95).lineBetween(a.x,a.y,this.px,this.py);
+    }
+    // トレイル
+    const tc=this.t-this.lastBashT<0.5?SEED_C:(this.dashTimer>0?0xffbe0b:0x00f0ff);
+    for(let i=0;i<this.trail.length;i++){
+      const p=this.trail[i],f=i/this.trail.length;
+      g.fillStyle(tc,f*0.5).fillCircle(p.x,p.y,PR*f*0.9);
+    }
+    // プレイヤー
+    if(!this.dead){
+      const al=(this.inv>0.4&&Math.floor(t*20)%2)?0.3:1;
+      gl.fillStyle(0x00f0ff,0.06).fillCircle(this.px,this.py,70);
+      gl.fillStyle(0x00f0ff,0.10).fillCircle(this.px,this.py,36);
+      gl.fillStyle(0xffffff,0.10).fillCircle(this.px,this.py,20);
+      g.fillStyle(0x00f0ff,al).fillCircle(this.px,this.py,PR);
+      g.lineStyle(3,0xffffff,al).lineBetween(this.px,this.py,this.px+Math.cos(this.rot)*PR,this.py+Math.sin(this.rot)*PR);
+      g.fillStyle(0xffffff,al).fillCircle(this.px,this.py,5);
+      g.lineStyle(2,0x00f0ff,0.5*al).strokeCircle(this.px,this.py,PR+4);
+      if(this.shield){
+        const pts=[];for(let i=0;i<6;i++){const a=i/6*Math.PI*2+t;pts.push({x:this.px+Math.cos(a)*(PR+11),y:this.py+Math.sin(a)*(PR+11)});}
+        g.lineStyle(2,0x66aaff,0.9).strokePoints(pts,true);
+      }
+      if(this.magnetT>0) g.lineStyle(1,0xff88ff,0.35).strokeCircle(this.px,this.py,MAGNET_R);
+      if(this.dashCD>0){
+        g.lineStyle(2,0xffbe0b,0.7); g.beginPath();
+        g.arc(this.px,this.py,PR+17,-Math.PI/2,-Math.PI/2+(1-this.dashCD/DASH_CD)*Math.PI*2,false); g.strokePath();
+      }
+    }
+    // パーティクル
+    for(const p of this.parts){
+      const a=Math.max(0,p.life/p.max);
+      if(p.line){ const ax=p.ax??1,ay=p.ay??0; g.lineStyle(2,p.c,a).lineBetween(p.x,p.y,p.x-ax*26,p.y-ay*26); }
+      else { g.fillStyle(p.c,a).fillCircle(p.x,p.y,3*a+1); gl.fillStyle(p.c,a*0.15).fillCircle(p.x,p.y,8); }
+    }
+  }
+
+  drawUi(){
+    const u=this.gUi; u.clear();
+    const B=BIOMES[this.biome],z=this.zoomV;
+    const sx=(this.px-this.camX-W/2)*z+W/2, sy=(this.py-H/2)*z+H/2;
+    if(!this.dead&&this.py>400&&!this.bashAim){
+      const a=Math.min(1,(this.py-400)/160)*0.35;
+      for(let i=0;i<3;i++) u.fillStyle(0xff0033,a*(1-i*0.3)).fillRect(0,H-40*(i+1),W,40);
+    }
+    if(!this.dead&&sy<0) u.fillStyle(0x00f0ff,0.9).fillTriangle(sx,6,sx-8,20,sx+8,20);
+    if(this.missileWarn>0&&Math.floor(this.t*8)%2){
+      u.fillStyle(0xff3355,0.8).fillTriangle(8,sy,30,sy-14,30,sy+14);
+      this.txtWarn.setText('! MISSILE').setPosition(80,sy).setAlpha(1);
+    } else this.txtWarn.setAlpha(0);
+    for(let i=0;i<Math.max(this.hp,HP_START);i++){
+      const x=26+i*24,y=52,c=i<this.hp?0xff3355:0x332228;
+      u.fillStyle(c,1).fillTriangle(x,y-9,x+9,y,x,y+9).fillTriangle(x,y-9,x-9,y,x,y+9);
+    }
+    const dr=this.dashCD>0?1-this.dashCD/DASH_CD:1;
+    u.fillStyle(0x222222,0.8).fillRect(16,H-46,140,8);
+    u.fillStyle(dr>=1?0xffbe0b:0x806020,1).fillRect(16,H-46,140*dr,8);
+    const f=this.gFlash; f.clear();
+    if(this.bashAim){
+      f.fillStyle(0x000814,0.35).fillRect(0,0,W,H);
+      const rem=1-this.aimT/BASH_MAX;
+      f.fillStyle(SEED_C,0.8).fillRect(W/2-120,H-36,240*rem,4);
+    }
+    if(this.flashA>0) f.fillStyle(this.flashC,this.flashA).fillRect(0,0,W,H);
+    if(this.scanT>0){ f.fillStyle(B.acc,this.scanT*0.4); for(let y=(this.t*600)%8;y<H;y+=8) f.fillRect(0,y,W,2); }
+    // ヒント
+    if(this.bashAim){ this.txtHint.setText('ドラッグ / 矢印キーで方向 → 離して射出').setAlpha(1); }
+    else if(this.bashHint&&!this.dead){ this.txtHint.setText('押して PULSE BASH').setAlpha(0.6+0.4*Math.sin(this.time.now*0.012)); }
+    else this.txtHint.setAlpha(0);
+    const tot=this.total();
+    this.txtScore.setText('SCORE '+String(tot).padStart(7,'0')+'   HI '+String(Math.max(this.high,tot)).padStart(7,'0')+'   '+Math.floor(this.distScore)+'m').setColor(hex(B.acc===0xffffff?0x00f0ff:B.acc));
+    this.txtCombo.setAlpha(this.combo>=2?1:0);
+    this.txtMission.setText('MISSION\n'+this.missions.map(m=>(m.done?'[OK] ':'[  ] ')+m.text).join('\n'));
+    let st=[];
+    if(this.shield)st.push('SHIELD');
+    if(this.magnetT>0)st.push('MAGNET '+Math.ceil(this.magnetT)+'s');
+    if(this.multiT>0)st.push('x2 '+Math.ceil(this.multiT)+'s');
+    if(this.slowT>0)st.push('BULLET TIME');
+    if(this.wind)st.push('WIND '+(this.wind>0?'>>':'<<'));
+    if(this.linkFlag)st.push('LINK → 真下で離せ!');
+    st.push(this.dashCD>0?'DASH '+this.dashCD.toFixed(1)+'s':'DASH READY');
+    this.txtStatus.setText(st.join('  '));
+    if(!this.started) this.txtGuide.setAlpha(0.55+0.45*Math.sin(this.time.now*0.006));
+  }
+
+  // ---------------- リザルト ----------------
+  showResult(){
+    const base=this.total();
+    const done=this.missions.filter(m=>m.done).length;
+    const mBonus=done*500+(done===3?2000:0);
+    const final=base+mBonus,isNew=final>this.high;
+    if(isNew){ this.high=final; try{localStorage.setItem('cyberHookHighScore2',String(final));}catch(e){} }
+    const acc=BIOMES[this.biome].acc;
+    const ov=this.ui(this.add.graphics().setDepth(200));
+    ov.fillStyle(0x000000,0.84).fillRect(0,0,W,H);
+    ov.lineStyle(2,acc,0.8).strokeRect(150,24,660,552);
+    const lines=[
+      '===== GAME OVER =====',
+      '死因: '+(CAUSE_JP[this.cause]||'-')+'   到達: '+BIOMES[this.biome].jp,'',
+      '距離 '+Math.floor(this.distScore)+'m  +'+Math.floor(this.distScore),
+      'コイン '+this.coinCount+'枚  +'+Math.floor(this.coinScore),
+      'トリック '+this.trickCount+'回  +'+this.trickScore,
+      'ニアミス '+this.nearCount+'回  +'+this.nearScore,
+      'バッシュ '+this.bashCount+' / LINK '+this.linkCount+' / FLOW '+this.flowCount,
+      'PF '+this.perfectCount+' / LOW '+this.lowCount+' / LOOP '+this.loopCount+'  テクニック +'+this.techScore,
+      '最大コンボ '+this.maxCombo+'x','',
+      ...this.missions.map(m=>(m.done?'[達成] ':'[----] ')+m.text+(m.done?' +500':'')),
+      done===3?'ALL CLEAR BONUS +2000':'',
+      'ミッションボーナス +'+mBonus
+    ];
+    const txt=this.ui(this.add.text(W/2,40,'',{fontFamily:FONT,fontSize:'18px',color:'#c9d1d9',align:'center',lineSpacing:4}).setOrigin(0.5,0).setDepth(201));
+    let n=0;
+    this.time.addEvent({delay:60,repeat:lines.length-1,callback:()=>{n++;txt.setText(lines.slice(0,n).join('\n'));}});
+    const tt=this.ui(this.add.text(W/2,470,'TOTAL 0',{fontFamily:FONT,fontSize:'34px',color:hex(acc===0xffffff?0x00f0ff:acc)}).setOrigin(0.5).setDepth(201));
+    this.tweens.addCounter({from:0,to:final,duration:900,delay:500,onUpdate:tw=>tt.setText('TOTAL '+Math.floor(tw.getValue()))});
+    const hi=this.ui(this.add.text(W/2,510,'HIGH '+this.high+(isNew?'   NEW RECORD!':''),{fontFamily:FONT,fontSize:'20px',color:isNew?'#ffd700':'#8b949e'}).setOrigin(0.5).setDepth(201));
+    if(isNew) this.tweens.add({targets:hi,alpha:0.25,duration:300,yoyo:true,repeat:-1});
+    const rt=this.ui(this.add.text(W/2,548,'SPACE / TAP で即リトライ',{fontFamily:FONT,fontSize:'18px',color:'#ffffff'}).setOrigin(0.5).setDepth(201));
+    this.tweens.add({targets:rt,alpha:0.4,duration:500,yoyo:true,repeat:-1});
+    this.time.delayedCall(450,()=>this.resultReady=true);
+  }
+}
+
+new Phaser.Game({
+  type:Phaser.AUTO,width:W,height:H,backgroundColor:'#0b0c10',
+  scale:{mode:Phaser.Scale.FIT,autoCenter:Phaser.Scale.CENTER_BOTH},
+  input:{activePointers:3},
+  scene:GameScene
+});
+</script>
+</body>
+</html>
