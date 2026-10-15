@@ -1307,10 +1307,38 @@ function startPhone(){
         navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
           .then(st => addMic(st.getAudioTracks())).catch(() => {});
       }
-      if (!first){ video.srcObject = remote; video.play().catch(() => {}); return; }   // つなぎ直し：映像だけ さしかえ
-      return useStream(remote.getVideoTracks(), [], remote);
+      // video には 映像だけ 入れる（音も いっしょだと、音が とどかない間 映像が 止まることがある）
+      const vs = new MediaStream(remote.getVideoTracks());
+      watchPhone(remote);
+      if (!first){ video.srcObject = vs; video.play().catch(() => {}); return; }   // つなぎ直し：映像だけ さしかえ
+      return useStream(remote.getVideoTracks(), [], vs);
     }
   });
+}
+// スマホの 映像が 来ないときは、わけを 左下に 出して、つなぎ直しを ためす
+let phoneWatch = 0;
+function watchPhone(remote){
+  clearInterval(phoneWatch);
+  let n = 0, lastT = -1, still = 0;
+  phoneWatch = setInterval(() => {
+    if (camKind !== 'phone'){ clearInterval(phoneWatch); return; }
+    const vt = remote.getVideoTracks()[0];
+    const moving = video.readyState >= 2 && video.currentTime !== lastT;
+    lastT = video.currentTime;
+    still = moving ? 0 : still + 1;
+    if (still === 4){   // 4びょう 動かない：video に 入れ直す
+      video.srcObject = new MediaStream(remote.getVideoTracks()); video.play().catch(() => {});
+    }
+    if (still >= 4){
+      const why = !vt ? '映像が ありません' : vt.readyState === 'ended' ? 'スマホの カメラが 止まりました' : vt.muted ? 'スマホから 映像が とどいていません（スマホの 画面を ひらいたままに してね）' : '映像を 待っています';
+      const b = document.getElementById('pcamBadge');
+      if (b){ b.textContent = '📱 ' + why + `［${video.readyState}/${vt ? vt.readyState + (vt.muted ? ',muted' : '') : '-'}］`; b.classList.add('ng'); b.style.opacity = 1; }
+    } else if (still === 0 && n){   // 映像が もどった
+      n = 0; const b = document.getElementById('pcamBadge');
+      if (b){ b.textContent = '📱 スマホカメラ'; b.classList.remove('ng'); }
+    }
+    if (still >= 4) n = 1;
+  }, 1000);
 }
 let micSrc = null;
 function addMic(at, replace){
