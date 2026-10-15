@@ -135,15 +135,18 @@ function startPad(){
   function say(t,ms){msg.textContent=t; clearTimeout(say.t); if(ms) say.t=setTimeout(()=>msg.textContent="　",ms)}
 
   /* --- スイング検出 --- */
-  const THR=18, MIN_PEAK=26, COOL=650;
-  let st="idle", peak=0, peakT=0, startT=0, lastSwing=0, shown=0;
+  const THR=12, MIN_PEAK=17, COOL=600;
+  let st="idle", peak=0, peakT=0, startT=0, lastSwing=0, shown=0, motionN=0;
   function onMotion(e){
     const now=performance.now();
     const a=e.acceleration; let am=0;
+    const has=(a&&a.x!=null)||(e.accelerationIncludingGravity&&e.accelerationIncludingGravity.x!=null);
+    if(!has) return;                         // 中身のない イベント(センサーが ない/とまっている)
+    if(!motionN++ && conn&&conn.open) status.textContent="つながった！ センサー OK";
     if(a&&a.x!=null) am=Math.hypot(a.x,a.y,a.z);
     else{const g=e.accelerationIncludingGravity; if(g&&g.x!=null) am=Math.abs(Math.hypot(g.x,g.y,g.z)-9.81)}
     const r=e.rotationRate; const rm=(r&&r.alpha!=null)?Math.hypot(r.alpha,r.beta,r.gamma):0;
-    const s=am+rm/40;
+    const s=am+rm/30;
     shown=Math.max(s,shown*0.9); bar.style.width=clamp(shown/70,0,1)*100+"%";
     if(st==="idle"){
       if(s>THR && now-lastSwing>COOL){st="swing"; peak=s; peakT=now; startT=now}
@@ -152,7 +155,7 @@ function startPad(){
       if(s<peak*0.55 || now-startT>350){
         st="idle"; lastSwing=now;
         if(peak>=MIN_PEAK){
-          const power=clamp((peak-MIN_PEAK)/50,0,1);
+          const power=clamp((peak-MIN_PEAK)/45,0,1);
           send({t:"swing",power,ago:now-peakT});
           say("スイング！ パワー "+Math.round(power*100),900);
         }
@@ -189,7 +192,8 @@ function startPad(){
       conn=peer.connect(ID_PREFIX+code,{reliable:true});
       conn.on("open",()=>{
         $("padConnect").classList.add("hide"); $("padPlay").classList.remove("hide");
-        status.textContent="つながった！"; send({t:"hello"});
+        status.textContent=motionN?"つながった！ センサー OK":"つながった！"; send({t:"hello"});
+        setTimeout(()=>{if(!motionN) status.textContent="⚠️ センサーが うごいていない。QRアプリの中ではなく Safari / Chrome で ひらいてね"},2000);
       });
       conn.on("data",d=>{
         if(d.t==="ping") send({t:"pong",ts:d.ts});
@@ -378,6 +382,9 @@ function startPc(){
 
   /* スイングの受付(スマホ/キーボード共通)。at=スイングのピーク時刻(ms) */
   function onSwing(power,at){
+    game.lastSwing={t:now(),power};          // とどいたことを 画面に出す(どの場面でも)
+    if(game.state==="title"){padStatus(true,`スマホ：スイング とどいた！ パワー ${Math.round(power*100)}　「はじめる」を おしてね`);return}
+    if(game.state==="ready"){game.early=now();return}
     if(!["windup","flight"].includes(game.state)||game.swing) return;
     game.swing={at,power};
     if(game.state==="windup"){            // 投げる前に ふった
@@ -495,6 +502,11 @@ function startPc(){
     // メッセージ
     ctx.textAlign="center";
     if(st==="ready"){big("ピッチャー かまえた…",640,150,"#fff",42)}
+    if(st==="ready"&&game.early&&t-game.early<900){big("まだ！ なげてから ふろう",640,215,"#9ad0ff",34)}
+    if(game.lastSwing&&t-game.lastSwing.t<700){
+      const a=1-(t-game.lastSwing.t)/700; ctx.globalAlpha=a;
+      big("📱 ブンッ！",1140,100,"#7dffa0",34); ctx.globalAlpha=1;
+    }
     if(st==="windup"){big("…",640,150,"#fff",42)}
     if(st==="flight"&&!game.swing&&t>p.tRelease&&t<p.tRelease+500){big("きた！",640,150,"#ffd84a",56)}
     if(game.banner){
