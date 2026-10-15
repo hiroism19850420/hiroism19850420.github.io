@@ -1,6 +1,6 @@
 ﻿# HTMLゲームを hiroism19850420.github.io に追加・更新して公開する
-# 使い方: powershell -File publish.ps1 -Source <ゲームのフォルダ> -Slug <URL用の英数字名> -Title <表示名> [-Desc <説明>] [-Files a,b,c] [-Cat camera|tap|voice]
-#   -Cat  トップページの分類。camera=カメラを使う全身ゲーム / tap=スマホでタップ / voice=声だけで遊ぶ
+# 使い方: powershell -File publish.ps1 -Source <ゲームのフォルダ> -Slug <URL用の英数字名> -Title <表示名> [-Desc <説明>] [-Files a,b,c] [-Cat camera|tap|voice|swing]
+#   -Cat  トップページの分類。camera=カメラを使う全身ゲーム / tap=スマホでタップ / voice=声だけで遊ぶ / swing=スマホを振る(注意)
 #         省略すると、公開済みなら今の分類のまま、新規なら tap
 #   -IndexOnly  ゲームはコピーせず、games.json からトップページだけ作り直して公開する
 param(
@@ -9,7 +9,7 @@ param(
   [string]$Title,
   [string]$Desc = "",
   [string[]]$Files,
-  [ValidateSet("", "camera", "tap", "voice")][string]$Cat = "",
+  [ValidateSet("", "camera", "tap", "voice", "swing")][string]$Cat = "",
   [switch]$IndexOnly
 )
 $ErrorActionPreference = "Stop"
@@ -77,7 +77,8 @@ $jsonText = "[`n" + (($games | ForEach-Object { ConvertTo-Json $_ -Compress }) -
 $cats = @(
   @{ id="camera"; name="カメラを使う全身ゲーム"; icon="📷"; note="カメラの前で 体を動かして あそぶ" },
   @{ id="tap";    name="スマホでタップ";         icon="👆"; note="スマホの画面を さわって あそぶ" },
-  @{ id="voice";  name="声だけで遊ぶゲーム";     icon="🗣️"; note="画面を見ないで 声で あそぶ" }
+  @{ id="voice";  name="声だけで遊ぶゲーム";     icon="🗣️"; note="画面を見ないで 声で あそぶ" },
+  @{ id="swing";  name="スマホを振る（注意）";   icon="📱"; note="スマホを ふって あそぶ。まわりに ちゅうい！" }
 )
 $buttons = ""; $sections = ""
 foreach ($c in $cats) {
@@ -102,7 +103,7 @@ h1{text-align:center;color:#ff7a2f}
 .cat:hover{transform:translateY(-2px)}
 .cat .ic{font-size:2.6rem;line-height:1}.cat b{font-size:1.35rem}.cat .note{font-size:.9rem;opacity:.95}
 .cat .n{margin-top:4px;background:#fff3;border-radius:99px;padding:2px 12px;font-size:.9rem}
-.cat-camera{background:#ff7a2f}.cat-tap{background:#3b82f6}.cat-voice{background:#16a34a}
+.cat-camera{background:#ff7a2f}.cat-tap{background:#3b82f6}.cat-voice{background:#16a34a}.cat-swing{background:#e11d48}
 .games{display:none}
 .back{display:inline-block;margin:4px 0 8px;padding:8px 16px;border-radius:99px;background:#fff;color:#2b2b2b;text-decoration:none;box-shadow:0 2px 6px #0002}
 .head{margin:8px 0 14px}
