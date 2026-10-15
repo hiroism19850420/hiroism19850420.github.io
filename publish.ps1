@@ -1,8 +1,8 @@
 ﻿# HTMLゲームを hiroism19850420.github.io に追加・更新して公開する
-# 使い方: powershell -File publish.ps1 -Source <ゲームのフォルダ> -Slug <URL用の英数字名> -Title <表示名> [-Desc <説明>] [-Files a,b,c] [-Cat camera|tap|voice|adult] [-Tag asobi|manabi]
+# 使い方: powershell -File publish.ps1 -Source <ゲームのフォルダ> -Slug <URL用の英数字名> -Title <表示名> [-Desc <説明>] [-Files a,b,c] [-Cat camera|tap|voice|adult] [-Tag asobi|manabi|karada]
 #   -Cat  トップページの分類。camera=カメラを使う全身ゲーム / tap=スマホでタップ / voice=声だけで遊ぶ / adult=おとな向け(子ども向けの一覧とは分けて、下に小さく出す)
 #         省略すると、公開済みなら今の分類のまま、新規なら tap
-#   -Tag  カードに付けるタグ。asobi=あそび / manabi=まなび(ねらいのある学びの道具)
+#   -Tag  カードに付けるタグ。asobi=あそび / manabi=まなび(ねらいのある学びの道具) / karada=からだ(体を動かすのが目的)
 #         省略すると、公開済みなら今のタグのまま、新規ならタグなし
 #   -IndexOnly  ゲームはコピーせず、games.json からトップページだけ作り直して公開する
 param(
@@ -12,7 +12,7 @@ param(
   [string]$Desc = "",
   [string[]]$Files,
   [ValidateSet("", "camera", "tap", "voice", "adult")][string]$Cat = "",
-  [ValidateSet("", "asobi", "manabi")][string]$Tag = "",
+  [ValidateSet("", "asobi", "manabi", "karada")][string]$Tag = "",
   [switch]$IndexOnly
 )
 $ErrorActionPreference = "Stop"
@@ -92,6 +92,7 @@ foreach ($c in $cats) {
     $tg = ""
     if ($_.tag -eq "asobi")  { $tg = "<span class=""tag tag-asobi"">あそび</span>" }
     if ($_.tag -eq "manabi") { $tg = "<span class=""tag tag-manabi"">まなび</span>" }
+    if ($_.tag -eq "karada") { $tg = "<span class=""tag tag-karada"">からだ</span>" }
     "<a class=""card"" href=""$($_.slug)/"">$tg<h2>$t</h2><p>$d</p><small>更新: $($_.updated)</small></a>"
   }) -join "`n"
   if ($c.id -eq "adult") {
@@ -122,7 +123,7 @@ h1{text-align:center;color:#ff7a2f}
 .list{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
 .card{display:block;background:#fff;border-radius:16px;padding:16px;box-shadow:0 2px 8px #0002;text-decoration:none;color:inherit}
 .card:hover{transform:translateY(-2px)}
-.tag{display:inline-block;margin:0 0 6px;padding:2px 10px;border-radius:99px;font-size:.8rem;font-weight:bold}.tag-asobi{background:#ffe4cc;color:#c2410c}.tag-manabi{background:#dcfce7;color:#15803d}
+.tag{display:inline-block;margin:0 0 6px;padding:2px 10px;border-radius:99px;font-size:.8rem;font-weight:bold}.tag-asobi{background:#ffe4cc;color:#c2410c}.tag-manabi{background:#dcfce7;color:#15803d}.tag-karada{background:#dbeafe;color:#1d4ed8}
 .card h2{margin:0 0 6px;color:#3b82f6;font-size:1.2rem}.card p{margin:0 0 8px}.card small{color:#888}
 </style><script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head><body><div class="wrap"><h1>HTMLゲーム集</h1>
 <div class="cats" id="top">
