@@ -36,6 +36,7 @@
     b.textContent = txt; b.classList.toggle('ng', !!ng); b.style.opacity = 1;
     clearTimeout(badge.t); if (!ng) badge.t = setTimeout(() => { b.style.opacity = 0; }, 4000);
   }
+  function say(t) { const st = box && box.querySelector('.st'); if (st) st.textContent = t; }
   function close() {
     if (box) { box.remove(); box = null; }
   }
@@ -84,8 +85,10 @@
         c.answer();
         c.on('stream', stream => {
           if (call !== c) return;
-          close(); badge('📱 スマホカメラ');
-          opt.onStream && opt.onStream(stream);
+          say('✅ スマホと つながった！ ゲームを じゅんび中…');
+          badge('📱 スマホカメラ');
+          // ゲームの じゅんびが おわるまで パネルを 出したまま、ようすを 見せる
+          Promise.resolve(opt.onStream && opt.onStream(stream)).then(ok => { if (ok !== false) close(); }, e => say('ゲームを はじめられませんでした（' + (e && e.message || e) + '）'));
         });
         const lost = () => { if (call === c && !c.lostShown) { c.lostShown = true; badge('📱 スマホと きれた。スマホの ページを ひらき直してね', true); opt.onLost && opt.onLost(); } };
         c.on('close', lost);
@@ -103,5 +106,5 @@
     start();
   }
 
-  window.PhoneCam = { open, stop, close };
+  window.PhoneCam = { open, stop, close, say };
 })();

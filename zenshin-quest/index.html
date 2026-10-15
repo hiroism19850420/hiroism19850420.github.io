@@ -1281,37 +1281,43 @@ function startPhone(){
   const msg = $('msg');
   if (!window.PhoneCam){ msg.textContent = 'つうしんの ぶひんが よみこめませんでした。ネットに つながっているか かくにんしてください。'; return; }
   msg.textContent = '';
+  // マイク（じゅもん用）は ボタンを おした いま きく。こたえを またずに 先へ すすむ
+  if (!analyser && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+      .then(st => addMic(st.getAudioTracks())).catch(() => {});
+  }
   PhoneCam.open({
     onStream: async remote => {
       const first = camKind !== 'phone';
       camKind = 'phone';
       if (first && video.srcObject && video.srcObject.getTracks) video.srcObject.getTracks().forEach(t => t.stop());
-      let at = [];
-      if (first && !analyser && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-        try { at = (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })).getAudioTracks(); } catch (e) {}
-      }
       if (!first){ video.srcObject = remote; video.play().catch(() => {}); return; }   // つなぎ直し：映像だけ さしかえ
-      await useStream(remote.getVideoTracks(), at, remote);
+      return useStream(remote.getVideoTracks(), [], remote);
     }
   });
 }
+function addMic(at){
+  if (!at.length || !ac || analyser) return;
+  analyser = ac.createAnalyser(); analyser.fftSize = 1024; volBuf = new Float32Array(analyser.fftSize);
+  ac.createMediaStreamSource(new MediaStream(at)).connect(analyser);
+  S.noMic = false;
+}
 async function useStream(vt, at, whole){
   const msg = $('msg');
+  const note = t => { msg.textContent = t; if (window.PhoneCam && camKind === 'phone') PhoneCam.say(t); };
   video.srcObject = whole || new MediaStream(vt);
-  try { await video.play(); } catch (e) {}
-  if (at.length && ac && !analyser){
-    analyser = ac.createAnalyser(); analyser.fftSize = 1024; volBuf = new Float32Array(analyser.fftSize);
-    ac.createMediaStreamSource(new MediaStream(at)).connect(analyser);
-    S.noMic = false;
-  } else if (!analyser) S.noMic = true;
+  // 再生が はじまらなくても 3びょうで 先へ（とまったままに しない）
+  try { await Promise.race([video.play(), new Promise(r => setTimeout(r, 3000))]); } catch (e) {}
+  addMic(at);
+  if (!analyser) S.noMic = true;
   if (!pose){
-    msg.textContent = 'うごきを 見る じゅんび中…（はじめは すこし かかります）';
+    note('うごきを 見る じゅんび中…（はじめは すこし かかります）');
     try {
       const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
       const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
       const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
       try { pose = await make('GPU'); } catch (e){ pose = await make('CPU'); }
-    } catch (e){ msg.textContent = 'うごきを 見る しくみを よみこめませんでした。ネットに つながっているか かくにんしてください。'; return; }
+    } catch (e){ note('うごきを 見る しくみを よみこめませんでした。ネットに つながっているか かくにんしてください。'); return false; }
   }
   msg.textContent = '';
   S.mode = 'cam'; begin();
