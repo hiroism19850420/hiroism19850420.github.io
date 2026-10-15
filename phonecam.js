@@ -8,7 +8,7 @@
   const PREFIX = 'hiro-pcam-';
   const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const SRC = document.currentScript ? document.currentScript.src : location.href;
-  let peer = null, box = null, call = null, retry = 0;
+  let peer = null, box = null, call = null, retry = 0, data = null, keep = null;
 
   function css() {
     if (document.getElementById('pcamCss')) return;
@@ -23,6 +23,8 @@
 #pcamBox ol{margin:6px 0;padding-left:1.3em}
 #pcamBox .code{font-size:13px;opacity:.75}
 #pcamBox .code b{font-size:20px;letter-spacing:.15em;opacity:1}
+#pcamBox .mic{display:flex;align-items:center;gap:8px;margin:8px 0 2px;font-weight:700;cursor:pointer}
+#pcamBox .mic input{width:22px;height:22px}
 #pcamBox .st{margin-top:8px;font-weight:700;color:#d2481e;min-height:1.6em}
 #pcamBox button{font:inherit;font-weight:700;font-size:15px;margin-top:6px;border:0;border-radius:999px;padding:9px 20px;background:#cfe0ff;color:#23306b;box-shadow:0 4px 0 #7a8fc4;cursor:pointer}
 #pcamBadge{position:fixed;left:8px;bottom:8px;transition:opacity .6s;z-index:9998;font:700 12px "Hiragino Maru Gothic ProN","BIZ UDPGothic",sans-serif;background:rgba(0,0,0,.55);color:#9ff5b0;padding:4px 10px;border-radius:999px;pointer-events:none}
@@ -43,31 +45,51 @@
   function stop() {
     try { call && call.close(); } catch (e) {}
     try { peer && peer.destroy(); } catch (e) {}
-    call = null; peer = null; badge('');
+    call = null; peer = null; data = null; PhoneCam.micOn = false; badge('');
   }
 
   // opt.onStream(stream)：映像が とどいたとき（つなぎ直しでも また よばれる）
   // opt.onLost()：スマホと きれたとき
   // opt.onCancel()：「やめる」を おしたとき
+  // opt.mic：true なら「マイクも スマホを つかう」を 出す。えらぶと 映像に スマホの 音が つき、PhoneCam.micOn が true になる
+  // opt.onData(obj)：スマホから とどいた データ（音声にんしきの 結果など）。PhoneCam.send(obj) で スマホへ おくる
   function open(opt) {
     opt = opt || {};
     css(); close(); stop();
     if (typeof Peer === 'undefined') { alert('つうしんの ぶひんが よみこめませんでした。ネットに つながっているか たしかめてください。'); return; }
     let code = '';
     for (let i = 0; i < 5; i++) code += CHARS[Math.floor(Math.random() * CHARS.length)];
-    const url = new URL('phonecam/?r=' + code, SRC).href;
+    let mic = false;
+    try { mic = localStorage.getItem('pcamMic') === '1'; } catch (e) {}
+    const url = () => new URL('phonecam/?r=' + code + (opt.mic && mic ? '&mic=1' : ''), SRC).href;
     box = document.createElement('div'); box.id = 'pcamBox';
     box.innerHTML = `<div class="in"><div class="qr"></div><div class="tx">
 <h2>📱 スマホを カメラにする</h2>
 <ol><li>スマホの カメラで この QR を よみとる</li><li>ひらいた ページで カメラを きょかする</li><li>スマホを <b>横向き</b>に たてかけて、<b>ぜんしん</b>が うつる ところに おく</li></ol>
+${opt.mic ? '<label class="mic"><input type="checkbox"> 🎤 マイクも スマホを つかう</label>' : ''}
 <div class="code">PC と スマホは <b>おなじ Wi-Fi</b> に つないでね。　あいことば <b>${code}</b></div>
 <div class="st">PC の じゅんび中…</div>
 <button class="cancel">やめる</button></div></div>`;
     document.body.appendChild(box);
     const st = box.querySelector('.st');
     box.querySelector('.cancel').onclick = () => { close(); stop(); opt.onCancel && opt.onCancel(); };
-    if (typeof QRCode !== 'undefined') new QRCode(box.querySelector('.qr'), { text: url, width: 190, height: 190, correctLevel: QRCode.CorrectLevel.M });
-    else box.querySelector('.qr').textContent = url;
+    const drawQr = () => {
+      const q = box.querySelector('.qr'); q.innerHTML = '';
+      if (typeof QRCode !== 'undefined') new QRCode(q, { text: url(), width: 190, height: 190, correctLevel: QRCode.CorrectLevel.M });
+      else q.textContent = url();
+    };
+    drawQr();
+    const cb = box.querySelector('.mic input');
+    if (cb) {
+      cb.checked = mic;
+      // PC に マイクが ひとつも ないときは、さいしょから スマホの マイクに する
+      if (!mic && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        navigator.mediaDevices.enumerateDevices().then(ds => {
+          if (box && !ds.some(d => d.kind === 'audioinput')) { mic = cb.checked = true; drawQr(); }
+        }).catch(() => {});
+      }
+      cb.onchange = () => { mic = cb.checked; try { localStorage.setItem('pcamMic', mic ? '1' : '0'); } catch (e) {} drawQr(); };
+    }
 
     const start = () => {
       peer = new Peer(PREFIX + code);
@@ -85,6 +107,9 @@
         c.answer();
         c.on('stream', stream => {
           if (call !== c) return;
+          PhoneCam.micOn = stream.getAudioTracks().length > 0;
+          // Chrome は WebRTC の 音を いちど audio 要素に つながないと WebAudio に 流れないことがある
+          if (PhoneCam.micOn) { keep = keep || new Audio(); keep.muted = true; keep.srcObject = stream; keep.play().catch(() => {}); }
           say('✅ スマホと つながった！ ゲームを じゅんび中…');
           badge('📱 スマホカメラ');
           // ゲームの じゅんびが おわるまで パネルを 出したまま、ようすを 見せる
@@ -100,11 +125,17 @@
         });
         c.on('error', () => {});
       });
+      peer.on('connection', dc => {
+        data = dc;
+        dc.on('data', d => { if (data === dc && opt.onData) opt.onData(d); });
+        dc.on('close', () => { if (data === dc) data = null; });
+      });
       // スマホが つなぎ直しを したときに そなえて、きれても PC は まちつづける
       peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) {} });
     };
     start();
   }
 
-  window.PhoneCam = { open, stop, close, say };
+  function send(o) { try { data && data.open && data.send(o); } catch (e) {} }
+  window.PhoneCam = { open, stop, close, say, send, micOn: false };
 })();

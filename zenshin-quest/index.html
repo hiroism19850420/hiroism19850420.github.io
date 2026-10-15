@@ -306,8 +306,21 @@ function hear(str){
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const ANDROID = /Android/i.test(navigator.userAgent);
 let rec = null, recOn = false, recDead = !SR, recAt = -9;
+const phoneSR = { ready: false, want: false };
+function phoneData(d){
+  if (!d || d.t !== 'sr') return;
+  if ('ready' in d){ phoneSR.ready = !!d.ready; phoneSR.want = false; }
+  if ('listening' in d) recOn = !!d.listening;
+  if (d.dead){ phoneSR.ready = false; recOn = false; }
+  if (d.text) hear(d.text);
+}
 // 聞きとりは まほうの構えの間だけ 動かす
 function listen(on){
+  // スマホの マイクの ときは、スマホで 聞いてもらう（結果は phoneData で hear へ）
+  if (window.PhoneCam && PhoneCam.micOn && phoneSR.ready){
+    if (!!on !== phoneSR.want){ phoneSR.want = !!on; PhoneCam.send({ t: 'sr', on: !!on }); }
+    return;
+  }
   if (recDead) return;
   if (!on){ if (recOn){ try { rec.abort(); } catch (e) {} } return; }
   if (recOn || S.now - recAt < 0.6) return;
@@ -1281,25 +1294,32 @@ function startPhone(){
   const msg = $('msg');
   if (!window.PhoneCam){ msg.textContent = 'つうしんの ぶひんが よみこめませんでした。ネットに つながっているか かくにんしてください。'; return; }
   msg.textContent = '';
-  // マイク（じゅもん用）は ボタンを おした いま きく。こたえを またずに 先へ すすむ
-  if (!analyser && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
-      .then(st => addMic(st.getAudioTracks())).catch(() => {});
-  }
   PhoneCam.open({
+    mic: true, onData: phoneData,
     onStream: async remote => {
       const first = camKind !== 'phone';
       camKind = 'phone';
       if (first && video.srcObject && video.srcObject.getTracks) video.srcObject.getTracks().forEach(t => t.stop());
+      const at = remote.getAudioTracks();
+      if (at.length) addMic(at, true);   // スマホの マイク（つなぎ直しでも さしかえる）
+      else if (!analyser && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+        // PC の マイク。きょかの こたえを またずに 先へ すすむ
+        navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+          .then(st => addMic(st.getAudioTracks())).catch(() => {});
+      }
       if (!first){ video.srcObject = remote; video.play().catch(() => {}); return; }   // つなぎ直し：映像だけ さしかえ
       return useStream(remote.getVideoTracks(), [], remote);
     }
   });
 }
-function addMic(at){
-  if (!at.length || !ac || analyser) return;
-  analyser = ac.createAnalyser(); analyser.fftSize = 1024; volBuf = new Float32Array(analyser.fftSize);
-  ac.createMediaStreamSource(new MediaStream(at)).connect(analyser);
+let micSrc = null;
+function addMic(at, replace){
+  if (!at.length || !ac) return;
+  if (analyser && !replace) return;
+  if (!analyser){ analyser = ac.createAnalyser(); analyser.fftSize = 1024; volBuf = new Float32Array(analyser.fftSize); }
+  if (micSrc){ try { micSrc.disconnect(); } catch (e) {} }
+  micSrc = ac.createMediaStreamSource(new MediaStream(at));
+  micSrc.connect(analyser);
   S.noMic = false;
 }
 async function useStream(vt, at, whole){

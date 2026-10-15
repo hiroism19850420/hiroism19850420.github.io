@@ -31,19 +31,21 @@
   <button id="bFlip" class="sub hide">🔄 カメラを きりかえ</button>
   <button id="bDim" class="sub hide">🌙 がめんを くらく</button>
 </div>
-<div class="note" id="note">スマホを <b>横向き</b>に たてかけて、<b>頭から 足まで</b> うつる ところに おいてね。<br>この ページは ひらいたままに してください（とじると きれます）。<br>えいぞうは PC にだけ おくり、ほかには おくりません。</div>
+<div class="note" id="note">スマホを <b>横向き</b>に たてかけて、<b>頭から 足まで</b> うつる ところに おいてね。<br>この ページは ひらいたままに してください（とじると きれます）。<br>えいぞうと 音は PC にだけ おくり、ほかには おくりません。</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
 <script>
 const PREFIX = 'hiro-pcam-';
 const $ = id => document.getElementById(id);
 const code = (new URLSearchParams(location.search).get('r') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const MIC = new URLSearchParams(location.search).get('mic') === '1';
 const pv = $('pv'), st = $('st');
+let dc = null;
 let facing = 'user', stream = null, peer = null, call = null, lock = null;
 
 function say(t, cls){ st.textContent = t; st.className = cls || ''; }
 
 async function getCam(){
-  const s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30, max: 30 } } });
+  const s = await navigator.mediaDevices.getUserMedia({ audio: MIC ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false, video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30, max: 30 } } });
   if (stream) stream.getTracks().forEach(t => t.stop());
   stream = s; pv.srcObject = s; pv.style.display = 'block';
   pv.classList.toggle('self', facing === 'user');
@@ -65,7 +67,7 @@ function connect(){
     const pc = call.peerConnection;
     const watch = () => {
       const s = pc && (pc.iceConnectionState || pc.connectionState);
-      if (s === 'connected' || s === 'completed') { say('✅ つながった！ PC の 画面を 見てね', 'ok'); $('bGo').classList.add('hide'); }
+      if (s === 'connected' || s === 'completed') { say('✅ つながった！ PC の 画面を 見てね' + (MIC ? '（🎤 マイクも スマホ）' : ''), 'ok'); $('bGo').classList.add('hide'); if (MIC) openData(); }
       else if (s === 'failed') { say('つなげませんでした。PC と スマホが おなじ Wi-Fi か たしかめてね', 'ng'); $('bGo').classList.remove('hide'); $('bGo').textContent = 'もういちど つなぐ'; }
       else if (s === 'disconnected') say('とぎれています…', 'ng');
     };
@@ -79,6 +81,40 @@ function connect(){
   });
 }
 
+// ---- じゅもんの 聞きとり：PC から {t:'sr', on} が とどいたら、スマホで 聞いて 文字を おくる ----
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const ANDROID = /Android/i.test(navigator.userAgent);
+let rec = null, recWant = false, recOn = false, recDead = !SR, recAt = 0;
+function openData(){
+  if (dc && dc.open) return;
+  dc = peer.connect(PREFIX + code, { reliable: true });
+  dc.on('open', () => dc.send({ t: 'sr', ready: !recDead }));
+  dc.on('data', d => { if (d && d.t === 'sr') { recWant = !!d.on; recTick(); } });
+}
+function srSend(o){ try { dc && dc.open && dc.send(Object.assign({ t: 'sr' }, o)); } catch (e) {} }
+function recTick(){
+  if (recDead) return;
+  if (!recWant){ if (recOn){ try { rec.abort(); } catch (e) {} } return; }
+  if (recOn) return;
+  const wait = 600 - (Date.now() - recAt);
+  if (wait > 0){ setTimeout(recTick, wait); return; }
+  if (!rec){
+    rec = new SR(); rec.lang = 'ja-JP'; rec.continuous = !ANDROID; rec.interimResults = true; rec.maxAlternatives = 3;
+    rec.onresult = ev => {
+      let t = '';
+      for (let i = ev.resultIndex; i < ev.results.length; i++) for (let j = 0; j < ev.results[i].length; j++) t += ev.results[i][j].transcript + ' ';
+      srSend({ text: t });
+    };
+    rec.onstart = () => srSend({ listening: true });
+    rec.onend = () => { recOn = false; srSend({ listening: false }); if (recWant) recTick(); };
+    rec.onerror = ev => {
+      if (['not-allowed', 'service-not-allowed', 'audio-capture', 'language-not-supported'].includes(ev.error)){ recDead = true; srSend({ dead: true, error: ev.error }); }
+    };
+  }
+  recAt = Date.now();
+  try { rec.start(); recOn = true; } catch (e) {}
+}
+
 async function go(){
   if (!code){ say('PC の ゲームに 出ている QR を よみとって ひらいてね', 'ng'); return; }
   if (typeof Peer === 'undefined'){ say('つうしんの ぶひんが よみこめませんでした。ネットを たしかめてね', 'ng'); return; }
@@ -86,7 +122,7 @@ async function go(){
   $('bGo').classList.add('hide');
   say('カメラを じゅんび中…');
   try { await getCam(); }
-  catch (e){ say('カメラを つかえませんでした。ブラウザで カメラを きょかしてね', 'ng'); $('bGo').classList.remove('hide'); return; }
+  catch (e){ say(MIC ? 'カメラか マイクを つかえませんでした。ブラウザで きょかしてね' : 'カメラを つかえませんでした。ブラウザで カメラを きょかしてね', 'ng'); $('bGo').classList.remove('hide'); return; }
   keepAwake();
   $('bFlip').classList.remove('hide'); $('bDim').classList.remove('hide');
   connect();
@@ -97,8 +133,12 @@ $('bFlip').onclick = async () => {
   facing = facing === 'user' ? 'environment' : 'user';
   try {
     await getCam();
-    const sender = call && call.peerConnection && call.peerConnection.getSenders().find(s => !s.track || s.track.kind === 'video');
-    if (sender) await sender.replaceTrack(stream.getVideoTracks()[0]);
+    const senders = call && call.peerConnection ? call.peerConnection.getSenders() : [];
+    for (const sd of senders){
+      const kind = sd.track ? sd.track.kind : null;
+      const nt = kind === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
+      if (nt && kind !== null) await sd.replaceTrack(nt);
+    }
   } catch (e) { say('カメラを きりかえられませんでした', 'ng'); }
 };
 $('bDim').onclick = () => document.body.classList.toggle('dim');
