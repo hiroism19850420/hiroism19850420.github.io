@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>バッター目線</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#0b1a10;color:#fff;overflow:hidden;
+    font-family:"Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic",sans-serif;
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  .hide{display:none!important}
+  /* ---------- PC(画面) ---------- */
+  #pc{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
+  #stage{position:relative;width:min(100vw,calc(100vh*16/9));aspect-ratio:16/9}
+  #c{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(6,30,16,.9);text-align:center;padding:2%;overflow:auto;justify-content:safe center}
+  h1{font-size:clamp(28px,5vw,60px);margin:0 0 .3em;color:#ffd84a;letter-spacing:2px;
+    text-shadow:0 3px 0 #7a3b12,2px 0 0 #7a3b12,-2px 0 0 #7a3b12,0 -2px 0 #7a3b12}
+  .sub{font-size:clamp(13px,1.7vw,20px);line-height:1.7;margin:0 0 .8em;color:#e3f6f4}
+  button{font-family:inherit;font-weight:bold;color:#1b1b1b;background:#ffd84a;border:0;border-radius:14px;
+    padding:.6em 1.2em;font-size:clamp(15px,2vw,24px);box-shadow:0 5px 0 #b98f00;cursor:pointer;margin:.25em}
+  button:active{transform:translateY(3px);box-shadow:0 2px 0 #b98f00}
+  button.sel{background:#7dffa0;box-shadow:0 5px 0 #2a9c4a}
+  button.small{font-size:clamp(12px,1.4vw,18px);padding:.3em .8em;background:#d7e6dd;box-shadow:0 3px 0 #7e9a88}
+  .row{display:flex;flex-wrap:wrap;justify-content:center;align-items:center}
+  .pairbox{display:flex;gap:2vw;align-items:center;justify-content:center;background:#0006;border-radius:16px;padding:1.2vw 2vw;margin:.6em 0}
+  #qr{width:150px;height:150px;background:#fff;padding:6px;border-radius:8px}
+  #qr img,#qr canvas{width:100%!important;height:100%!important}
+  .code{font-size:clamp(26px,4vw,48px);letter-spacing:.2em;color:#ffd84a;font-weight:bold}
+  #padState{font-size:clamp(14px,1.8vw,22px);margin:.2em 0}
+  #padState.ok{color:#7dffa0}
+  .note{font-size:clamp(11px,1.3vw,15px);color:#a8c8b4;line-height:1.6}
+  /* ---------- スマホ(バット) ---------- */
+  #pad{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at 50% 35%,#1d6b3a,#06180e);padding:20px;text-align:center}
+  #pad h1{font-size:34px}
+  #pad p{font-size:16px;line-height:1.7;margin:.3em 0 1em;color:#e3f6f4}
+  #pad input{font-size:30px;width:min(70vw,260px);text-align:center;letter-spacing:.2em;text-transform:uppercase;
+    padding:10px;border-radius:12px;border:0;margin-bottom:12px}
+  #pad button{width:min(80vw,320px);font-size:22px;padding:15px 10px}
+  #meter{width:min(80vw,320px);height:26px;border-radius:13px;background:#0008;overflow:hidden;margin:14px 0 6px}
+  #meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7dffa0,#ffd84a,#ff5a3c)}
+  #padMsg{font-size:22px;min-height:1.6em;color:#ffd84a;font-weight:bold}
+  #padStatus{font-size:15px;color:#a8c8b4;margin-top:8px}
+  #padWarn{position:absolute;bottom:14px;left:16px;right:16px;font-size:12px;color:#ffb4a8;line-height:1.5}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+
+<!-- ======== PC: ゲーム画面 ======== -->
+<div id="pc">
+  <div id="stage">
+    <canvas id="c" width="1280" height="720"></canvas>
+
+    <div id="title" class="panel">
+      <h1>⚾ バッター目線</h1>
+      <p class="sub">スマホが バット。ピッチャーが投げた ボールを<br>ひきつけて、スマホを ふって かっとばせ！（10球）</p>
+      <div class="pairbox">
+        <div id="qr"></div>
+        <div style="text-align:left">
+          <div class="sub" style="margin:0">① スマホで QRコードを よみとる<br>② 「つなぐ」を おす</div>
+          <div class="sub" style="margin:.3em 0 0">あいことば <span class="code" id="code">----</span></div>
+          <div id="padState">スマホ：まだ つながってない</div>
+        </div>
+      </div>
+      <div class="row" id="levels">
+        <button data-lv="0">やさしい</button>
+        <button data-lv="1" class="sel">ふつう</button>
+        <button data-lv="2">むずかしい</button>
+      </div>
+      <div class="row">
+        <button id="startBtn">はじめる</button>
+      </div>
+      <div class="row note">
+        タイミング調整
+        <button class="small" id="offMinus">−10ms</button>
+        <b id="offVal" style="min-width:5em">0ms</b>
+        <button class="small" id="offPlus">+10ms</button>
+        （「おそい」と出たら −、「はやい」と出たら +）
+      </div>
+      <div class="note">スマホなしでも あそべるよ：スペースキー か クリックで スイング</div>
+    </div>
+
+    <div id="final" class="panel hide">
+      <h1 id="finTitle"></h1>
+      <p class="sub" id="finBody"></p>
+      <div class="row"><button id="againBtn">もういちど</button><button id="backBtn" class="small">せってい</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ======== スマホ: バット ======== -->
+<div id="pad" class="hide">
+  <h1>⚾ バット</h1>
+  <div id="padConnect">
+    <p>PCの 画面に出ている<br>あいことばを いれて「つなぐ」</p>
+    <input id="codeIn" maxlength="5" autocomplete="off" autocapitalize="characters" placeholder="ABCDE">
+    <button id="connBtn">つなぐ</button>
+  </div>
+  <div id="padPlay" class="hide">
+    <p>スマホを バットのように にぎって<br>ボールが きたら ふろう！</p>
+    <div id="meter"><i></i></div>
+    <div id="padMsg">　</div>
+  </div>
+  <div id="padStatus"></div>
+  <div id="padWarn">⚠️ すっぽ抜けに注意！ ストラップをつけるか、手首でかるく ふってね。まわりに人や物がないか たしかめてね。</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const params=new URLSearchParams(location.search);
+const ID_PREFIX="hbm-";
+const ID_CHARS="ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const isPad=params.has("p")||params.has("pad");
+const store={
+  get(k,d){try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+/* =====================================================================
+   スマホ側(バット)：センサーでスイングを検出して PC に送る
+   ===================================================================== */
+function startPad(){
+  $("pc").classList.add("hide"); $("pad").classList.remove("hide");
+  const codeIn=$("codeIn"), status=$("padStatus"), msg=$("padMsg"), bar=$("meter").firstElementChild;
+  codeIn.value=(params.get("p")||"").toUpperCase();
+  let conn=null, peer=null, sensing=false;
+
+  function say(t,ms){msg.textContent=t; clearTimeout(say.t); if(ms) say.t=setTimeout(()=>msg.textContent="　",ms)}
+
+  /* --- スイング検出 --- */
+  const THR=18, MIN_PEAK=26, COOL=650;
+  let st="idle", peak=0, peakT=0, startT=0, lastSwing=0, shown=0;
+  function onMotion(e){
+    const now=performance.now();
+    const a=e.acceleration; let am=0;
+    if(a&&a.x!=null) am=Math.hypot(a.x,a.y,a.z);
+    else{const g=e.accelerationIncludingGravity; if(g&&g.x!=null) am=Math.abs(Math.hypot(g.x,g.y,g.z)-9.81)}
+    const r=e.rotationRate; const rm=(r&&r.alpha!=null)?Math.hypot(r.alpha,r.beta,r.gamma):0;
+    const s=am+rm/40;
+    shown=Math.max(s,shown*0.9); bar.style.width=clamp(shown/70,0,1)*100+"%";
+    if(st==="idle"){
+      if(s>THR && now-lastSwing>COOL){st="swing"; peak=s; peakT=now; startT=now}
+    }else{
+      if(s>peak){peak=s; peakT=now}
+      if(s<peak*0.55 || now-startT>350){
+        st="idle"; lastSwing=now;
+        if(peak>=MIN_PEAK){
+          const power=clamp((peak-MIN_PEAK)/50,0,1);
+          send({t:"swing",power,ago:now-peakT});
+          say("スイング！ パワー "+Math.round(power*100),900);
+        }
+      }
+    }
+  }
+  function send(o){try{conn&&conn.open&&conn.send(o)}catch(e){}}
+
+  async function enableSensor(){
+    if(sensing) return true;
+    try{
+      if(typeof DeviceMotionEvent!=="undefined" && typeof DeviceMotionEvent.requestPermission==="function"){
+        const r=await DeviceMotionEvent.requestPermission();   // iOS: タップの中で呼ぶ必要あり
+        if(r!=="granted"){status.textContent="センサーが ゆるされなかったよ。Safariの せってい から ゆるしてね";return false}
+      }
+    }catch(e){status.textContent="センサーを つかえなかった: "+e.message;return false}
+    window.addEventListener("devicemotion",onMotion);
+    sensing=true;
+    try{if(navigator.wakeLock) navigator.wakeLock.request("screen").catch(()=>{})}catch(e){}
+    return true;
+  }
+
+  async function connect(){
+    const code=codeIn.value.trim().toUpperCase();
+    if(code.length<4){status.textContent="あいことばを いれてね";return}
+    if(typeof Peer==="undefined"){status.textContent="つうしんの ぶひんが よみこめなかった。ネットを たしかめてね";return}
+    status.textContent="センサーを じゅんび中…";
+    if(!await enableSensor()) return;
+    status.textContent="PCに つなぎ中…";
+    try{peer&&peer.destroy()}catch(e){}
+    peer=new Peer();
+    peer.on("error",e=>{status.textContent="つなげなかった ("+(e.type||e)+")。あいことばを たしかめてね"});
+    peer.on("open",()=>{
+      conn=peer.connect(ID_PREFIX+code,{reliable:true});
+      conn.on("open",()=>{
+        $("padConnect").classList.add("hide"); $("padPlay").classList.remove("hide");
+        status.textContent="つながった！"; send({t:"hello"});
+      });
+      conn.on("data",d=>{
+        if(d.t==="ping") send({t:"pong",ts:d.ts});
+        else if(d.t==="hit"){
+          const pat={just:[60,40,120],nice:[60],foul:[30],miss:[]}[d.q]||[];
+          try{navigator.vibrate&&pat.length&&navigator.vibrate(pat)}catch(e){}
+          say({just:"ジャストミート！",nice:"ナイスバッティング",foul:"ファウル",miss:"空振り…"}[d.q]||"",1500);
+        }
+      });
+      conn.on("close",()=>{
+        $("padPlay").classList.add("hide"); $("padConnect").classList.remove("hide");
+        status.textContent="きれちゃった。もういちど「つなぐ」を おしてね";
+      });
+    });
+  }
+  $("connBtn").addEventListener("click",connect);
+}
+
+/* =====================================================================
+   PC側(ゲーム)
+   ===================================================================== */
+function startPc(){
+  const cv=$("c"), ctx=cv.getContext("2d");
+  const W=1280,H=720,HY=300,F=700,CAM={x:0,y:1.6,z:-3.5};
+  const Z0=18.44;                     // ピッチャーとの距離(m)
+  const BALL_R=0.09;                  // ボールの半径(m) 見やすいよう大きめ
+  const TOTAL=10;
+  const LEVELS=[{name:"やさしい",T:1700,types:["straight"]},
+                {name:"ふつう",T:1350,types:["straight","straight","change","slider"]},
+                {name:"むずかしい",T:1050,types:["straight","curve","slider","change"]}];
+  const PITCHES={
+    straight:{name:"ストレート",k:1.0, bx:0,    by:0.05},
+    curve:   {name:"カーブ",   k:1.22,bx:0.18, by:-0.6},
+    slider:  {name:"スライダー",k:1.05,bx:-0.5, by:-0.12},
+    change:  {name:"チェンジアップ",k:1.4,bx:0,by:-0.3}
+  };
+  const game={
+    state:"title", level:1, n:0, score:0, tally:{hr:0,hit:0,out:0,foul:0,miss:0},
+    pitch:null, tState:0, swing:null, launch:null, banner:null, flash:0, shake:0,
+    offset:parseInt(store.get("bm_offset","0"),10)||0, net:0, padOn:false
+  };
+  window.__bm=game;                   // デバッグ用(コンソールから状態を見られる)
+
+  /* ---------- 遠近投影 ---------- */
+  function proj(x,y,z){const d=Math.max(0.3,z-CAM.z), s=F/d; return {x:W/2+(x-CAM.x)*s, y:HY+(CAM.y-y)*s, s}}
+
+  /* ---------- 背景 ---------- */
+  const crowd=[]; for(let i=0;i<260;i++) crowd.push([Math.random()*W,222+Math.random()*60,`hsl(${Math.floor(Math.random()*360)},55%,${45+Math.random()*25}%)`]);
+  function drawBackground(){
+    const sky=ctx.createLinearGradient(0,0,0,HY); sky.addColorStop(0,"#4aa8e8"); sky.addColorStop(1,"#cfeaff");
+    ctx.fillStyle=sky; ctx.fillRect(0,0,W,HY+10);
+    ctx.fillStyle="#2c3a4a"; ctx.fillRect(0,216,W,72);          // スタンド
+    for(const c of crowd){ctx.fillStyle=c[2]; ctx.fillRect(c[0],c[1],4,4)}
+    ctx.fillStyle="#1e5a34"; ctx.fillRect(0,284,W,26);           // フェンス
+    ctx.fillStyle="#f4d03a"; ctx.fillRect(0,284,W,3);
+    // 芝(縞)
+    ctx.fillStyle="#3aa954"; ctx.fillRect(0,309,W,H-309);
+    ctx.fillStyle="#2f9a48";
+    for(let z=140,k=0;z>-3.4;z-=6,k++){
+      if(k%2) continue;
+      const yf=Math.max(proj(0,0,z+6).y,309), yn=proj(0,0,z).y;
+      if(yn>yf) ctx.fillRect(0,yf,W,yn-yf);
+    }
+    // 内野の土
+    poly([[-6,-2],[6,-2],[10,26],[-10,26]],"#b9824a");
+    poly([[-3.2,-2],[3.2,-2],[3.6,2.5],[-3.6,2.5]],"#a9733d");
+    ell(0,Z0,3.0,"#c8925a");                                       // マウンド
+    // ホームベース
+    poly([[-0.22,-0.2],[0.22,-0.2],[0.22,0.12],[0,0.34],[-0.22,0.12]],"#fff");
+    // バッターボックス線
+    ctx.strokeStyle="#ffffffaa"; ctx.lineWidth=3;
+    for(const sx of[-1,1]){line3(sx*0.9,0,-1.0,sx*0.9,0,1.2);line3(sx*1.8,0,-1.0,sx*1.8,0,1.2);line3(sx*0.9,0,1.2,sx*1.8,0,1.2);line3(sx*0.9,0,-1.0,sx*1.8,0,-1.0)}
+  }
+  function poly(pts,col){ctx.beginPath();pts.forEach((p,i)=>{const q=proj(p[0],0,p[1]);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});ctx.closePath();ctx.fillStyle=col;ctx.fill()}
+  function ell(x,z,r,col){const q=proj(x,0,z);ctx.beginPath();ctx.ellipse(q.x,q.y,r*q.s,r*q.s*0.35,0,0,7);ctx.fillStyle=col;ctx.fill()}
+  function line3(x1,y1,z1,x2,y2,z2){const a=proj(x1,y1,z1),b=proj(x2,y2,z2);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()}
+
+  function drawZone(){
+    ctx.save(); ctx.setLineDash([8,6]); ctx.strokeStyle="#ffffffaa"; ctx.lineWidth=2;
+    const a=proj(-0.3,1.15,0), b=proj(0.3,0.45,0);
+    ctx.strokeRect(a.x,a.y,b.x-a.x,b.y-a.y); ctx.restore();
+  }
+
+  /* ---------- ピッチャー ---------- */
+  function drawPitcher(ph){        // ph: 0..1 (ふりかぶり→リリース)
+    const base=proj(0,0,Z0), s=base.s;     // 1mあたりのpx
+    const P=(x,y)=>({x:base.x+x*s,y:base.y-y*s});
+    ctx.lineCap="round"; ctx.lineJoin="round";
+    const seg=(a,b,w,col)=>{ctx.strokeStyle=col;ctx.lineWidth=Math.max(1,w*s);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()};
+    const lift=clamp((ph-0.15)/0.45,0,1)*(ph<0.75?1:Math.max(0,1-(ph-0.75)/0.25));
+    // 足
+    seg(P(0.12,0.95),P(0.14,0),0.16,"#f2f2f2");
+    seg(P(-0.12,0.95),P(-0.12-0.15*lift,0.95-0.45*lift),0.16,"#f2f2f2");
+    seg(P(-0.12-0.15*lift,0.95-0.45*lift),P(-0.12-0.12*lift,Math.max(0,0.4*(1-lift*0.5)+0)),0.15,"#f2f2f2");
+    // 胴・頭
+    seg(P(0,0.95),P(0,1.5),0.34,"#1a3f8a");
+    ctx.fillStyle="#f3c9a0"; ctx.beginPath(); ctx.arc(P(0,1.68).x,P(0,1.68).y,0.12*s,0,7); ctx.fill();
+    seg(P(-0.12,1.76),P(0.12,1.76),0.08,"#1a3f8a");
+    // グローブ側
+    seg(P(-0.2,1.45),P(-0.35,1.2+0.2*lift),0.1,"#f3c9a0");
+    // 投げる腕: 下→よこ→上→前
+    const sh=P(0.2,1.45);
+    let ang,len=0.7;
+    if(ph<0.7){ang=Math.PI*(1-ph/0.7)}else{ang=0;len=0.7-0.35*((ph-0.7)/0.3)}    // 180°→0°
+    const hand={x:sh.x+Math.sin(ang)*len*s, y:sh.y-Math.cos(ang)*len*s};
+    seg(sh,hand,0.1,"#f3c9a0");
+  }
+
+  /* ---------- ボール位置 ---------- */
+  function ballAt(p,u){      // u: 0=リリース 1=ホームベース
+    const b=u<=1?6.75*u*u*(1-u):0;
+    return {x:p.x0+(p.xT-p.x0)*u+p.bx*b, y:p.y0+(p.yT-p.y0)*u+p.by*b, z:Z0*(1-u)};
+  }
+  function drawBall(x,y,z,alpha){
+    const g=proj(x,0,z), q=proj(x,y,z), r=Math.max(1.5,BALL_R*q.s);
+    ctx.globalAlpha=0.35*(alpha??1); ctx.fillStyle="#000";                  // かげ
+    ctx.beginPath(); ctx.ellipse(g.x,g.y,r*1.1,r*0.4,0,0,7); ctx.fill();
+    ctx.globalAlpha=alpha??1; ctx.fillStyle="#fff";
+    ctx.beginPath(); ctx.arc(q.x,q.y,r,0,7); ctx.fill();
+    ctx.strokeStyle="#d33"; ctx.lineWidth=Math.max(1,r*0.12);
+    ctx.beginPath(); ctx.arc(q.x-r*1.0,q.y,r*0.9,-0.9,0.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(q.x+r*1.0,q.y,r*0.9,Math.PI-0.9,Math.PI+0.9); ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+
+  /* ---------- バット ---------- */
+  function drawBat(ts){            // ts: スイングからの経過ms
+    if(ts<0||ts>900) return;
+    const t=clamp(ts/200,0,1), e=1-Math.pow(1-t,3);
+    const a=(-80+(-162+80)*e)*Math.PI/180;
+    const px=1120,py=700, L=660;
+    const ux=Math.cos(a), uy=Math.sin(a), nx=-uy, ny=ux;
+    const fade=ts>650?1-(ts-650)/250:1;
+    ctx.globalAlpha=fade;
+    ctx.fillStyle="#d9a85c"; ctx.strokeStyle="#7a4a1e"; ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.moveTo(px+nx*8,py+ny*8); ctx.lineTo(px+ux*L*0.45+nx*10,py+uy*L*0.45+ny*10);
+    ctx.lineTo(px+ux*L+nx*24,py+uy*L+ny*24); ctx.lineTo(px+ux*L-nx*24,py+uy*L-ny*24);
+    ctx.lineTo(px+ux*L*0.45-nx*10,py+uy*L*0.45-ny*10); ctx.lineTo(px-nx*8,py-ny*8);
+    ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.globalAlpha=1;
+  }
+
+  /* ---------- 音 ---------- */
+  let ac=null;
+  function audio(){if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}} if(ac&&ac.state==="suspended") ac.resume(); return ac}
+  function beep(f0,f1,dur,type,vol){
+    const a=audio(); if(!a) return; const o=a.createOscillator(), g=a.createGain();
+    o.type=type||"sine"; o.frequency.setValueAtTime(f0,a.currentTime); o.frequency.exponentialRampToValueAtTime(Math.max(30,f1),a.currentTime+dur);
+    g.gain.setValueAtTime(vol||.2,a.currentTime); g.gain.exponentialRampToValueAtTime(.001,a.currentTime+dur);
+    o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime+dur);
+  }
+  function noise(dur,vol,hp){
+    const a=audio(); if(!a) return; const n=Math.floor(a.sampleRate*dur), buf=a.createBuffer(1,n,a.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+    const s=a.createBufferSource(); s.buffer=buf; const f=a.createBiquadFilter(); f.type="highpass"; f.frequency.value=hp||1500;
+    const g=a.createGain(); g.gain.value=vol||.4; s.connect(f).connect(g).connect(a.destination); s.start();
+  }
+  const sfx={
+    hit(q){ if(q==="just"){noise(.12,.8,2500);beep(1400,260,.18,"triangle",.35)} else {noise(.1,.5,1500);beep(900,200,.14,"triangle",.25)} },
+    miss(){noise(.18,.25,600)},
+    ready(){beep(660,660,.08,"square",.08)},
+    fanfare(){[0,.12,.24,.4].forEach((t,i)=>setTimeout(()=>beep([523,659,784,1047][i],[523,659,784,1047][i],.2,"square",.12),t*1000))}
+  };
+
+  /* ---------- ゲーム進行 ---------- */
+  function now(){return performance.now()}
+  function setState(s){game.state=s; game.tState=now()}
+
+  function newPitch(){
+    const lv=LEVELS[game.level];
+    const type=lv.types[Math.floor(Math.random()*lv.types.length)], def=PITCHES[type];
+    game.pitch={type,name:def.name,bx:def.bx*(Math.random()<.5?-1:1)*(type==="curve"?1:1),by:def.by,
+      T:lv.T*def.k, x0:0.25, y0:1.9, xT:(Math.random()*2-1)*0.22, yT:0.55+Math.random()*0.45,
+      tRelease:0, tArrive:0};
+    game.swing=null; game.launch=null; game.banner=null;
+    setState("ready"); sfx.ready();
+  }
+  const WINDUP=900, READY=1100, RESULT_MIN=1800;
+
+  function startGame(){
+    audio();
+    game.n=0; game.score=0; game.tally={hr:0,hit:0,out:0,foul:0,miss:0};
+    $("title").classList.add("hide"); $("final").classList.add("hide");
+    newPitch();
+  }
+
+  /* スイングの受付(スマホ/キーボード共通)。at=スイングのピーク時刻(ms) */
+  function onSwing(power,at){
+    if(!["windup","flight"].includes(game.state)||game.swing) return;
+    game.swing={at,power};
+    if(game.state==="windup"){            // 投げる前に ふった
+      finish("miss",0,"はやすぎ！",{note:"ボールが くるまで まって"}); return;
+    }
+    const p=game.pitch, dt=at-p.tArrive;      // dt<0: はやい / dt>0: おそい
+    const adt=Math.abs(dt);
+    const u=clamp((at-p.tRelease)/p.T,0,1.15), bp=ballAt(p,u);
+    const note=(adt<=25?"ドンピシャ！":dt<0?`はやい −${Math.round(adt)}ms`:`おそい +${Math.round(adt)}ms`);
+    if(adt>170){ finish("miss",0,"空振り！",{note}); return }
+    const ang=clamp(dt/60,-1,1)*14;           // はやい→ひだり / おそい→みぎ (度)
+    let kind,dist,angle=ang+(Math.random()*8-4),label,pts;
+    if(adt>105){                              // ファウル
+      kind="foul"; dist=25+power*30; angle=(dt<0?-1:1)*(52+Math.random()*18); label="ファウル"; pts=0;
+    }else if(adt<=50){                        // ジャスト
+      dist=55+power*75;
+      if(dist>=100){kind="hr";label="ホームラン！！";pts=100}
+      else if(dist>=80){kind="hit";label="ツーベース！";pts=60}
+      else{kind="hit";label="ヒット！";pts=40}
+    }else{                                    // ナイス
+      dist=20+power*65;
+      if(dist>=60){kind="hit";label="ヒット！";pts=40}
+      else{kind="out";label=Math.random()<.5?"ゴロ…アウト":"ポップフライ…";pts=5}
+    }
+    launch(bp,kind,dist,angle);
+    finish(kind,pts,label,{note,dist:Math.round(dist),q:adt<=50?"just":kind==="foul"?"foul":"nice"});
+  }
+
+  function launch(bp,kind,dist,angleDeg){
+    const T={hr:3.4,hit:2.2,out:1.6,foul:2.4}[kind];
+    const rad=angleDeg*Math.PI/180;
+    const vz=dist*Math.cos(rad)/T, vx=dist*Math.sin(rad)/T;
+    let vy;
+    if(kind==="hr") vy=4.9*T*0.95;
+    else if(kind==="hit") vy=(dist>=80?4.9*T*0.7:2);
+    else if(kind==="foul") vy=4.9*T*0.6;
+    else vy=(Math.random()<.5?-1.5:4.9*T*0.75);    // ゴロ or ポップ
+    game.launch={t0:now(),T:T*1000,x0:bp.x,y0:Math.max(0.2,bp.y),z0:clamp(bp.z,-1.2,4),vx,vy,vz,kind};
+  }
+  function launchPos(L,t){   // t: 秒
+    const tl=(L.vy+Math.sqrt(L.vy*L.vy+19.6*L.y0))/9.8;     // 着地までの時間
+    let y;
+    if(t<=tl) y=L.y0+L.vy*t-4.9*t*t;
+    else{const tt=t-tl, vb=0.45*Math.abs(L.vy-9.8*tl); y=Math.max(0,vb*tt-4.9*tt*tt)}
+    return {x:L.x0+L.vx*t,y,z:L.z0+L.vz*t};
+  }
+
+  function finish(kind,pts,label,info){
+    game.score+=pts; game.tally[kind]++;
+    game.banner={text:label,kind,note:info.note||"",dist:info.dist,pitch:game.pitch.name,t:now()};
+    if(kind==="hr"){game.flash=1;game.shake=1}
+    else if(kind==="hit"){game.flash=.6;game.shake=.5}
+    else if(kind!=="miss"&&kind!=="out"){game.flash=.3}
+    if(kind==="miss") sfx.miss(); else sfx.hit(info.q||"nice");
+    sendPad({t:"hit",q:info.q||(kind==="miss"?"miss":"nice")});
+    setState("result");
+  }
+
+  function update(){
+    const t=now(), el=t-game.tState;
+    if(game.state==="ready"&&el>READY){setState("windup")}
+    else if(game.state==="windup"&&el>WINDUP){
+      const p=game.pitch; p.tRelease=t; p.tArrive=t+p.T; setState("flight");
+    }else if(game.state==="flight"&&!game.swing&&t>game.pitch.tArrive+180){
+      finish("miss",0,"見逃し！",{note:"ふらなかった"});
+    }else if(game.state==="result"){
+      const waitHit=game.launch?game.launch.T+300:0;
+      if(el>Math.max(RESULT_MIN,waitHit)){
+        game.n++;
+        if(game.n>=TOTAL) showFinal(); else newPitch();
+      }
+    }
+  }
+
+  /* ---------- 描画 ---------- */
+  function draw(){
+    const t=now();
+    ctx.save();
+    if(game.shake>0){ctx.translate((Math.random()-.5)*14*game.shake,(Math.random()-.5)*14*game.shake); game.shake=Math.max(0,game.shake-.04)}
+    drawBackground(); drawZone();
+
+    const p=game.pitch, st=game.state;
+    // ピッチャー
+    let ph=0;
+    if(st==="windup") ph=clamp((t-game.tState)/WINDUP,0,1);
+    else if(st==="flight"||(st==="result"&&p&&p.tRelease)) ph=1;
+    else ph=0;
+    drawPitcher(ph);
+
+    // ボール
+    if(p&&(st==="flight"||st==="result")){
+      if(game.launch){
+        const L=game.launch, ts=(t-L.t0)/1000;
+        if(ts>=0&&ts*1000<L.T){const q=launchPos(L,ts); drawBall(q.x,q.y,q.z,1)}
+      }else{
+        const u=(t-p.tRelease)/p.T;
+        if(u>=0&&u<1.12){const b=ballAt(p,u); drawBall(b.x,b.y,b.z,1)}
+      }
+    }
+    // バット
+    if(game.swing) drawBat(t-game.swing.at);
+    ctx.restore();
+
+    // ハイライト
+    if(game.flash>0){ctx.fillStyle=`rgba(255,255,220,${game.flash*.5})`;ctx.fillRect(0,0,W,H);game.flash=Math.max(0,game.flash-.03)}
+
+    // HUD
+    ctx.fillStyle="#0009"; ctx.fillRect(0,0,W,52);
+    ctx.fillStyle="#fff"; ctx.font="bold 28px sans-serif"; ctx.textBaseline="middle"; ctx.textAlign="left";
+    ctx.fillText(`ボール ${Math.min(game.n+1,TOTAL)} / ${TOTAL}`,20,27);
+    ctx.textAlign="center"; ctx.fillText(`スコア ${game.score}`,W/2,27);
+    ctx.textAlign="right"; ctx.fillStyle=game.padOn?"#7dffa0":"#ffd84a";
+    ctx.fillText(game.padOn?"📱 スマホ つながってる":"⌨ スペース/クリックで スイング",W-20,27);
+
+    // メッセージ
+    ctx.textAlign="center";
+    if(st==="ready"){big("ピッチャー かまえた…",640,150,"#fff",42)}
+    if(st==="windup"){big("…",640,150,"#fff",42)}
+    if(st==="flight"&&!game.swing&&t>p.tRelease&&t<p.tRelease+500){big("きた！",640,150,"#ffd84a",56)}
+    if(game.banner){
+      const b=game.banner, a=clamp((t-b.t)/180,0,1), col={hr:"#ff5a3c",hit:"#ffd84a",out:"#cfd8dc",foul:"#9ad0ff",miss:"#ffffff"}[b.kind];
+      big(b.text,640,130,col,64*(0.8+0.2*a));
+      ctx.font="bold 26px sans-serif"; ctx.fillStyle="#fff"; ctx.strokeStyle="#000"; ctx.lineWidth=5;
+      const sub=`${b.pitch}　${b.note}${b.dist?`　飛距離 ${b.dist}m`:""}`;
+      ctx.strokeText(sub,640,200); ctx.fillText(sub,640,200);
+    }
+  }
+  function big(text,x,y,col,size){
+    ctx.font=`bold ${size}px "Hiragino Maru Gothic ProN","Yu Gothic",sans-serif`; ctx.lineWidth=Math.max(6,size/8);
+    ctx.strokeStyle="#000"; ctx.lineJoin="round"; ctx.strokeText(text,x,y); ctx.fillStyle=col; ctx.fillText(text,x,y);
+  }
+
+  /* ---------- 結果画面 ---------- */
+  function showFinal(){
+    setState("final");
+    const s=game.score, t=game.tally;
+    const rank=s>=500?["🏆 ミスター・スラッガー！","もう プロ級。ホームランの かんかくが バッチリ！"]:
+               s>=300?["🥇 4番バッター","ひきつけて ふれてる！ いい スイング"]:
+               s>=150?["🥈 レギュラー","あと すこし。タイミング調整も ためしてみよう"]:
+               s>=50 ?["🥉 ベンチ入り","ボールを よく見て、いちばん ひきつけて ふろう"]:["🌱 しんじん","まずは ボールに バットを あてるところから！"];
+    $("finTitle").textContent=rank[0];
+    $("finBody").innerHTML=`スコア <b style="font-size:1.6em;color:#ffd84a">${s}</b> 点<br>`+
+      `ホームラン ${t.hr}　ヒット ${t.hit}　アウト ${t.out}　ファウル ${t.foul}　空振り/見逃し ${t.miss}<br><br>${rank[1]}`;
+    $("final").classList.remove("hide"); sfx.fanfare();
+  }
+
+  /* ---------- 入力 ---------- */
+  function keySwing(){
+    audio();
+    if(game.state==="title"||game.state==="final") return;
+    onSwing(0.75,now());
+  }
+  window.addEventListener("keydown",e=>{if(e.code==="Space"){e.preventDefault();keySwing()}});
+  cv.addEventListener("pointerdown",keySwing);
+
+  $("startBtn").addEventListener("click",startGame);
+  $("againBtn").addEventListener("click",startGame);
+  $("backBtn").addEventListener("click",()=>{$("final").classList.add("hide");$("title").classList.remove("hide");setState("title")});
+  $("levels").addEventListener("click",e=>{
+    const b=e.target.closest("button[data-lv]"); if(!b) return;
+    game.level=+b.dataset.lv; [...$("levels").children].forEach(x=>x.classList.toggle("sel",x===b));
+  });
+  function showOffset(){$("offVal").textContent=(game.offset>0?"+":"")+game.offset+"ms"}
+  $("offMinus").addEventListener("click",()=>{game.offset-=10;store.set("bm_offset",game.offset);showOffset()});
+  $("offPlus").addEventListener("click",()=>{game.offset+=10;store.set("bm_offset",game.offset);showOffset()});
+  showOffset();
+
+  /* ---------- スマホとの通信(PeerJS) ---------- */
+  let conn=null, pingTimer=null;
+  function sendPad(o){try{conn&&conn.open&&conn.send(o)}catch(e){}}
+  function padStatus(ok,txt){game.padOn=ok; const el=$("padState"); el.textContent=txt; el.classList.toggle("ok",ok)}
+  function setupPeer(){
+    let id="";
+    for(let i=0;i<5;i++) id+=ID_CHARS[Math.floor(Math.random()*ID_CHARS.length)];
+    $("code").textContent=id;
+    const url=location.origin+location.pathname+"?p="+id;
+    if(typeof QRCode!=="undefined"){new QRCode($("qr"),{text:url,width:150,height:150,correctLevel:QRCode.CorrectLevel.M})}
+    else $("qr").textContent="QR なし";
+    if(typeof Peer==="undefined"){padStatus(false,"スマホ：つうしんの ぶひんが よみこめなかった（スペースで あそべるよ）");return}
+    const peer=new Peer(ID_PREFIX+id);
+    peer.on("error",e=>{
+      if(e.type==="unavailable-id"){setupPeer.retry=(setupPeer.retry||0)+1; if(setupPeer.retry<5) setupPeer()}
+      else padStatus(false,"スマホ：つうしんエラー ("+(e.type||e)+")");
+    });
+    peer.on("connection",c=>{
+      conn=c;
+      c.on("open",()=>{
+        padStatus(true,"スマホ：つながった！ ふってみよう");
+        clearInterval(pingTimer);
+        pingTimer=setInterval(()=>sendPad({t:"ping",ts:now()}),2000);
+      });
+      c.on("data",d=>{
+        if(d.t==="swing"){
+          // 受信時刻 − ピークからの経過 − 通信遅延 + ユーザー調整
+          onSwing(clamp(d.power,0,1),now()-(+d.ago||0)-game.net+game.offset);
+        }else if(d.t==="pong"){
+          const rtt=now()-d.ts; game.net=game.net?game.net*0.7+rtt/2*0.3:rtt/2;
+        }
+      });
+      c.on("close",()=>{padStatus(false,"スマホ：きれちゃった");clearInterval(pingTimer);if(conn===c)conn=null});
+    });
+  }
+  setupPeer();
+
+  function loop(){update();draw();requestAnimationFrame(loop)}
+  setState("title"); loop();
+}
+
+if(isPad) startPad(); else startPc();
+</script>
+</body>
+</html>
