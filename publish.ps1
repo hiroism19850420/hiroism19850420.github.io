@@ -1,7 +1,9 @@
 ﻿# HTMLゲームを hiroism19850420.github.io に追加・更新して公開する
-# 使い方: powershell -File publish.ps1 -Source <ゲームのフォルダ> -Slug <URL用の英数字名> -Title <表示名> [-Desc <説明>] [-Files a,b,c] [-Cat camera|tap|voice|adult]
+# 使い方: powershell -File publish.ps1 -Source <ゲームのフォルダ> -Slug <URL用の英数字名> -Title <表示名> [-Desc <説明>] [-Files a,b,c] [-Cat camera|tap|voice|adult] [-Tag asobi|manabi]
 #   -Cat  トップページの分類。camera=カメラを使う全身ゲーム / tap=スマホでタップ / voice=声だけで遊ぶ / adult=おとな向け(子ども向けの一覧とは分けて、下に小さく出す)
 #         省略すると、公開済みなら今の分類のまま、新規なら tap
+#   -Tag  カードに付けるタグ。asobi=あそび / manabi=まなび(ねらいのある学びの道具)
+#         省略すると、公開済みなら今のタグのまま、新規ならタグなし
 #   -IndexOnly  ゲームはコピーせず、games.json からトップページだけ作り直して公開する
 param(
   [string]$Source,
@@ -10,6 +12,7 @@ param(
   [string]$Desc = "",
   [string[]]$Files,
   [ValidateSet("", "camera", "tap", "voice", "adult")][string]$Cat = "",
+  [ValidateSet("", "asobi", "manabi")][string]$Tag = "",
   [switch]$IndexOnly
 )
 $ErrorActionPreference = "Stop"
@@ -63,11 +66,12 @@ if (Test-Path $jsonPath) {
 if (-not $IndexOnly) {
   $old = $games | Where-Object { $_.slug -eq $Slug } | Select-Object -First 1
   if (-not $Cat) { if ($old -and $old.cat) { $Cat = $old.cat } else { $Cat = "tap" } }
+  if (-not $Tag -and $old -and $old.tag) { $Tag = $old.tag }
   $games = @($games | Where-Object { $_.slug -and $_.slug -ne $Slug })
-  $games += [pscustomobject]@{ slug=$Slug; title=$Title; desc=$Desc; updated=(Get-Date -Format "yyyy-MM-dd"); cat=$Cat }
+  $games += [pscustomobject]@{ slug=$Slug; title=$Title; desc=$Desc; updated=(Get-Date -Format "yyyy-MM-dd"); cat=$Cat; tag=$Tag }
 }
 $games = @($games | ForEach-Object {
-  [pscustomobject]@{ slug=$_.slug; title=$_.title; desc=$_.desc; updated=$_.updated; cat=$(if ($_.cat) { $_.cat } else { "tap" }) }
+  [pscustomobject]@{ slug=$_.slug; title=$_.title; desc=$_.desc; updated=$_.updated; cat=$(if ($_.cat) { $_.cat } else { "tap" }); tag=$(if ($_.tag) { $_.tag } else { "" }) }
 } | Sort-Object updated -Descending)
 # ConvertTo-Json は1件だと配列にならない/入れ子になるため、1件ずつ変換して手で配列にする
 $jsonText = "[`n" + (($games | ForEach-Object { ConvertTo-Json $_ -Compress }) -join ",`n") + "`n]"
@@ -85,7 +89,10 @@ foreach ($c in $cats) {
   $list = @($games | Where-Object { $_.cat -eq $c.id })
   $cards = ($list | ForEach-Object {
     $t = [Net.WebUtility]::HtmlEncode($_.title); $d = [Net.WebUtility]::HtmlEncode($_.desc)
-    "<a class=""card"" href=""$($_.slug)/""><h2>$t</h2><p>$d</p><small>更新: $($_.updated)</small></a>"
+    $tg = ""
+    if ($_.tag -eq "asobi")  { $tg = "<span class=""tag tag-asobi"">あそび</span>" }
+    if ($_.tag -eq "manabi") { $tg = "<span class=""tag tag-manabi"">まなび</span>" }
+    "<a class=""card"" href=""$($_.slug)/"">$tg<h2>$t</h2><p>$d</p><small>更新: $($_.updated)</small></a>"
   }) -join "`n"
   if ($c.id -eq "adult") {
     if ($list.Count -eq 0) { continue }
@@ -115,6 +122,7 @@ h1{text-align:center;color:#ff7a2f}
 .list{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
 .card{display:block;background:#fff;border-radius:16px;padding:16px;box-shadow:0 2px 8px #0002;text-decoration:none;color:inherit}
 .card:hover{transform:translateY(-2px)}
+.tag{display:inline-block;margin:0 0 6px;padding:2px 10px;border-radius:99px;font-size:.8rem;font-weight:bold}.tag-asobi{background:#ffe4cc;color:#c2410c}.tag-manabi{background:#dcfce7;color:#15803d}
 .card h2{margin:0 0 6px;color:#3b82f6;font-size:1.2rem}.card p{margin:0 0 8px}.card small{color:#888}
 </style><script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head><body><div class="wrap"><h1>HTMLゲーム集</h1>
 <div class="cats" id="top">
