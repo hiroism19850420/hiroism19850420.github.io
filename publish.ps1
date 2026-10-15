@@ -1,6 +1,6 @@
 ﻿# HTMLゲームを hiroism19850420.github.io に追加・更新して公開する
-# 使い方: powershell -File publish.ps1 -Source <ゲームのフォルダ> -Slug <URL用の英数字名> -Title <表示名> [-Desc <説明>] [-Files a,b,c] [-Cat camera|tap|voice]
-#   -Cat  トップページの分類。camera=カメラを使う全身ゲーム / tap=スマホでタップ / voice=声だけで遊ぶ
+# 使い方: powershell -File publish.ps1 -Source <ゲームのフォルダ> -Slug <URL用の英数字名> -Title <表示名> [-Desc <説明>] [-Files a,b,c] [-Cat camera|tap|voice|adult]
+#   -Cat  トップページの分類。camera=カメラを使う全身ゲーム / tap=スマホでタップ / voice=声だけで遊ぶ / adult=おとな向け(子ども向けの一覧とは分けて、下に小さく出す)
 #         省略すると、公開済みなら今の分類のまま、新規なら tap
 #   -IndexOnly  ゲームはコピーせず、games.json からトップページだけ作り直して公開する
 param(
@@ -9,7 +9,7 @@ param(
   [string]$Title,
   [string]$Desc = "",
   [string[]]$Files,
-  [ValidateSet("", "camera", "tap", "voice")][string]$Cat = "",
+  [ValidateSet("", "camera", "tap", "voice", "adult")][string]$Cat = "",
   [switch]$IndexOnly
 )
 $ErrorActionPreference = "Stop"
@@ -77,7 +77,8 @@ $jsonText = "[`n" + (($games | ForEach-Object { ConvertTo-Json $_ -Compress }) -
 $cats = @(
   @{ id="camera"; name="カメラを使う全身ゲーム"; icon="📷"; note="カメラの前で 体を動かして あそぶ" },
   @{ id="tap";    name="スマホでタップ";         icon="👆"; note="スマホの画面を さわって あそぶ" },
-  @{ id="voice";  name="声だけで遊ぶゲーム";     icon="🗣️"; note="画面を見ないで 声で あそぶ" }
+  @{ id="voice";  name="声だけで遊ぶゲーム";     icon="🗣️"; note="画面を見ないで 声で あそぶ" },
+  @{ id="adult";  name="おとな向け";             icon="🌙"; note="子ども向けではありません" }
 )
 $buttons = ""; $sections = ""
 foreach ($c in $cats) {
@@ -86,6 +87,10 @@ foreach ($c in $cats) {
     $t = [Net.WebUtility]::HtmlEncode($_.title); $d = [Net.WebUtility]::HtmlEncode($_.desc)
     "<a class=""card"" href=""$($_.slug)/""><h2>$t</h2><p>$d</p><small>更新: $($_.updated)</small></a>"
   }) -join "`n"
+  if ($c.id -eq "adult") {
+    if ($list.Count -eq 0) { continue }
+    $buttons += "<p class=""sep"">おとな向け</p>`n"
+  }
   $buttons  += "<a class=""cat cat-$($c.id)"" href=""#$($c.id)""><span class=""ic"">$($c.icon)</span><b>$($c.name)</b><span class=""note"">$($c.note)</span><span class=""n"">$($list.Count)こ</span></a>`n"
   $sections += "<section class=""games"" id=""$($c.id)""><a class=""back"" href=""#"">← もどる</a><h2 class=""head"">$($c.icon) $($c.name)</h2><div class=""list"">`n$cards`n</div></section>`n"
 }
@@ -102,7 +107,8 @@ h1{text-align:center;color:#ff7a2f}
 .cat:hover{transform:translateY(-2px)}
 .cat .ic{font-size:2.6rem;line-height:1}.cat b{font-size:1.35rem}.cat .note{font-size:.9rem;opacity:.95}
 .cat .n{margin-top:4px;background:#fff3;border-radius:99px;padding:2px 12px;font-size:.9rem}
-.cat-camera{background:#ff7a2f}.cat-tap{background:#3b82f6}.cat-voice{background:#16a34a}
+.cat-camera{background:#ff7a2f}.cat-tap{background:#3b82f6}.cat-voice{background:#16a34a}.cat-adult{background:#6b7280;padding:14px 16px}.cat-adult .ic{font-size:1.6rem}.cat-adult b{font-size:1.1rem}
+.sep{grid-column:1/-1;margin:20px 0 0;padding-top:14px;border-top:1px solid #0002;color:#888;font-size:.9rem}
 .games{display:none}
 .back{display:inline-block;margin:4px 0 8px;padding:8px 16px;border-radius:99px;background:#fff;color:#2b2b2b;text-decoration:none;box-shadow:0 2px 6px #0002}
 .head{margin:8px 0 14px}
