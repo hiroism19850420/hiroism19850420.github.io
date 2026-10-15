@@ -49,9 +49,10 @@
   <div class="modes"><button id="mEasy" class="sub on">かんたん</button><button id="mHard" class="sub">むずかしい</button></div>
   <div class="modes"><button id="bVoice" class="sub on">🔊 こえの あんない：あり</button></div>
   <button id="bCam">カメラで ぼうけんに 出る</button>
+  <button id="bPhone" class="sub">📱 スマホを カメラにする（QR）</button>
   <button id="bNoCam" class="sub">カメラなしで ためす（マウス・ゆび）</button>
   <div id="msg"></div>
-  <div class="note">頭から 足まで <b>ぜんしん</b>が うつるように、はなれて 立ってください。まわりに ぶつかる物が ないか たしかめよう。<br>カメラと マイクは この たんまつの中で つかいます。えいぞうは どこにも おくりません。じゅもんの 聞きとりには、ブラウザの 音声にんしきを つかいます。</div>
+  <div class="note">頭から 足まで <b>ぜんしん</b>が うつるように、はなれて 立ってください。まわりに ぶつかる物が ないか たしかめよう。<br>カメラと マイクは この たんまつの中で つかいます。えいぞうは どこにも おくりません（スマホを カメラにするときは、スマホから この PC へ じかに おくります）。じゅもんの 聞きとりには、ブラウザの 音声にんしきを つかいます。</div>
 </div>
 
 <div id="over" class="panel hide">
@@ -62,6 +63,9 @@
 </div>
 
 <script src="monsters.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="../phonecam.js"></script>
 <script type="module">
 const MP_VER = '0.10.14';
 const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
@@ -322,7 +326,7 @@ function listen(on){
 }
 
 // ---------- カメラ・姿勢 ----------
-let pose = null, lastVT = -1, lastPoseT = 0;
+let pose = null, lastVT = -1, lastPoseT = 0, camKind = null;
 function vidRect(){
   const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
   const sc = Math.min(W / vw, H / vh), w = vw * sc, h = vh * sc;   // 切りとらずに 全体を 入れる（ぜんしんが 切れないように）
@@ -1256,8 +1260,8 @@ function ensureAudio(){
 async function startCam(){
   ensureAudio();
   const msg = $('msg');
-  if (pose){ S.mode = 'cam'; begin(); return; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ msg.textContent = 'この ひらきかたでは カメラを つかえません。https か localhost で ひらいてください。'; return; }
+  if (pose && camKind === 'pc'){ S.mode = 'cam'; begin(); return; }
   msg.textContent = 'カメラを じゅんび中…';
   const vopt = { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } };
   let stream;
@@ -1267,24 +1271,53 @@ async function startCam(){
     try { stream = await navigator.mediaDevices.getUserMedia({ video: vopt }); S.noMic = true; }
     catch (e2){ msg.textContent = 'カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'; return; }
   }
-  video.srcObject = new MediaStream(stream.getVideoTracks());
-  await video.play();
-  const at = stream.getAudioTracks();
-  if (at.length && ac){
+  if (window.PhoneCam) PhoneCam.stop();
+  camKind = 'pc';
+  await useStream(stream.getVideoTracks(), stream.getAudioTracks());
+}
+// スマホの カメラ：映像は スマホから、声（じゅもん）は PC の マイクで 聞く
+function startPhone(){
+  ensureAudio();
+  const msg = $('msg');
+  if (!window.PhoneCam){ msg.textContent = 'つうしんの ぶひんが よみこめませんでした。ネットに つながっているか かくにんしてください。'; return; }
+  msg.textContent = '';
+  PhoneCam.open({
+    onStream: async remote => {
+      const first = camKind !== 'phone';
+      camKind = 'phone';
+      if (first && video.srcObject && video.srcObject.getTracks) video.srcObject.getTracks().forEach(t => t.stop());
+      let at = [];
+      if (first && !analyser && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+        try { at = (await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })).getAudioTracks(); } catch (e) {}
+      }
+      if (!first){ video.srcObject = remote; video.play().catch(() => {}); return; }   // つなぎ直し：映像だけ さしかえ
+      await useStream(remote.getVideoTracks(), at, remote);
+    }
+  });
+}
+async function useStream(vt, at, whole){
+  const msg = $('msg');
+  video.srcObject = whole || new MediaStream(vt);
+  try { await video.play(); } catch (e) {}
+  if (at.length && ac && !analyser){
     analyser = ac.createAnalyser(); analyser.fftSize = 1024; volBuf = new Float32Array(analyser.fftSize);
     ac.createMediaStreamSource(new MediaStream(at)).connect(analyser);
-  } else S.noMic = true;
-  msg.textContent = 'うごきを 見る じゅんび中…（はじめは すこし かかります）';
-  try {
-    const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
-    const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
-    const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
-    try { pose = await make('GPU'); } catch (e){ pose = await make('CPU'); }
-  } catch (e){ msg.textContent = 'うごきを 見る しくみを よみこめませんでした。ネットに つながっているか かくにんしてください。'; return; }
+    S.noMic = false;
+  } else if (!analyser) S.noMic = true;
+  if (!pose){
+    msg.textContent = 'うごきを 見る じゅんび中…（はじめは すこし かかります）';
+    try {
+      const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
+      const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
+      const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
+      try { pose = await make('GPU'); } catch (e){ pose = await make('CPU'); }
+    } catch (e){ msg.textContent = 'うごきを 見る しくみを よみこめませんでした。ネットに つながっているか かくにんしてください。'; return; }
+  }
   msg.textContent = '';
   S.mode = 'cam'; begin();
 }
 $('bCam').onclick = startCam;
+$('bPhone').onclick = startPhone;
 $('bNoCam').onclick = () => { ensureAudio(); S.mode = 'nocam'; clearPose(); begin(); };
 $('bRetry').onclick = retry;
 function setDiff(k){

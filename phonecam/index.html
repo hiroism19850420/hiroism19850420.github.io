@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>スマホカメラ</title>
+<style>
+  html,body{margin:0;height:100%;background:#101433;color:#fff;font-family:"Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif;-webkit-user-select:none;user-select:none}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;box-sizing:border-box;text-align:center}
+  #pv{width:min(100%,560px);max-height:55vh;aspect-ratio:4/3;object-fit:contain;background:#000;border-radius:12px;display:none}
+  #pv.self{transform:scaleX(-1)}
+  h1{margin:0;font-size:22px;color:#ffe35a}
+  #st{font-size:16px;font-weight:700;min-height:1.5em}
+  #st.ok{color:#9ff5b0}#st.ng{color:#ffb0a0}
+  .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  button{font:inherit;font-weight:700;font-size:17px;color:#23306b;background:#ffe35a;border:0;border-radius:999px;padding:12px 24px;box-shadow:0 5px 0 #b98a12}
+  button.sub{background:#cfe0ff;box-shadow:0 5px 0 #7a8fc4;font-size:15px;padding:9px 18px}
+  button:active{transform:translateY(3px);box-shadow:none}
+  .note{font-size:13px;opacity:.8;max-width:520px;line-height:1.6}
+  .hide{display:none!important}
+  /* つながったあとは 画面を くらくして 電池と 熱を おさえる */
+  body.dim #pv{opacity:.35}
+</style>
+</head>
+<body>
+<h1>📱 スマホカメラ</h1>
+<video id="pv" playsinline muted autoplay></video>
+<div id="st">じゅんび中…</div>
+<div class="row">
+  <button id="bGo">カメラを PC に おくる</button>
+  <button id="bFlip" class="sub hide">🔄 カメラを きりかえ</button>
+  <button id="bDim" class="sub hide">🌙 がめんを くらく</button>
+</div>
+<div class="note" id="note">スマホを <b>横向き</b>に たてかけて、<b>頭から 足まで</b> うつる ところに おいてね。<br>この ページは ひらいたままに してください（とじると きれます）。<br>えいぞうは PC にだけ おくり、ほかには おくりません。</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script>
+const PREFIX = 'hiro-pcam-';
+const $ = id => document.getElementById(id);
+const code = (new URLSearchParams(location.search).get('r') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const pv = $('pv'), st = $('st');
+let facing = 'user', stream = null, peer = null, call = null, lock = null;
+
+function say(t, cls){ st.textContent = t; st.className = cls || ''; }
+
+async function getCam(){
+  const s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30, max: 30 } } });
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = s; pv.srcObject = s; pv.style.display = 'block';
+  pv.classList.toggle('self', facing === 'user');
+  try { await pv.play(); } catch (e) {}
+  return s;
+}
+async function keepAwake(){
+  try { if (navigator.wakeLock) lock = await navigator.wakeLock.request('screen'); } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && stream) keepAwake(); });
+
+function connect(){
+  try { peer && peer.destroy(); } catch (e) {}
+  say('PC に つなぎ中…');
+  peer = new Peer();
+  peer.on('open', () => {
+    call = peer.call(PREFIX + code, stream);
+    if (!call){ say('つなげませんでした。PC の QR を もういちど よみとってね', 'ng'); $('bGo').classList.remove('hide'); return; }
+    const pc = call.peerConnection;
+    const watch = () => {
+      const s = pc && (pc.iceConnectionState || pc.connectionState);
+      if (s === 'connected' || s === 'completed') { say('✅ つながった！ PC の 画面を 見てね', 'ok'); $('bGo').classList.add('hide'); }
+      else if (s === 'failed') { say('つなげませんでした。PC と スマホが おなじ Wi-Fi か たしかめてね', 'ng'); $('bGo').classList.remove('hide'); $('bGo').textContent = 'もういちど つなぐ'; }
+      else if (s === 'disconnected') say('とぎれています…', 'ng');
+    };
+    if (pc) pc.addEventListener('iceconnectionstatechange', watch);
+    call.on('close', () => { say('PC と きれました。PC で もういちど QR を 出して よみとってね', 'ng'); $('bGo').classList.remove('hide'); $('bGo').textContent = 'もういちど つなぐ'; });
+    call.on('error', () => {});
+  });
+  peer.on('error', e => {
+    const t = e.type === 'peer-unavailable' ? 'PC が 見つかりません。PC の 画面の QR を もういちど よみとってね' : 'つうしんエラー（' + (e.type || e) + '）';
+    say(t, 'ng'); $('bGo').classList.remove('hide'); $('bGo').textContent = 'もういちど つなぐ';
+  });
+}
+
+async function go(){
+  if (!code){ say('PC の ゲームに 出ている QR を よみとって ひらいてね', 'ng'); return; }
+  if (typeof Peer === 'undefined'){ say('つうしんの ぶひんが よみこめませんでした。ネットを たしかめてね', 'ng'); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ say('この ブラウザでは カメラを つかえません。Safari か Chrome で ひらいてね（QR アプリの中では うごかないことがあります）', 'ng'); return; }
+  $('bGo').classList.add('hide');
+  say('カメラを じゅんび中…');
+  try { await getCam(); }
+  catch (e){ say('カメラを つかえませんでした。ブラウザで カメラを きょかしてね', 'ng'); $('bGo').classList.remove('hide'); return; }
+  keepAwake();
+  $('bFlip').classList.remove('hide'); $('bDim').classList.remove('hide');
+  connect();
+}
+
+$('bGo').onclick = go;
+$('bFlip').onclick = async () => {
+  facing = facing === 'user' ? 'environment' : 'user';
+  try {
+    await getCam();
+    const sender = call && call.peerConnection && call.peerConnection.getSenders().find(s => !s.track || s.track.kind === 'video');
+    if (sender) await sender.replaceTrack(stream.getVideoTracks()[0]);
+  } catch (e) { say('カメラを きりかえられませんでした', 'ng'); }
+};
+$('bDim').onclick = () => document.body.classList.toggle('dim');
+
+if (!code) say('PC の ゲームに 出ている QR を よみとって ひらいてね', 'ng');
+else { say('「カメラを PC に おくる」を おしてね'); go(); }
+</script>
+</body>
+</html>
