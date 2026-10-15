@@ -51,7 +51,7 @@
   // opt.onStream(stream)：映像が とどいたとき（つなぎ直しでも また よばれる）
   // opt.onLost()：スマホと きれたとき
   // opt.onCancel()：「やめる」を おしたとき
-  // opt.mic：true なら「マイクも スマホを つかう」を 出す。えらぶと 映像に スマホの 音が つき、PhoneCam.micOn が true になる
+  // opt.mic：true なら「マイクも スマホを つかう」を 出す。えらぶと 音が べつの つなぎで とどき、opt.onAudio(stream) が よばれ、PhoneCam.micOn が true になる
   // opt.onData(obj)：スマホから とどいた データ（音声にんしきの 結果など）。PhoneCam.send(obj) で スマホへ おくる
   function open(opt) {
     opt = opt || {};
@@ -101,15 +101,25 @@ ${opt.mic ? '<label class="mic"><input type="checkbox"> 🎤 マイクも スマ
         else badge('📱 つうしんエラー', true);
       });
       peer.on('call', c => {
+        // 音だけの つなぎ（スマホの マイク）
+        if (c.metadata && c.metadata.kind === 'audio') {
+          c.answer();
+          c.on('stream', st => {
+            PhoneCam.micOn = st.getAudioTracks().length > 0;
+            // Chrome は WebRTC の 音を いちど audio 要素に つながないと WebAudio に 流れないことがある
+            keep = keep || new Audio(); keep.muted = true; keep.srcObject = st; keep.play().catch(() => {});
+            opt.onAudio && opt.onAudio(st);
+          });
+          c.on('error', () => {});
+          return;
+        }
         try { call && call.close(); } catch (e) {}
         call = c;
         if (box) st.textContent = 'つないでいます…';
         c.answer();
         c.on('stream', stream => {
           if (call !== c) return;
-          PhoneCam.micOn = stream.getAudioTracks().length > 0;
-          // Chrome は WebRTC の 音を いちど audio 要素に つながないと WebAudio に 流れないことがある
-          if (PhoneCam.micOn) { keep = keep || new Audio(); keep.muted = true; keep.srcObject = stream; keep.play().catch(() => {}); }
+          PhoneCam.wantMic = !!(opt.mic && mic);   // スマホの マイクを えらんだか（音は べつの つなぎで くる）
           say('✅ スマホと つながった！ ゲームを じゅんび中…');
           badge('📱 スマホカメラ');
           // ゲームの じゅんびが おわるまで パネルを 出したまま、ようすを 見せる
@@ -137,5 +147,5 @@ ${opt.mic ? '<label class="mic"><input type="checkbox"> 🎤 マイクも スマ
   }
 
   function send(o) { try { data && data.open && data.send(o); } catch (e) {} }
-  window.PhoneCam = { open, stop, close, say, send, micOn: false };
+  window.PhoneCam = { open, stop, close, say, send, micOn: false, wantMic: false };
 })();

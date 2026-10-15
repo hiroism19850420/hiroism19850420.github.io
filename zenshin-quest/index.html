@@ -1296,13 +1296,12 @@ function startPhone(){
   msg.textContent = '';
   PhoneCam.open({
     mic: true, onData: phoneData,
+    onAudio: st => addMic(st.getAudioTracks(), true),   // スマホの マイク（つなぎ直しでも さしかえる）
     onStream: async remote => {
       const first = camKind !== 'phone';
       camKind = 'phone';
       if (first && video.srcObject && video.srcObject.getTracks) video.srcObject.getTracks().forEach(t => t.stop());
-      const at = remote.getAudioTracks();
-      if (at.length) addMic(at, true);   // スマホの マイク（つなぎ直しでも さしかえる）
-      else if (!analyser && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+      if (!analyser && !PhoneCam.wantMic && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
         // PC の マイク。きょかの こたえを またずに 先へ すすむ
         navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
           .then(st => addMic(st.getAudioTracks())).catch(() => {});

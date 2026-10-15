@@ -26,6 +26,7 @@
 <h1>📱 スマホカメラ</h1>
 <video id="pv" playsinline muted autoplay></video>
 <div id="st">じゅんび中…</div>
+<div id="sent" class="note"></div>
 <div class="row">
   <button id="bGo">カメラを PC に おくる</button>
   <button id="bFlip" class="sub hide">🔄 カメラを きりかえ</button>
@@ -39,19 +40,45 @@ const $ = id => document.getElementById(id);
 const code = (new URLSearchParams(location.search).get('r') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const MIC = new URLSearchParams(location.search).get('mic') === '1';
 const pv = $('pv'), st = $('st');
-let dc = null;
+let dc = null, mic = null, acall = null;
 let facing = 'user', stream = null, peer = null, call = null, lock = null;
 
 function say(t, cls){ st.textContent = t; st.className = cls || ''; }
 
 async function getCam(){
-  const s = await navigator.mediaDevices.getUserMedia({ audio: MIC ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false, video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30, max: 30 } } });
+  const s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30, max: 30 } } });
   if (stream) stream.getTracks().forEach(t => t.stop());
   stream = s; pv.srcObject = s; pv.style.display = 'block';
   pv.classList.toggle('self', facing === 'user');
   try { await pv.play(); } catch (e) {}
   return s;
 }
+// マイクは 映像とは べつに とって、べつの つなぎで おくる（いっしょだと 映像が とどかない スマホが あった）
+async function getMic(){
+  try { mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false }); }
+  catch (e){ mic = null; }
+  return mic;
+}
+function callAudio(){
+  if (!MIC || !mic || !peer || (acall && acall.open)) return;
+  try { acall && acall.close(); } catch (e) {}
+  acall = peer.call(PREFIX + code, mic, { metadata: { kind: 'audio' } });
+}
+// 映像が ほんとうに おくれているかを 2びょうごとに 見せる
+let lastBytes = 0, lastFrames = 0;
+setInterval(async () => {
+  const el = $('sent');
+  const pc = call && call.peerConnection;
+  if (!pc || !pc.getStats){ el.textContent = ''; return; }
+  let bytes = 0, frames = 0;
+  try { (await pc.getStats()).forEach(r => { if (r.type === 'outbound-rtp' && (r.kind || r.mediaType) === 'video'){ bytes += r.bytesSent || 0; frames += r.framesEncoded || 0; } }); } catch (e) {}
+  const vt = stream && stream.getVideoTracks()[0];
+  const fps = Math.round((frames - lastFrames) / 2), kb = Math.round((bytes - lastBytes) / 2048);
+  lastBytes = bytes; lastFrames = frames;
+  const tr = vt ? vt.readyState + (vt.muted ? ',muted' : '') : 'なし';
+  el.textContent = (fps > 0 ? `📤 映像を おくっています（${fps} コマ/秒・${kb}KB/秒）` : `⚠️ 映像が おくれていません［${tr}・${pc.iceConnectionState}］`)
+    + (MIC ? (mic ? (acall && acall.open ? '　🎤 音も おくっています' : '　🎤 音は じゅんび中') : '　🎤 マイクが つかえません') : '');
+}, 2000);
 async function keepAwake(){
   try { if (navigator.wakeLock) lock = await navigator.wakeLock.request('screen'); } catch (e) {}
 }
@@ -62,12 +89,12 @@ function connect(){
   say('PC に つなぎ中…');
   peer = new Peer();
   peer.on('open', () => {
-    call = peer.call(PREFIX + code, stream);
+    call = peer.call(PREFIX + code, stream, { metadata: { kind: 'video' } });
     if (!call){ say('つなげませんでした。PC の QR を もういちど よみとってね', 'ng'); $('bGo').classList.remove('hide'); return; }
     const pc = call.peerConnection;
     const watch = () => {
       const s = pc && (pc.iceConnectionState || pc.connectionState);
-      if (s === 'connected' || s === 'completed') { say('✅ つながった！ PC の 画面を 見てね' + (MIC ? '（🎤 マイクも スマホ）' : ''), 'ok'); $('bGo').classList.add('hide'); if (MIC) openData(); }
+      if (s === 'connected' || s === 'completed') { say('✅ つながった！ PC の 画面を 見てね' + (MIC ? '（🎤 マイクも スマホ）' : ''), 'ok'); $('bGo').classList.add('hide'); if (MIC){ openData(); callAudio(); } }
       else if (s === 'failed') { say('つなげませんでした。PC と スマホが おなじ Wi-Fi か たしかめてね', 'ng'); $('bGo').classList.remove('hide'); $('bGo').textContent = 'もういちど つなぐ'; }
       else if (s === 'disconnected') say('とぎれています…', 'ng');
     };
@@ -122,7 +149,8 @@ async function go(){
   $('bGo').classList.add('hide');
   say('カメラを じゅんび中…');
   try { await getCam(); }
-  catch (e){ say(MIC ? 'カメラか マイクを つかえませんでした。ブラウザで きょかしてね' : 'カメラを つかえませんでした。ブラウザで カメラを きょかしてね', 'ng'); $('bGo').classList.remove('hide'); return; }
+  catch (e){ say('カメラを つかえませんでした。ブラウザで カメラを きょかしてね', 'ng'); $('bGo').classList.remove('hide'); return; }
+  if (MIC && !mic){ say('マイクを じゅんび中…'); await getMic(); }
   keepAwake();
   $('bFlip').classList.remove('hide'); $('bDim').classList.remove('hide');
   connect();
@@ -134,11 +162,7 @@ $('bFlip').onclick = async () => {
   try {
     await getCam();
     const senders = call && call.peerConnection ? call.peerConnection.getSenders() : [];
-    for (const sd of senders){
-      const kind = sd.track ? sd.track.kind : null;
-      const nt = kind === 'audio' ? stream.getAudioTracks()[0] : stream.getVideoTracks()[0];
-      if (nt && kind !== null) await sd.replaceTrack(nt);
-    }
+    for (const sd of senders) if (!sd.track || sd.track.kind === 'video') await sd.replaceTrack(stream.getVideoTracks()[0]);
   } catch (e) { say('カメラを きりかえられませんでした', 'ng'); }
 };
 $('bDim').onclick = () => document.body.classList.toggle('dim');
