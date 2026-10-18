@@ -229,13 +229,16 @@ function onOrient(e){
   if (ang === 90) gx = -gy; else if (ang === 270) gx = gy; else if (ang === 180) gx = -gx;
   input.tilt = gx;
 }
+let tiltAsked = false, tiltDenied = false;
+function listenTilt(){ if (!tiltAsked) { tiltAsked = true; window.addEventListener('deviceorientation', onOrient); } }
 function askTilt(){
+  // iPhone は「タップした その場」で許可をもとめないと、傾きが 一度も届かない。音より先に よぶ
   try {
     const D = window.DeviceOrientationEvent;
     if (D && typeof D.requestPermission === 'function') {
-      D.requestPermission().then(s => { if (s === 'granted') window.addEventListener('deviceorientation', onOrient); }).catch(()=>{});
+      D.requestPermission().then(s => { if (s === 'granted') { tiltDenied = false; listenTilt(); } else tiltDenied = true; }).catch(()=>{});
     } else {
-      window.addEventListener('deviceorientation', onOrient);
+      listenTilt();
     }
   } catch(e){}
   try { if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(()=>{}); } catch(e){}
@@ -308,7 +311,7 @@ function audioOn(){
   } catch(e){}
 }
 // 許可のダイアログや画面の切りかえで音が止まることがあるので、さわるたびに起こし直す
-['pointerdown','touchend','click'].forEach(n => window.addEventListener(n, () => { if (ac) audioOn(); }, true));
+['pointerdown','touchend','click'].forEach(n => window.addEventListener(n, () => { if (ac && !input.gotTilt) askTilt(); if (ac) audioOn(); }, true));
 document.addEventListener('visibilitychange', () => { if (ac && !document.hidden) audioOn(); });
 function startBgm(){
   if (!ac || bgmSrc || !bufs.bgm) return;
@@ -566,6 +569,7 @@ function hud(){
     text('ボールを おく ばしょを きめて', W / 2, viewH - 100, 15, '#fff', 'center');
     text('ゆびを はなすと スタート', W / 2, viewH - 80, 15, '#ffd84a', 'center');
   } else if (T.state === 'roll' && !input.gotTilt && T.time < 4) {
+    if (tiltDenied) text('かたむきが オフです。Safari を とじて ひらきなおしてね', W / 2, viewH - 100, 13, '#ffd84a', 'center');
     text('かたむきが つかえないときは 画面の左右を おす', W / 2, viewH - 80, 13, '#fff', 'center');
   }
   if (ac && ac.state !== 'running') text('🔇 音が とまっています。画面を タップ', W / 2, 62, 14, '#ffd84a', 'center');
@@ -583,7 +587,7 @@ function showResult(){
   $('resText').innerHTML = BALLS + 'この うち ' + T.wins + 'こ ゴール' + (T.wins > 0 ? '<br>けいひん ゲット！' : '<br>もういちど ちょうせん しよう');
   show('result');
 }
-function begin(){ audioOn(); askTilt(); newGame(); }
+function begin(){ askTilt(); audioOn(); newGame(); }
 $('startBtn').addEventListener('click', begin);
 $('againBtn').addEventListener('click', begin);
 $('bgmBtn').classList.toggle('off', !bgmOn);
