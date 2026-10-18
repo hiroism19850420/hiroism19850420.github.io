@@ -288,3 +288,25 @@ html, body {
 }
 @keyframes turn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
 .receipt-area, .result-card, .modal-card { touch-action: pan-y; }
+
+/* BGM のボタン */
+#muteBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 7;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  background: rgba(40, 40, 40, 0.45);
+  color: #fff;
+  font: 700 17px var(--sans);
+  cursor: pointer;
+  padding: 0;
+  touch-action: manipulation;
+}
+#muteBtn.off { opacity: 0.45; text-decoration: line-through; }
+
+.result-text.longest p { font-size: 14px; line-height: 1.45; margin: 2px 0; }
+.result-text.longest { padding: 10px 0; }

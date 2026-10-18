@@ -19,20 +19,25 @@ window.Stage3 = (function () {
     { n: 'L', m: [[0, 0, 1], [1, 1, 1], [0, 0, 0]], color: '#f08c26' }
   ];
 
+  // どの終わり方でも、縦の棒のことは必ず言う
+  const barLine = i => (i.bars === 0
+    ? `縦の棒は${i.pieces}個中、1本も来ませんでした。あなたが待っているものは、だいたい来ません。`
+    : `縦の棒は${i.pieces}個中${i.bars}本しか来ませんでした。あなたが待っているものは、だいたい来ません。来ても、もう遅いです。`);
+
   const RESULTS = {
     clear: i => ({
       cleared: true, resultType: 'lines_cleared', diagnosisTag: '冷静型',
-      diagnosisText: `あなたは、だんだん速くなるブロックの中、${i.time}秒で${TARGET}ラインを消しました。縦の棒は${i.pieces}個中${i.bars}本しか来ませんでしたが、取り乱しませんでした。あなたは混乱した状況でも、冷静に問題を整理できるようです。`,
+      diagnosisText: [`あなたは、だんだん速くなるブロックの中、${i.time}秒で${TARGET}ラインを消しました。あなたは混乱した状況でも、冷静に問題を整理できるようです。その冷静さを、なぜ現実の部屋の片付けに使わないのでしょうか。`, barLine(i)].join('\n'),
       playResult: `${TARGET}ライン消去（タイム ${i.time}秒／縦の棒 ${i.bars}本）`
     }),
     timeout: i => ({
       cleared: false, resultType: 'timeout', diagnosisTag: '決断遅延型',
-      diagnosisText: `あなたは${LIMIT}秒で${i.lines}ラインしか消せませんでした。あと${TARGET - i.lines}ラインでした。縦の棒を待ってすき間を空けていた時間は、合計${i.wait}秒です。あなたは正解を探し続けた結果、決断する機会を失いました。`,
+      diagnosisText: [`あなたは${LIMIT}秒で${i.lines}ラインしか消せませんでした。あと${TARGET - i.lines}ラインでした。縦の棒を待ってすき間を空けていた時間は、合計${i.wait}秒です。あなたは正解を探し続けた結果、決断する機会を失いました。人生で一番長く待っているものを思い出してください。それは、まだ来ていないはずです。`, barLine(i)].join('\n'),
       playResult: `時間切れ（消去 ${i.lines}／${TARGET}ライン）`
     }),
     topout: i => ({
       cleared: false, resultType: 'field_full', diagnosisTag: '視野狭窄型',
-      diagnosisText: `あなたは${i.time}秒で天井に届きました。あと${i.rest}秒でした。積み上げたブロックは${i.pieces}個、消せたラインは${i.lines}本です。あなたは目の前の問題を処理することに集中しすぎて、全体を見失う傾向があります。`,
+      diagnosisText: [`あなたは${i.time}秒で天井に届きました。積み上げたブロックは${i.pieces}個、消せたラインは${i.lines}本です。あなたは目の前の問題を処理することに集中しすぎて、全体を見失う傾向があります。積み上げてきたのはブロックだけではないはずです。未読のメール、返していない連絡、先延ばしにした用事。`, barLine(i)].join('\n'),
       playResult: `${i.time}秒でフィールドが埋まった（消去 ${i.lines}／${TARGET}ライン）`
     })
   };
@@ -142,6 +147,7 @@ window.Stage3 = (function () {
       st += dt;
       if (state === 'play') {
         time += dt;
+        Music.tempo = 1 + (speedNow() - START_SPEED) / 6; // 落ちる速さに合わせて曲も速くなる
         if (time >= LIMIT) { time = LIMIT; state = 'timeout'; st = 0; Sfx.play('fail'); return; }
         if (cur && hasWell()) waitTime += dt;
         if (clearing) {
@@ -186,9 +192,9 @@ window.Stage3 = (function () {
       } else if (state === 'clear') {
         if (st > 1.6) api.end(RESULTS.clear({ time: time.toFixed(1), pieces, bars }));
       } else if (state === 'timeout') {
-        if (st > 1.8) api.end(RESULTS.timeout({ lines, wait: waitTime.toFixed(1) }));
+        if (st > 1.8) api.end(RESULTS.timeout({ lines, wait: waitTime.toFixed(1), pieces, bars }));
       } else if (state === 'topout') {
-        if (st > 1.8) api.end(RESULTS.topout({ lines, pieces, time: time.toFixed(1), rest: Math.max(0.1, LIMIT - time).toFixed(1) }));
+        if (st > 1.8) api.end(RESULTS.topout({ lines, pieces, bars, time: time.toFixed(1) }));
       }
     }
 
@@ -319,6 +325,6 @@ window.Stage3 = (function () {
 
   return {
     create,
-    debugResult(ok) { return ok ? RESULTS.clear({ time: '52.3', pieces: 31, bars: 2 }) : RESULTS.topout({ lines: 2, pieces: 31, time: '34.2', rest: '25.8' }); }
+    debugResult(ok) { return ok ? RESULTS.clear({ time: '52.3', pieces: 31, bars: 2 }) : RESULTS.topout({ lines: 2, pieces: 31, bars: 1, time: '34.2' }); }
   };
 })();

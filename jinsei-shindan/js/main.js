@@ -97,6 +97,7 @@ const Loop = {
   resume() { this.paused = false; this.last = performance.now(); }
 };
 document.addEventListener('visibilitychange', () => {
+  if (Sfx.ac) { if (document.hidden) Sfx.ac.suspend(); else Sfx.ac.resume(); }
   if (document.hidden) {
     Input.clear();
     if (Loop.running()) Loop.paused = true;
@@ -130,6 +131,7 @@ const Sfx = {
       } catch (e) { this.ac = null; }
     }
     if (this.ac && this.ac.state === 'suspended') this.ac.resume();
+    if (this.ac && typeof Music !== 'undefined') Music.start();
   },
   tone(freq, dur, type = 'square', vol = 0.12, slideTo = 0, delay = 0) {
     if (!this.ac || this.muted) return;
@@ -170,6 +172,150 @@ const Sfx = {
     }
   }
 };
+
+/* ---------- BGM（WebAudio で鳴らすオリジナル曲。素材ファイルは使わない） ---------- */
+// 1文字＝16分音符。「.」は休み、「-」は前の音をのばす
+const SONGS = {
+  title: { bpm: 76, lead: 'sine', vol: 0.05, bars: [
+    ['C5 . E5 . G5 . E5 . C5 . E5 . G5 . E5 .', 'C3 - - - - - - - G2 - - - - - - -'],
+    ['A4 . C5 . E5 . C5 . A4 . C5 . E5 . C5 .', 'A2 - - - - - - - E3 - - - - - - -'],
+    ['F4 . A4 . C5 . A4 . F4 . A4 . C5 . A4 .', 'F2 - - - - - - - C3 - - - - - - -'],
+    ['G4 . B4 . D5 . B4 . G4 . B4 . D5 . B4 .', 'G2 - - - - - - - D3 - - - - - - -']] },
+  stage1: { bpm: 150, lead: 'square', vol: 0.035, bars: [
+    ['C5 . C5 E5 . G5 . . E5 . C5 . D5 . E5 .', 'C3 . G3 . C3 . G3 . C3 . G3 . C3 . G3 .'],
+    ['F5 . . E5 . D5 . . C5 . D5 . G4 . . .', 'F3 . C4 . F3 . C4 . G3 . D4 . G3 . D4 .'],
+    ['C5 . C5 E5 . G5 . . A5 . G5 . E5 . C5 .', 'C3 . G3 . C3 . G3 . A2 . E3 . A2 . E3 .'],
+    ['D5 . E5 . D5 . C5 . . . G4 . C5 . . .', 'G2 . D3 . G2 . D3 . C3 . G3 . C3 . . .']] },
+  stage2: { bpm: 168, lead: 'sawtooth', vol: 0.03, bars: [
+    ['A4 . A4 C5 . E5 . A5 . G5 . E5 . C5 . .', 'A2 A2 . A2 A3 . A2 . A2 A2 . A2 A3 . G2 .'],
+    ['D5 . D5 F5 . A5 . D5 . C5 . B4 . G4 . .', 'D3 D3 . D3 D4 . D3 . G2 G2 . G2 G3 . G2 .'],
+    ['A4 . A4 C5 . E5 . A5 . B5 . C6 . B5 . A5 .', 'A2 A2 . A2 A3 . A2 . A2 A2 . A2 A3 . G2 .'],
+    ['G5 . E5 . C5 . B4 . A4 - - - . . . .', 'F2 F2 . F2 E2 E2 . E2 A2 A2 . A2 A3 . . .']] },
+  stage3: { bpm: 132, lead: 'square', vol: 0.032, bars: [
+    ['E5 . . B4 E5 . G5 . F#5 . E5 . D5 . . .', 'E3 . B3 . E3 . B3 . E3 . B3 . E3 . B3 .'],
+    ['C5 . . G4 C5 . E5 . D5 . C5 . B4 . . .', 'C3 . G3 . C3 . G3 . C3 . G3 . C3 . G3 .'],
+    ['A4 . C5 . E5 . A5 . G5 . F#5 . E5 . D5 .', 'A2 . E3 . A2 . E3 . A2 . E3 . A2 . E3 .'],
+    ['B4 . D#5 . F#5 . B5 . A5 . F#5 . D#5 . B4 .', 'B2 . F#3 . B2 . F#3 . B2 . F#3 . B2 . F#3 .']] },
+  field: { bpm: 116, lead: 'square', vol: 0.03, bars: [
+    ['F4 . . . A4 . C5 . F5 . . . E5 . D5 .', 'F3 . . . C3 . . . F3 . . . C3 . . .'],
+    ['C5 . . . A4 . Bb4 . C5 . . . . . . .', 'F3 . . . C3 . . . F3 . . . A3 . . .'],
+    ['D5 . . . C5 . Bb4 . A4 . . . G4 . A4 .', 'Bb2 . . . F3 . . . C3 . . . G3 . . .'],
+    ['Bb4 . . . A4 . G4 . F4 . . . . . . .', 'C3 . . . C3 . . . F3 . . . . . . .']] },
+  battle: { bpm: 176, lead: 'square', vol: 0.032, bars: [
+    ['D5 D5 . D5 F5 . D5 . C5 C5 . C5 E5 . C5 .', 'D3 D3 D3 D3 D3 D3 D3 D3 C3 C3 C3 C3 C3 C3 C3 C3'],
+    ['Bb4 . D5 . F5 . Bb5 . A5 . F5 . E5 . C#5 .', 'Bb2 Bb2 Bb2 Bb2 Bb2 Bb2 Bb2 Bb2 A2 A2 A2 A2 A2 A2 A2 A2'],
+    ['D5 D5 . D5 F5 . D5 . C5 C5 . C5 E5 . C5 .', 'D3 D3 D3 D3 D3 D3 D3 D3 C3 C3 C3 C3 C3 C3 C3 C3'],
+    ['D5 . A4 . D5 . F5 . A5 - - - . . . .', 'D3 D3 D3 D3 A2 A2 A2 A2 D3 . . . . . . .']] },
+  result: { bpm: 66, lead: 'sine', vol: 0.05, bars: [
+    ['A4 . . . C5 . . . E5 . . . . . . .', 'A2 - - - - - - - - - - - - - - -'],
+    ['G4 . . . B4 . . . D5 . . . . . . .', 'G2 - - - - - - - - - - - - - - -'],
+    ['F4 . . . A4 . . . C5 . . . . . . .', 'F2 - - - - - - - - - - - - - - -'],
+    ['E4 . . . G#4 . . . B4 . . . . . . .', 'E2 - - - - - - - - - - - - - - -']] }
+};
+
+function noteFreq(n) {
+  const m = /^([A-G])(#|b)?(\d)$/.exec(n);
+  if (!m) return 0;
+  const base = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0);
+  return 440 * Math.pow(2, (base + (Number(m[3]) + 1) * 12 - 69) / 12);
+}
+
+// 1小節の文字列を [{i, f, len}] に（len は16分音符の数）
+function parseBar(str) {
+  const t = str.trim().split(/\s+/);
+  const out = [];
+  t.forEach((tok, i) => {
+    if (tok === '.' || tok === '-') return;
+    let len = 1;
+    while (t[i + len] === '-') len++;
+    out.push({ i, f: noteFreq(tok), len });
+  });
+  return out;
+}
+
+const Music = {
+  muted: false,
+  name: null, song: null, timer: 0, step: 0, nextTime: 0, tempo: 1, out: null,
+  load() { try { this.muted = localStorage.getItem('jinsei-bgm') === 'off'; } catch (e) { /* 保存できない環境 */ } },
+  play(name) {
+    if (this.name === name) { this.start(); return; }
+    this.stop();
+    this.name = name;
+    this.tempo = 1;
+    this.start();
+  },
+  start() {
+    if (!this.name || !Sfx.ac || this.timer) return;
+    const def = SONGS[this.name];
+    this.song = { def, lead: def.bars.map(b => parseBar(b[0])), bass: def.bars.map(b => parseBar(b[1])) };
+    this.out = Sfx.ac.createGain();
+    this.out.gain.value = this.muted ? 0 : 1;
+    this.out.connect(Sfx.master);
+    this.step = 0;
+    this.nextTime = Sfx.ac.currentTime + 0.08;
+    this.timer = setInterval(() => this.tick(), 40);
+    this.tick();
+  },
+  stop() {
+    clearInterval(this.timer);
+    this.timer = 0;
+    this.name = null;
+    this.song = null;
+    if (this.out) {
+      const o = this.out;
+      try { o.gain.setTargetAtTime(0, Sfx.ac.currentTime, 0.05); } catch (e) { /* 止まっている */ }
+      setTimeout(() => o.disconnect(), 400);
+      this.out = null;
+    }
+  },
+  voice(f, t, dur, type, vol) {
+    const ac = Sfx.ac;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+    g.gain.setValueAtTime(vol, t + Math.max(0.02, dur * 0.7));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.out);
+    o.start(t); o.stop(t + dur + 0.02);
+  },
+  tick() {
+    if (!this.song || !Sfx.ac || !this.out) return;
+    const { def, lead, bass } = this.song;
+    const per = 60 / (def.bpm * this.tempo) / 4; // 16分音符の長さ
+    const total = lead.length * 16;
+    if (this.nextTime < Sfx.ac.currentTime - 0.5) this.nextTime = Sfx.ac.currentTime + 0.05; // 止まっていた後
+    while (this.nextTime < Sfx.ac.currentTime + 0.2) {
+      const bar = Math.floor(this.step / 16) % lead.length, i = this.step % 16;
+      for (const n of lead[bar]) if (n.i === i && n.f) this.voice(n.f, this.nextTime, n.len * per * 0.95, def.lead, def.vol);
+      for (const n of bass[bar]) if (n.i === i && n.f) this.voice(n.f, this.nextTime, n.len * per * 0.9, 'triangle', def.vol * 2.2);
+      this.nextTime += per;
+      this.step = (this.step + 1) % total;
+    }
+  },
+  setMuted(m) {
+    this.muted = m;
+    try { localStorage.setItem('jinsei-bgm', m ? 'off' : 'on'); } catch (e) { /* 保存できない環境 */ }
+    if (this.out && Sfx.ac) this.out.gain.setTargetAtTime(m ? 0 : 1, Sfx.ac.currentTime, 0.05);
+    muteBtn.classList.toggle('off', m);
+  }
+};
+Music.load();
+
+// 右上の音のボタン（M キーでも切り替え）
+const muteBtn = document.createElement('button');
+muteBtn.id = 'muteBtn';
+muteBtn.type = 'button';
+muteBtn.title = 'BGM のオン・オフ（M キー）';
+muteBtn.textContent = '♪';
+muteBtn.classList.toggle('off', Music.muted);
+muteBtn.addEventListener('pointerdown', e => e.stopPropagation());
+muteBtn.addEventListener('click', e => { e.stopPropagation(); Sfx.init(); Music.setMuted(!Music.muted); muteBtn.blur(); });
+app.appendChild(muteBtn);
+window.addEventListener('keydown', e => {
+  if (e.code === 'KeyM' && !e.repeat && !(e.target && e.target.tagName === 'INPUT')) Music.setMuted(!Music.muted);
+});
 
 /* ---------- 共通描画：黒い棒人間 ---------- */
 // (x, y) は足元。h は身長。pose: stand / walk / jump / cheer / down
@@ -420,6 +566,7 @@ const Screens = {
 /* ---------- タイトル ---------- */
 function showTitle() {
   stopStage();
+  Music.play('title');
   let t = 0;
   Loop.run(dt => { t += dt; }, c => {
     clearCanvas(c);
@@ -601,6 +748,7 @@ function startStage(n) {
   api.inst = inst;
   api.mod = mod;
   currentStageApi = api;
+  Music.play(n === 4 ? 'field' : 'stage' + n);
   Loop.run(dt => inst.update(dt), c => inst.draw(c), { pausable: true });
 }
 
@@ -616,6 +764,7 @@ function stopStage() {
 /* ---------- ステージ終了時の診断 ---------- */
 function showStageResult(r) {
   stopStage();
+  Music.play('result');
   const info = STAGE_INFO[r.stageId];
   const last = r.stageId >= STAGE_COUNT;
   Sfx.play('tick');
@@ -629,7 +778,7 @@ function showStageResult(r) {
       </div>
       <p class="result-theme">${esc(info.theme)}</p>
       <dl class="result-play"><dt>プレイ結果</dt><dd>${esc(r.playResult)}</dd></dl>
-      <div class="result-text${r.diagnosisText.length > 150 ? ' longer' : r.diagnosisText.length > 60 ? ' long' : ''}">${lines}</div>
+      <div class="result-text${r.diagnosisText.length > 260 ? ' longest' : r.diagnosisText.length > 150 ? ' longer' : r.diagnosisText.length > 60 ? ' long' : ''}">${lines}</div>
       <p class="result-tag">診断タグ：<b>${esc(r.diagnosisTag)}</b></p>
     </div>
     <button id="bNextStage" class="btn primary">${last ? '最終診断へ' : (r.stageId === 1 ? '次の人生へ' : '次へ')}</button>

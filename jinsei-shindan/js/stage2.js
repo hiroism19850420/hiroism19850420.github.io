@@ -7,20 +7,32 @@ window.Stage2 = (function () {
   const GATE = 7800;              // ゴールの位置（進んだ距離 + 画面上の位置）
   const SPEED_MIN = 140, SPEED_ADD = 300;
 
+  // どの終わり方でも、撃ち方と前への出方は必ず言う
+  const extras = i => [
+    i.shots === 0
+      ? 'あなたは一度も撃ちませんでした。戦わずに済むなら、何を失ってもいい人生です。'
+      : i.kills === 0
+        ? `あなたは${i.shots}発撃って、1機も落としませんでした。努力の量と成果がまったく比例しない人生です。`
+        : `あなたは${i.shots}発撃って、${i.kills}機を撃ち落としました。命中率は${Math.round(i.kills / i.shots * 100)}%です。残りの弾は、どこかの誰かに当たっています。`,
+    i.back >= 50
+      ? `あなたは時間の${i.back}%を、画面の後ろ半分で過ごしました。「前に出ろ」と言われると、まず一歩下がる人生です。`
+      : `あなたは時間の${100 - i.back}%を、画面の前のほうで過ごしました。前に出たがるくせに、前で何をするかは考えていません。`
+  ];
+
   const RESULTS = {
     collision: i => ({
       cleared: false, resultType: 'collision', diagnosisTag: 'リスク軽視型',
-      diagnosisText: `あなたは出撃から${i.time}秒後、${i.what}に正面から突っ込みました。そのとき前進速度は最大の${i.spd}%でした。あなたは、危険を察知しても立ち止まれない人間です。`,
+      diagnosisText: [`あなたは出撃から${i.time}秒後、${i.what}に正面から突っ込みました。そのとき前進速度は最大の${i.spd}%でした。あなたは、危険を察知しても立ち止まれない人間です。「自分だけは大丈夫」と思って生きてきましたね。その根拠を、あなたは一度も示したことがありません。`].concat(extras(i)).join('\n'),
       playResult: `${i.what}に接触（進行度 ${i.pct}%）`
     }),
     clear: i => ({
       cleared: true, resultType: 'avoided_all', diagnosisTag: '慎重型',
-      diagnosisText: `あなたは${i.time}秒間、一度も被弾せずにゴールしました。撃ち落とした敵は${i.kills}機です。あなたは危険を回避する能力に優れています。ただし、挑戦した記録はありません。`,
+      diagnosisText: [`あなたは${i.time}秒間、一度も被弾せずにゴールしました。あなたは危険を回避する能力に優れています。ただし、挑戦した記録はありません。避けるのが上手いのは、ぶつかるほど何かに本気になったことがないからです。`].concat(extras(i)).join('\n'),
       playResult: `無傷でゴール（タイム ${i.time}秒／撃墜 ${i.kills}機）`
     }),
     timeout: i => ({
       cleared: false, resultType: 'timeout', diagnosisTag: '機会損失型',
-      diagnosisText: `あなたは制限時間の${i.back}%を画面の後ろ半分で過ごし、ゴールまで${i.pct}%しか進めませんでした。あなたは慎重に検討した結果、機会を逃す傾向があります。`,
+      diagnosisText: [`あなたは${LIMIT}秒かけて、ゴールまで${i.pct}%しか進めませんでした。あなたは慎重に検討した結果、機会を逃す傾向があります。「いつかやる」の「いつか」は、たぶん来ません。`].concat(extras(i)).join('\n'),
       playResult: `時間切れ（進行度 ${i.pct}%）`
     })
   };
@@ -59,7 +71,8 @@ window.Stage2 = (function () {
     }
 
     const p = { x: 160, y: (TOP + BOT) / 2, vy: 0, bank: 0 };
-    let dist = 0, time = 0, backTime = 0, state = 'play', st = 0, kills = 0, cool = 0, info = null;
+    let dist = 0, time = 0, backTime = 0, state = 'play', st = 0, kills = 0, shotsFired = 0, cool = 0, info = null;
+    const stats = () => ({ kills, shots: shotsFired, back: Math.round(backTime / Math.max(0.1, time) * 100) });
     const shots = [], pops = [];
     const stars = [];
     for (let i = 0; i < 90; i++) stars.push({ x: R() * W, y: TOP + R() * (BOT - TOP), z: 0.2 + R() * 0.8 });
@@ -89,7 +102,7 @@ window.Stage2 = (function () {
     function crash(o) {
       state = 'crash'; st = 0;
       const what = o.k === 'enemy' ? '敵機' : o.k === 'rock' ? '浮かぶ岩' : '岩の壁';
-      info = { what, time: time.toFixed(1), spd: Math.round(speedRate() * 100), pct: Math.round(progress() * 100) };
+      info = Object.assign({ what, time: time.toFixed(1), spd: Math.round(speedRate() * 100), pct: Math.round(progress() * 100) }, stats());
       pops.push({ x: p.x, y: p.y, t: 0, big: true });
       Sfx.play('hit');
     }
@@ -109,6 +122,7 @@ window.Stage2 = (function () {
         cool -= dt;
         if (Input.isDown('Space', 'KeyZ') && cool <= 0) {
           shots.push({ x: p.x + 50, y: p.y - 10 });
+          shotsFired++;
           cool = 0.2;
           Sfx.play('shoot');
         }
@@ -148,7 +162,7 @@ window.Stage2 = (function () {
         if (state === 'play' && GATE - dist <= p.x) { state = 'goal'; st = 0; Sfx.play('clear'); }
         if (state === 'play' && time >= LIMIT) {
           state = 'timeout'; st = 0; time = LIMIT;
-          info = { pct: Math.round(progress() * 100), back: Math.round(backTime / LIMIT * 100) };
+          info = Object.assign({ pct: Math.round(progress() * 100) }, stats());
           Sfx.play('fail');
         }
       } else if (state === 'crash') {
@@ -159,7 +173,7 @@ window.Stage2 = (function () {
       } else if (state === 'goal') {
         p.x += 520 * dt;
         dist += 140 * dt;
-        if (st > 1.8) api.end(RESULTS.clear({ time: time.toFixed(1), kills }));
+        if (st > 1.8) api.end(RESULTS.clear(Object.assign({ time: time.toFixed(1) }, stats())));
       } else if (state === 'timeout') {
         if (st > 1.8) api.end(RESULTS.timeout(info));
       }
@@ -374,6 +388,6 @@ window.Stage2 = (function () {
 
   return {
     create,
-    debugResult(ok) { return ok ? RESULTS.clear({ time: '31.2', kills: 4 }) : RESULTS.timeout({ pct: 82, back: 74 }); }
+    debugResult(ok) { return ok ? RESULTS.clear({ time: '31.2', kills: 4, shots: 60, back: 20 }) : RESULTS.timeout({ pct: 82, back: 74, kills: 0, shots: 12 }); }
   };
 })();

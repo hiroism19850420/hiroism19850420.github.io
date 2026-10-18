@@ -10,10 +10,10 @@ const Results = (function () {
   };
 
   const OVERALL = {
-    3: { grade: '惜しい人生', text: 'あなたは、あと一歩のところで何かを取りこぼしてきたようです。' },
-    2: { grade: '要反省', text: 'あなたは複数の局面で課題を抱えていたようです。' },
-    1: { grade: '要再検査', text: 'あなたはほとんどの局面で、想定どおりにいかなかったようです。' },
-    0: { grade: '判定保留', text: 'あなたの人生は、本診断の想定を超えています。' }
+    3: { grade: '惜しい人生', text: 'あなたは、あと一歩のところで、いつも何かを取りこぼしてきた人生です。その一歩を、あなたはこれからも踏み出しません。' },
+    2: { grade: '要反省', text: 'あなたは複数の局面で課題を抱えていたようです。たぶん、ゲームの外でも同じです。' },
+    1: { grade: '要再検査', text: 'あなたはほとんどの局面で、想定どおりにいきませんでした。人生も、だいたいそうだったのではありませんか。' },
+    0: { grade: '判定不能', text: '全滅です。本診断の想定を下回りました。診断する材料がありません。' }
   };
 
   function pad2(n) { return String(n).padStart(2, '0'); }
@@ -62,16 +62,20 @@ const Results = (function () {
     add(`主な傾向　${gameState.stageResults.map(r => r.diagnosisTag.split('・')[0]).join('／')}`, 'small');
     add(`総合評価：${ov.grade}`, 'total');
     add(ov.text, 'text');
-    add('しかし、これらの結果は短時間のゲームプレイから生成されたものです。今後の人生に活かすかどうかは、あなた次第です。', 'text');
+    add('これらの結果は、短時間のゲームプレイから生成されたものです。にもかかわらず、思い当たる節があったはずです。', 'text');
+    const mins = Math.max(1, Math.round((Date.now() - (gameState.startedAt || Date.now())) / 60000));
+    add(`あなたがこの診断に使った時間は、約${mins}分です。その時間があれば、本を${Math.max(5, mins * 2)}ページは読めました。`, 'text');
+    add('正直に申し上げます。こんなゲームをやっているくらいなら、現実の世界で本でも読んだらどうですか？', 'total');
     rule();
     add('※本診断は娯楽を目的としたものであり、実際の人格評価ではありません。', 'small');
-    add('またのご来店をお待ちしております。', 'center small');
+    add('またのご来店は、お待ちしておりません。', 'center small');
     add('|| ||| | |||| || | ||| |||| | || |||', 'center barcode');
     return L;
   }
 
   function showReceipt() {
     stopStage();
+    Music.play('result');
     Loop.run(() => {}, c => clearCanvas(c, '#f2f2f2'));
     Screens.show(`
       <div class="receipt-area" id="rArea">
@@ -132,6 +136,7 @@ const Results = (function () {
 
   function showAllClear() {
     stopStage();
+    Music.stop(); // 一文だけは無音で
     Loop.run(() => {}, c => clearCanvas(c));
     Screens.show(`
       <p class="allclear fade-line" style="animation-delay:0.4s">あなたはゲームが上手！よかったね！</p>

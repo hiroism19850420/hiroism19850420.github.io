@@ -33,6 +33,7 @@ const State = {
     gameState.stageResults = [];
     gameState.allStagesCleared = false;
     gameState.finalJudgement = null;
+    gameState.startedAt = Date.now(); // レシートで「使った時間」を言うため
   },
 
   setProfile(p) {
