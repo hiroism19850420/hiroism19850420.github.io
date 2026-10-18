@@ -91,7 +91,7 @@ window.Stage3 = (function () {
 
     const speedNow = () => START_SPEED + (END_SPEED - START_SPEED) * Math.min(1, time / LIMIT);
 
-    function topout() { state = 'topout'; st = 0; Sfx.play('fail'); }
+    function topout() { state = 'topout'; st = 0; Fx.taunt('積みすぎました〜〜'); }
 
     function spawn() {
       const id = next == null ? takePiece(-1) : next;
@@ -148,15 +148,20 @@ window.Stage3 = (function () {
       if (state === 'play') {
         time += dt;
         Music.tempo = 1 + (speedNow() - START_SPEED) / 6; // 落ちる速さに合わせて曲も速くなる
-        if (time >= LIMIT) { time = LIMIT; state = 'timeout'; st = 0; Sfx.play('fail'); return; }
+        if (time >= LIMIT) { time = LIMIT; state = 'timeout'; st = 0; Fx.taunt('おそすぎ〜〜　時間切れで〜〜す'); return; }
         if (cur && hasWell()) waitTime += dt;
         if (clearing) {
           clearT += dt;
           if (clearT > 0.35) {
             for (const y of clearing) { grid.splice(y, 1); grid.unshift(Array(COLS).fill(null)); }
             lines += clearing.length;
+            // 消えた列が 大げさに爆発する
+            const n = clearing.length;
+            clearing.forEach(y => { for (let x = 0; x < COLS; x += 3) Fx.explode(FX + x * CELL + CELL, FY + y * CELL + CELL / 2, 0.7, ''); });
+            Fx.texts.push({ kind: 'pop', text: ['ナイス！', 'すごい！！', 'すばらしい！！！', '天才！！！！'][Math.min(3, n - 1)], x: FX + COLS * CELL / 2, y: FY + clearing[0] * CELL, t: 0, dur: 1.1 });
+            Fx.shake(6 + n * 4, 0.4);
             clearing = null;
-            if (lines >= TARGET) { state = 'clear'; st = 0; Sfx.play('clear'); return; }
+            if (lines >= TARGET) { state = 'clear'; st = 0; Fx.fireworks(4.5); Fx.big('クリア！！！'); return; }
             spawn();
           }
           return;
@@ -190,11 +195,11 @@ window.Stage3 = (function () {
           if (lockT >= LOCK) lock();
         } else lockT = 0;
       } else if (state === 'clear') {
-        if (st > 1.6) api.end(RESULTS.clear({ time: time.toFixed(1), pieces, bars }));
+        if (st > 4.2) api.end(RESULTS.clear({ time: time.toFixed(1), pieces, bars }));
       } else if (state === 'timeout') {
-        if (st > 1.8) api.end(RESULTS.timeout({ lines, wait: waitTime.toFixed(1), pieces, bars }));
+        if (st > 3.4) api.end(RESULTS.timeout({ lines, wait: waitTime.toFixed(1), pieces, bars }));
       } else if (state === 'topout') {
-        if (st > 1.8) api.end(RESULTS.topout({ lines, pieces, bars, time: time.toFixed(1) }));
+        if (st > 3.4) api.end(RESULTS.topout({ lines, pieces, bars, time: time.toFixed(1) }));
       }
     }
 
@@ -308,16 +313,6 @@ window.Stage3 = (function () {
       c.textAlign = 'left';
       if (!Pad.touch) c.fillText(STAGE_INFO[3].name, 20, H - 30);
 
-      if (state !== 'play' && st > 0.3) {
-        const msg = state === 'clear' ? 'クリア' : state === 'timeout' ? 'タイムアップ' : 'ゲームオーバー';
-        c.fillStyle = 'rgba(0,0,0,0.85)';
-        c.fillRect(FX - 6, FY + ROWS * CELL / 2 - 34, COLS * CELL + 12, 68);
-        c.fillStyle = '#fff';
-        c.textAlign = 'center';
-        c.textBaseline = 'middle';
-        c.font = `bold 28px ${FONT}`;
-        c.fillText(msg, FX + COLS * CELL / 2, FY + ROWS * CELL / 2);
-      }
     }
 
     return { update, draw, _debug: { grid, get lines() { return lines; }, get cur() { return cur; }, cellsOf } };

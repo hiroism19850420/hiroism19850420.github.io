@@ -103,12 +103,15 @@ window.Stage1 = (function () {
         s.used = true;
         coins++;
         coinFx.push({ x: s.x + T / 2, y: s.y, t: 0 });
+        Fx.burst(s.x + T / 2 - cam, s.y - 10, 26, ['#ffd23a', '#fff3a0', '#ffffff'], 260, 0.7, 4, 400);
+        Fx.texts.push({ kind: 'pop', text: 'チャリーン！', x: s.x + T / 2 - cam, y: s.y - 50, t: 0, dur: 0.9 });
         Sfx.play('coin');
       } else Sfx.play('bump');
       // ブロックの上にいる敵は ひっくり返る
       for (const e of enemies) {
         if (e.alive && !e.gone && e.x + e.w > s.x && e.x < s.x + s.w && Math.abs(e.y + e.h - s.y) < 4) {
           e.alive = false; e.flat = 0; stomps++;
+          Fx.explode(e.x + e.w / 2 - cam, e.y + e.h / 2, 1.2);
         }
       }
     }
@@ -118,6 +121,7 @@ window.Stage1 = (function () {
       state = kind;
       st = 0;
       failInfo = { m: meters(), jumps, stomps, coins };
+      Fx.taunt(kind === 'enemy' ? '上から踏めばよかったのに〜〜' : '穴があったら、本当に入っちゃいましたね〜〜');
       Sfx.play(kind === 'enemy' ? 'hit' : 'fail');
       if (kind === 'enemy') { p.vy = -560; p.vx = 0; }
     }
@@ -159,9 +163,9 @@ window.Stage1 = (function () {
           if (e.y > H + 100) { e.gone = true; continue; }
           if (overlap(p, e)) {
             if (p.vy > 0 && prevBottom <= e.y + 14) {
-              e.alive = false; e.flat = 0; stomps++;
+              e.alive = false; e.flat = 0; e.gone = true; stomps++;
               p.vy = Input.isDown('Space', 'ArrowUp', 'KeyZ') ? -620 : -430;
-              puffs.push({ x: e.x + e.w / 2, y: e.y + e.h, t: 0 });
+              Fx.explode(e.x + e.w / 2 - cam, e.y + e.h / 2, 1.3, ['ドカーン！', 'ボカーン！', 'ズドーン！'][stomps % 3]);
               Sfx.play('stomp');
             } else fail('enemy');
           }
@@ -170,6 +174,8 @@ window.Stage1 = (function () {
         if (p.y > H + 20) fail('pit');
         if (state === 'play' && p.x + p.w >= POLE_X - 4) {
           state = 'pole'; st = 0;
+          Fx.fireworks(5);
+          Fx.big('ゴール！！！');
           p.x = POLE_X - p.w + 2; p.vx = 0; p.vy = 0;
           flagY = 0;
           Sfx.play('clear');
@@ -177,9 +183,9 @@ window.Stage1 = (function () {
       } else if (state === 'enemy') {
         p.vy += GRAV * 0.8 * dt;
         p.y += p.vy * dt;
-        if (st > 1.6) api.end(RESULTS.enemy(failInfo));
+        if (st > 3.4) api.end(RESULTS.enemy(failInfo));
       } else if (state === 'pit') {
-        if (st > 1.2) api.end(RESULTS.pit(failInfo));
+        if (st > 3.4) api.end(RESULTS.pit(failInfo));
       } else if (state === 'pole') {
         // 旗竿をすべり降りる
         const bottom = GY - T - p.h;
@@ -192,7 +198,7 @@ window.Stage1 = (function () {
         moveBody(p, dt);
         p.phase += p.vx * dt * 0.045;
         if (p.x > CASTLE_X + 2.5 * T - p.w / 2) inCastle = true;
-        if (st > 2.8) api.end(RESULTS.goal({ time: time.toFixed(1), stomps, coins }));
+        if (st > 3.4) api.end(RESULTS.goal({ time: time.toFixed(1), stomps, coins }));
       }
 
       const want = p.x - W * 0.38;

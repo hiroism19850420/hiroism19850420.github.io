@@ -103,8 +103,8 @@ window.Stage2 = (function () {
       state = 'crash'; st = 0;
       const what = o.k === 'enemy' ? '敵機' : o.k === 'rock' ? '浮かぶ岩' : '岩の壁';
       info = Object.assign({ what, time: time.toFixed(1), spd: Math.round(speedRate() * 100), pct: Math.round(progress() * 100) }, stats());
-      pops.push({ x: p.x, y: p.y, t: 0, big: true });
-      Sfx.play('hit');
+      Fx.explode(p.x, p.y, 2.2, '');
+      Fx.taunt('ぶつかっちゃいましたね〜〜');
     }
 
     function update(dt) {
@@ -145,8 +145,7 @@ window.Stage2 = (function () {
             s.dead = true;
             if (o.k === 'enemy') {
               o.alive = false; kills++;
-              pops.push({ x: sx, y: o.y, t: 0 });
-              Sfx.play('pop');
+              Fx.explode(sx, o.y, 0.9, kills % 2 ? 'ドカーン！' : 'バコーン！');
             }
             break;
           }
@@ -159,9 +158,10 @@ window.Stage2 = (function () {
           if (sx < -120 || sx > W + 40) continue;
           if (hits(o, pb)) { crash(o); break; }
         }
-        if (state === 'play' && GATE - dist <= p.x) { state = 'goal'; st = 0; Sfx.play('clear'); }
+        if (state === 'play' && GATE - dist <= p.x) { state = 'goal'; st = 0; Fx.fireworks(4.5); Fx.big('ステージクリア！！'); }
         if (state === 'play' && time >= LIMIT) {
           state = 'timeout'; st = 0; time = LIMIT;
+          Fx.taunt('おそすぎ〜〜　時間切れで〜〜す');
           info = Object.assign({ pct: Math.round(progress() * 100) }, stats());
           Sfx.play('fail');
         }
@@ -169,13 +169,13 @@ window.Stage2 = (function () {
         p.vy += 900 * dt;
         p.y += p.vy * dt;
         p.x -= 60 * dt;
-        if (st > 1.6) api.end(RESULTS.collision(info));
+        if (st > 3.4) api.end(RESULTS.collision(info));
       } else if (state === 'goal') {
         p.x += 520 * dt;
         dist += 140 * dt;
-        if (st > 1.8) api.end(RESULTS.clear(Object.assign({ time: time.toFixed(1) }, stats())));
+        if (st > 4.2) api.end(RESULTS.clear(Object.assign({ time: time.toFixed(1) }, stats())));
       } else if (state === 'timeout') {
-        if (st > 1.8) api.end(RESULTS.timeout(info));
+        if (st > 3.4) api.end(RESULTS.timeout(info));
       }
       for (const q of pops) q.t += dt;
       while (pops.length && pops[0].t > 0.7) pops.shift();
@@ -373,13 +373,6 @@ window.Stage2 = (function () {
         c.fillStyle = '#fff';
         c.fillText('↑↓←→ 移動　Space ショット　　右に寄るほど速く進みます', W / 2, BOT - 24);
         c.globalAlpha = 1;
-      }
-      if (state !== 'play' && st > 0.3) {
-        const msg = state === 'goal' ? 'ステージクリア' : state === 'timeout' ? 'タイムアップ' : 'ゲームオーバー';
-        c.textAlign = 'center';
-        c.font = `bold 40px ${FONT}`;
-        c.fillStyle = '#fff';
-        c.fillText(msg, W / 2, H / 2 - 20);
       }
     }
 

@@ -147,8 +147,56 @@ const Sfx = {
     o.connect(g); g.connect(this.master);
     o.start(t0); o.stop(t0 + dur + 0.02);
   },
+  noise(dur, vol, freq, delay = 0) {
+    if (!this.ac || this.muted) return;
+    const t0 = this.ac.currentTime + delay;
+    if (!this.nbuf) {
+      this.nbuf = this.ac.createBuffer(1, this.ac.sampleRate, this.ac.sampleRate);
+      const d = this.nbuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const src = this.ac.createBufferSource(), f = this.ac.createBiquadFilter(), g = this.ac.createGain();
+    src.buffer = this.nbuf;
+    f.type = 'lowpass';
+    f.frequency.setValueAtTime(freq, t0);
+    f.frequency.exponentialRampToValueAtTime(Math.max(60, freq / 8), t0 + dur);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(f); f.connect(g); g.connect(this.master);
+    src.start(t0); src.stop(t0 + dur + 0.05);
+  },
+  // 「ぱふぱふぱふ ぱふぁ〜〜〜」と下がっていく、間の抜けたトロンボーン
+  trombone() {
+    if (!this.ac || this.muted) return;
+    const notes = [[392, 0.32], [370, 0.32], [349, 0.32], [330, 1.3]];
+    let t = this.ac.currentTime + 0.05;
+    notes.forEach(([f, d], i) => {
+      const o = this.ac.createOscillator(), g = this.ac.createGain(), lp = this.ac.createBiquadFilter();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f, t);
+      if (i === 3) {
+        const lfo = this.ac.createOscillator(), lg = this.ac.createGain();
+        lfo.frequency.value = 6; lg.gain.value = 9;
+        lfo.connect(lg); lg.connect(o.frequency);
+        lfo.start(t); lfo.stop(t + d);
+        o.frequency.linearRampToValueAtTime(f * 0.94, t + d);
+      }
+      lp.type = 'lowpass'; lp.frequency.value = 1400;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.16, t + 0.05);
+      g.gain.setValueAtTime(0.16, t + d * 0.75);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.connect(lp); lp.connect(g); g.connect(this.master);
+      o.start(t); o.stop(t + d + 0.02);
+      t += d;
+    });
+  },
   play(name) {
     switch (name) {
+      case 'boom': this.noise(0.7, 0.6, 1800); this.tone(110, 0.5, 'sine', 0.35, 35); break;
+      case 'firework': this.tone(500 + Math.random() * 600, 0.25, 'sine', 0.03, 1800); this.noise(0.5, 0.18, 4000 + Math.random() * 3000, 0.22); break;
+      case 'taunt': this.trombone(); break;
+      case 'fanfare': [[523, 0], [659, 0.12], [784, 0.24], [1047, 0.36]].forEach(([f, d]) => this.tone(f, d === 0.36 ? 0.7 : 0.14, 'square', 0.08, 0, d)); [[392, 0.36], [523, 0.36]].forEach(([f, d]) => this.tone(f, 0.7, 'square', 0.05, 0, d)); break;
       case 'jump': this.tone(330, 0.14, 'square', 0.07, 660); break;
       case 'stomp': this.tone(180, 0.1, 'triangle', 0.2, 90); this.tone(500, 0.06, 'square', 0.05, 0, 0.04); break;
       case 'fail': this.tone(392, 0.18, 'square', 0.08); this.tone(311, 0.18, 'square', 0.08, 0, 0.18); this.tone(247, 0.4, 'square', 0.08, 180, 0.36); break;
@@ -316,6 +364,172 @@ app.appendChild(muteBtn);
 window.addEventListener('keydown', e => {
   if (e.code === 'KeyM' && !e.repeat && !(e.target && e.target.tagName === 'INPUT')) Music.setMuted(!Music.muted);
 });
+
+/* ---------- 大げさなエフェクト（爆発・花火・煽り） ---------- */
+// 座標はすべて画面の座標（960×540）
+const FIRE = ['#fff3a0', '#ffd23a', '#ff9a2a', '#ff4a2a', '#d02020'];
+const FW_COLORS = ['#ff4a6a', '#ffd23a', '#4ae0ff', '#7aff6a', '#d07aff', '#ffffff', '#ff9a2a'];
+const Fx = {
+  parts: [], rings: [], texts: [], shakeT: 0, shakeMag: 0, flashA: 0, flashColor: '#fff', fwT: 0, fwNext: 0,
+  clear() { this.parts = []; this.rings = []; this.texts = []; this.shakeT = 0; this.flashA = 0; this.fwT = 0; },
+  shake(mag, dur) { this.shakeMag = Math.max(this.shakeMag, mag); this.shakeT = Math.max(this.shakeT, dur); },
+  flash(a, color = '#fff') { this.flashA = Math.max(this.flashA, a); this.flashColor = color; },
+  burst(x, y, n, colors, speed, life, size, grav = 300) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, v = speed * (0.3 + Math.random() * 0.7);
+      this.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: life * (0.6 + Math.random() * 0.4), max: life, color: colors[i % colors.length], size: size * (0.6 + Math.random() * 0.8), grav });
+    }
+  },
+  // 敵を倒したときの爆発
+  explode(x, y, k = 1, word = 'ドカーン！') {
+    this.burst(x, y, Math.round(40 * k), FIRE, 420 * k, 0.8, 7 * k, 200);
+    this.burst(x, y, Math.round(14 * k), ['#555', '#777', '#999'], 160 * k, 1.2, 14 * k, -40);
+    this.rings.push({ x, y, r: 10, max: 120 * k, life: 0.45, t: 0, color: '#fff3a0' });
+    this.rings.push({ x, y, r: 6, max: 80 * k, life: 0.35, t: 0, color: '#ff4a2a' });
+    this.shake(10 * k, 0.35);
+    this.flash(0.35 * Math.min(1, k));
+    if (word) this.texts.push({ kind: 'pop', text: word, x, y: y - 30, t: 0, dur: 0.9 });
+    Sfx.play('boom');
+  },
+  // 花火（dur 秒のあいだ打ち上げ続ける）
+  fireworks(dur) { this.fwT = Math.max(this.fwT, dur); this.fwNext = 0; },
+  firework(x, y) {
+    const c1 = FW_COLORS[Math.floor(Math.random() * FW_COLORS.length)], c2 = FW_COLORS[Math.floor(Math.random() * FW_COLORS.length)];
+    this.burst(x, y, 70, [c1, c1, c2, '#fff'], 380, 1.4, 4, 120);
+    this.rings.push({ x, y, r: 8, max: 150, life: 0.5, t: 0, color: c1 });
+    this.flash(0.12, c1);
+    Sfx.play('firework');
+  },
+  // 失敗したときの煽り
+  taunt(sub) {
+    Music.stop();
+    this.texts.push({ kind: 'taunt', text: '残念でしたあああああ', sub, t: 0, dur: 99 });
+    this.shake(6, 0.5);
+    Sfx.play('taunt');
+  },
+  // 成功したときの大きな文字
+  big(text, color = '#ffd23a', dur = 99) {
+    this.texts.push({ kind: 'big', text, color, t: 0, dur });
+    Sfx.play('fanfare');
+  },
+  update(dt) {
+    this.shakeT = Math.max(0, this.shakeT - dt);
+    if (!this.shakeT) this.shakeMag = 0;
+    this.flashA = Math.max(0, this.flashA - dt * 2.5);
+    if (this.fwT > 0) {
+      this.fwT -= dt;
+      this.fwNext -= dt;
+      while (this.fwNext <= 0) {
+        this.firework(80 + Math.random() * (W - 160), 60 + Math.random() * 260);
+        this.fwNext += 0.08 + Math.random() * 0.18;
+      }
+    }
+    for (const p of this.parts) {
+      p.life -= dt;
+      p.vy += p.grav * dt;
+      p.vx *= 1 - dt * 1.2;
+      p.vy *= 1 - dt * 0.6;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+    this.parts = this.parts.filter(p => p.life > 0);
+    if (this.parts.length > 1500) this.parts.splice(0, this.parts.length - 1500);
+    for (const r of this.rings) r.t += dt;
+    this.rings = this.rings.filter(r => r.t < r.life);
+    for (const t of this.texts) t.t += dt;
+    this.texts = this.texts.filter(t => t.t < t.dur);
+  },
+  offset() {
+    if (!this.shakeT) return [0, 0];
+    const m = this.shakeMag * Math.min(1, this.shakeT * 4);
+    return [(Math.random() - 0.5) * 2 * m, (Math.random() - 0.5) * 2 * m];
+  },
+  outlined(c, text, x, y, fill, lw) {
+    c.lineJoin = 'round';
+    c.strokeStyle = '#000';
+    c.lineWidth = lw;
+    c.strokeText(text, x, y);
+    c.fillStyle = fill;
+    c.fillText(text, x, y);
+  },
+  draw(c) {
+    c.save();
+    // 明るい背景でも色が飛ばないよう、ふつうの重ね方にする
+    for (const p of this.parts) {
+      c.globalAlpha = Math.max(0, Math.min(1, p.life / p.max * 1.5));
+      c.fillStyle = p.color;
+      c.beginPath(); c.arc(p.x, p.y, p.size * (0.4 + p.life / p.max * 0.6), 0, Math.PI * 2); c.fill();
+    }
+    c.globalCompositeOperation = 'source-over';
+    for (const r of this.rings) {
+      const k = r.t / r.life;
+      c.globalAlpha = 1 - k;
+      c.strokeStyle = r.color;
+      c.lineWidth = 8 * (1 - k) + 1;
+      c.beginPath(); c.arc(r.x, r.y, r.r + (r.max - r.r) * k, 0, Math.PI * 2); c.stroke();
+    }
+    c.globalAlpha = 1;
+    c.restore();
+    if (this.flashA > 0) {
+      c.fillStyle = this.flashColor;
+      c.globalAlpha = this.flashA;
+      c.fillRect(0, 0, W, H);
+      c.globalAlpha = 1;
+    }
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    for (const t of this.texts) {
+      if (t.kind === 'pop') {
+        const k = Math.min(1, t.t / 0.15), s = 0.5 + k * 0.7 - Math.max(0, t.t - 0.6) * 1.5;
+        c.save();
+        c.translate(t.x, t.y - t.t * 40);
+        c.rotate(-0.15);
+        c.scale(s, s);
+        c.font = `900 34px ${FONT}`;
+        c.globalAlpha = Math.max(0, 1 - Math.max(0, t.t - 0.6) / 0.3);
+        this.outlined(c, t.text, 0, 0, '#ffd23a', 7);
+        c.restore();
+      } else if (t.kind === 'taunt') {
+        c.fillStyle = `rgba(0,0,0,${Math.min(0.45, t.t)})`;
+        c.fillRect(0, 0, W, H);
+        const chars = [...t.text];
+        c.font = `900 62px ${FONT}`;
+        const total = c.measureText(t.text).width;
+        let x = W / 2 - total / 2;
+        chars.forEach((ch, i) => {
+          const w = c.measureText(ch).width;
+          const appear = Math.min(1, Math.max(0, (t.t - i * 0.06) / 0.12));
+          if (appear <= 0) { x += w; return; }
+          const bob = Math.sin(t.t * 9 + i * 0.7) * 10;
+          c.save();
+          c.translate(x + w / 2, H / 2 - 30 + bob);
+          c.rotate(Math.sin(t.t * 7 + i) * 0.12);
+          c.scale(appear * (1 + Math.sin(t.t * 12 + i) * 0.06), appear);
+          this.outlined(c, ch, 0, 0, i % 2 ? '#ff5a5a' : '#ff2a6a', 9);
+          c.restore();
+          x += w;
+        });
+        if (t.sub && t.t > 0.9) {
+          c.font = `800 28px ${FONT}`;
+          c.globalAlpha = Math.min(1, (t.t - 0.9) * 3);
+          this.outlined(c, t.sub, W / 2 + Math.sin(t.t * 5) * 8, H / 2 + 50, '#fff', 6);
+          c.globalAlpha = 1;
+        }
+      } else if (t.kind === 'big') {
+        const k = Math.min(1, t.t / 0.35);
+        const s = (3 - 2 * (1 - Math.pow(1 - k, 3))) * (1 + Math.sin(t.t * 6) * 0.04);
+        c.save();
+        c.translate(W / 2, H / 2 - 40);
+        c.rotate((1 - k) * -0.6 + Math.sin(t.t * 3) * 0.03);
+        c.scale(s, s);
+        c.font = `900 66px ${FONT}`;
+        c.globalAlpha = k;
+        this.outlined(c, t.text, 0, 0, t.color, 10);
+        c.restore();
+      }
+    }
+  }
+};
 
 /* ---------- 共通描画：黒い棒人間 ---------- */
 // (x, y) は足元。h は身長。pose: stand / walk / jump / cheer / down
@@ -749,11 +963,20 @@ function startStage(n) {
   api.mod = mod;
   currentStageApi = api;
   Music.play(n === 4 ? 'field' : 'stage' + n);
-  Loop.run(dt => inst.update(dt), c => inst.draw(c), { pausable: true });
+  Fx.clear();
+  Loop.run(dt => { inst.update(dt); Fx.update(dt); }, c => {
+    const [sx, sy] = Fx.offset();
+    c.save();
+    c.translate(sx, sy);
+    inst.draw(c);
+    c.restore();
+    Fx.draw(c);
+  }, { pausable: true });
 }
 
 function stopStage() {
   Loop.stop();
+  Fx.clear();
   Input.capture = false;
   Input.clear();
   if (currentStageApi && currentStageApi.inst && currentStageApi.inst.destroy) currentStageApi.inst.destroy();

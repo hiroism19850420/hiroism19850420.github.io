@@ -32,33 +32,27 @@ window.Stage4 = (function () {
     e1: {
       help: { tag: '協調型', reason: 'あなたは、橋の前で困っている村人を助けると約束しました。', text: 'あなたは他人への配慮を重視する傾向があります。ただし、断れないだけかもしれません。「いい人」と呼ばれる人の多くは、ただ都合のいい人です。' },
       ignore: { tag: '不干渉型', reason: 'あなたは、助けを求める村人の前を、聞こえないふりをして通り過ぎようとしました。', text: 'あなたは他人の問題を自分の問題として扱わない傾向があります。あなたが困ったときも、たぶん誰も来ません。' },
-      reward: { tag: '対価要求型', reason: 'あなたは、困っている村人にまず報酬の額を聞きました。', text: 'あなたは善意にも費用対効果を求める人間です。しなびた薬草1つで動く程度の正義感です。' }
-    },
-    e2: {
-      cheer: { tag: '寛容型', reason: 'あなたは、攻撃を外して転んだ仲間を励ましました。', text: 'あなたは他人の失敗を許容できる人間です。そのぶん、自分の失敗にもだいぶ甘いはずです。' },
-      blame: { tag: '原因究明型', reason: 'あなたは、転んだ仲間に理由を3つ挙げさせ、その場で2時間を使いました。', text: 'あなたは失敗の原因を明確にすることを重視します。その2時間で、魔物は遠くへ逃げました。あなたの会議も、だいたいそうです。' },
-      self: { tag: '抱え込み型', reason: 'あなたは、仲間が逃がした魔物を一人で追いかけて倒しました。', text: 'あなたは他人に任せるより、自分でやった方が早いと考える傾向があります。そうやって仕事を抱え込み、「誰も手伝ってくれない」と言う人生です。' }
+      reward: { tag: '対価要求型', reason: 'あなたは、困っている村人にまず報酬の額を聞き、なけなしの5ゴールドを受け取りました。', text: 'あなたは善意にも費用対効果を求める人間です。5ゴールドで動く程度の正義感です。' }
     },
     e3: {
-      share: { tag: '分かち合い型', reason: 'あなたは、魔王を倒した喜びを仲間と分かち合いました。', text: 'あなたは成果を分かち合える人間です。ただし、早く帰りたかった仲間もいました。あなたは空気を読めているつもりですが、読めていません。' },
+      share: { tag: '分かち合い型', reason: 'あなたは、魔王を倒した喜びを仲間と分かち合いました。', text: 'あなたは成果を分かち合える人間です。ただし、それは勝ったときだけです。負けたとき、あなたは誰と何を分かち合いましたか。' },
       praise: { tag: '主人公型', reason: 'あなたは、魔王を倒したあと、自分だけが称賛されることを望みました。', text: 'あなたは自分を勇者、周囲を脇役だと思ってきた人生です。拍手が少し遅れた理由を、あなたは一生考えません。' },
-      check: { tag: '明細重視型', reason: 'あなたは、魔王を倒したあと、まっさきに報酬の明細を確認しました。', text: 'あなたは感動よりも、明細を信じてきた人生です。経験値3では、レベルは上がりません。' }
+      check: { tag: '明細重視型', reason: 'あなたは、魔王を倒したあと、まっさきに報酬の明細を確認しました。', text: 'あなたは感動よりも、明細を信じてきた人生です。世界を救った直後に数えるのが、それですか。' }
     }
   };
   const LABELS = {
     e1: { help: '助ける', ignore: '無視する', reward: '報酬を要求する' },
-    e2: { cheer: '励ます', blame: '責任を追及する', self: '自分が代わりに解決する' },
     e3: { share: '仲間と喜びを分かち合う', praise: '自分だけが称賛されることを望む', check: '報酬を確認する' }
   };
 
   function buildResult(ch) {
-    const d = ['e1', 'e2', 'e3'].map(k => DIAG[k][ch[k]]);
+    const d = ['e1', 'e3'].map(k => DIAG[k][ch[k]]);
     return {
       cleared: true,
       resultType: 'events_completed',
       diagnosisTag: ['勇者型'].concat(d.map(x => x.tag)).join('・'),
       diagnosisText: [FORCED].concat(d.map(x => x.reason + x.text), [CLOSING]).join('\n'),
-      playResult: `村人に：${LABELS.e1[ch.e1]}／仲間の失敗に：${LABELS.e2[ch.e2]}／魔王討伐後：${LABELS.e3[ch.e3]}`
+      playResult: `村人に：${LABELS.e1[ch.e1]}／魔王討伐後：${LABELS.e3[ch.e3]}`
     };
   }
 
@@ -80,16 +74,17 @@ window.Stage4 = (function () {
     const say = text => ({ t: 'say', text });
     const set = (k, v) => ({ t: 'set', k, v });
     const scene = v => ({ t: 'view', v });
+    const fn = f => ({ t: 'fn', fn: f });
     const choice = (key, prompt, opts) => ({ t: 'choice', key, prompt, opts });
+    const hit = (k = 1) => fn(() => { Fx.shake(8 * k, 0.3); Fx.flash(0.5); Sfx.play('hit'); });
     const cmd = () => choice('cmd', 'コマンド？', [
-      { v: 'fight', label: 'たたかう', then: [() => say(`${N}の　こうげき！　${battle === 'boss' ? 'まおう' : 'まもの'}に　${battle === 'boss' ? 1 : 3}の　ダメージ！`)] },
-      { v: 'spell', label: 'じゅもん', then: [say(`${N}は　じゅもんを　となえた！　しかし　MPが　たりない！`)] },
-      { v: 'run', label: 'にげる', then: [say(`${N}は　にげだした！　しかし　まわりこまれて　しまった！`)] }
+      { v: 'fight', label: 'たたかう', then: [() => say(`${N}の　こうげき！`), hit(), () => say(`${battle === 'boss' ? 'まおう' : 'まもの'}に　${battle === 'boss' ? 46 : 14}の　ダメージを　あたえた！`)] },
+      { v: 'spell', label: 'じゅもん', then: [say(`${N}は　ほのおの　じゅもんを　となえた！`), fn(() => { Fx.burst(W / 2, 250, 60, FIRE, 300, 0.8, 8, -60); Fx.flash(0.4, '#ff9a2a'); Sfx.play('boom'); }), () => say(`${battle === 'boss' ? 'まおう' : 'まもの'}に　${battle === 'boss' ? 38 : 12}の　ダメージを　あたえた！`)] },
+      { v: 'run', label: 'にげる', then: [say(`${N}は　にげだした！`), say('しかし　まわりこまれて　しまった！')] }
     ]);
 
     let queue = [
-      say('おうさま「おお　' + N + 'よ。　ひがしの　まおうを　たおしてまいれ」'),
-      say(`${N}は　ゆうしゃに　なった。（ことわる　せんたくしは　なかった）`),
+      say('おうさま「おお　' + N + 'よ。　そなたこそ　でんせつの　ゆうしゃの　ちを　ひく　もの。　ひがしの　まおうを　たおしてまいれ」'),
       say('なかまの　せんしと　まほうつかいが　ついてきた。'),
       say('（やじるしキーで　あるけます。　まおうの　しろは　ひがし）')
     ];
@@ -100,46 +95,48 @@ window.Stage4 = (function () {
         choice('e1', `${N}は　どうする？`, [
           { v: 'help', label: '助ける', then: [say(`${N}は　まものを　たいじすると　やくそくした。`), say('むらびと「ありがとうございます！　このごおんは　いっしょう　わすれません！」')] },
           { v: 'ignore', label: '無視する', then: [say(`${N}は　きこえない　ふりをして　とおりすぎようとした。`)] },
-          { v: 'reward', label: '報酬を要求する', then: [say(`${N}「で、　いくら　でる？」`), say('むらびとは　しなびた　やくそうを　さしだした。'), say(`${N}は　しなびた　やくそうを　てにいれた。`)] }
+          { v: 'reward', label: '報酬を要求する', then: [say(`${N}「で、　いくら　でる？」`), say('むらびとは　なけなしの　５ゴールドを　さしだした。'), say(`${N}は　５ゴールドを　うけとった。`)] }
         ]),
         set('e1Done', true),
-        { t: 'fn', fn: () => { npc.y = 4; } },
+        fn(() => { npc.y = 4; }),
         say('むらびとは　みちを　あけた。')
       ],
       mob: () => [
-        scene('battle'), { t: 'fn', fn: () => { battle = 'mob'; flags.enemyGone = 0; } },
+        scene('battle'), fn(() => { battle = 'mob'; flags.enemyGone = 0; }),
         say('まものが　あらわれた！'),
         cmd(),
-        say('せんしの　こうげき！'),
-        set('warriorDown', true),
-        say('……ミス！　せんしは　ころんで　しまった。'),
-        set('enemyGone', 0.001),
-        say('まものは　にげだした。'),
-        say('せんし「す、すまない……」'),
-        choice('e2', `${N}は　どうする？`, [
-          { v: 'cheer', label: '励ます', then: [say(`${N}「だいじょうぶ。　つぎが　ある」`), say('せんしは　すこし　なみだぐんだ。')] },
-          { v: 'blame', label: '責任を追及する', then: [say(`${N}「なぜ　ころんだのか、　りゆうを　３つ　あげてくれ」`), say('せんしは　はんせいぶんを　かきはじめた。'), say('その場で　２じかんが　たった。')] },
-          { v: 'self', label: '自分が代わりに解決する', then: [say(`${N}は　ひとりで　まものを　おいかけ、　たおした。`), say('せんしは　なにも　いえなかった。')] }
-        ]),
-        set('warriorDown', false),
+        say('せんしの　こうげき！'), hit(),
+        say('まものに　11の　ダメージを　あたえた！'),
+        fn(() => { Fx.explode(W / 2, 260, 1.4); flags.enemyGone = 0.001; }),
+        say('まものを　たおした！'),
+        say('それぞれ　12ポイントの　けいけんちを　かくとく！'),
+        say('８ゴールドを　てにいれた！'),
         set('mobDone', true),
         scene('map')
       ],
       boss: () => [
-        scene('battle'), { t: 'fn', fn: () => { battle = 'boss'; flags.enemyGone = 0; } },
+        scene('battle'), fn(() => { battle = 'boss'; flags.enemyGone = 0; }),
         say('まおうが　あらわれた！'),
-        say('まおう「よくぞ　きた。　だが　ここで　おわりだ」'),
+        say('まおう「よくぞ　ここまで　きた。　だが　せかいは　わたしの　ものだ」'),
         cmd(),
-        say('まおう「……む。　もう　ていじか」'),
-        set('bossLeave', 0.001),
-        say('まおうは　かえりじたくを　はじめた。'),
-        say('まおうを　たおした！（ことに　なった）'),
+        say('まおうは　はげしい　ほのおを　はいた！'),
+        fn(() => { Fx.burst(W / 2, 200, 120, FIRE, 520, 1.0, 9, 80); Fx.shake(16, 0.6); Fx.flash(0.6, '#ff6a2a'); Sfx.play('boom'); }),
+        say('ゆうしゃたちは　28の　ダメージを　うけた！'),
+        say('せんしの　こうげき！'), hit(1.5),
+        say('かいしんの　いちげき！！　まおうに　82の　ダメージ！'),
+        say('まほうつかいは　いなずまの　じゅもんを　となえた！'),
+        fn(() => { Fx.flash(0.9, '#e8f4ff'); Fx.shake(14, 0.5); Sfx.play('boom'); }),
+        say('まおうに　64の　ダメージ！'),
+        say(`${N}の　こうげき！`),
+        fn(() => { Fx.explode(W / 2, 220, 3, ''); Fx.fireworks(4); Fx.big('まおうを　たおした！！', '#ffd23a', 3); flags.enemyGone = 0.001; }),
+        say('まおう「ぐ……　ばかな……　この　わたしが……」'),
+        say('まおうを　たおした！'),
         scene('after'),
         say('せかいに　へいわが　もどった。'),
         choice('e3', `${N}は　どうする？`, [
-          { v: 'share', label: '仲間と喜びを分かち合う', then: [say(`${N}たちは　かたを　くんで　よろこんだ。`), say('まほうつかい「（つかれたから　はやく　かえりたい……）」')] },
-          { v: 'praise', label: '自分だけが称賛されることを望む', then: [say(`${N}「みんな！　わたしを　みて！」`), say('なかまたちは　はくしゅを　した。　すこし　おくれて。')] },
-          { v: 'check', label: '報酬を確認する', then: [say(`${N}は　ほうしゅうの　めいさいを　ねんいりに　かくにんした。`), () => say(`めいさい：けいけんち　３　／　ゴールド　１２${ch.e1 === 'reward' ? '　／　しなびた　やくそう　１' : ''}${flags.chest ? '　／　やくそう　１' : ''}`)] }
+          { v: 'share', label: '仲間と喜びを分かち合う', then: [say(`${N}たちは　かたを　くんで　よろこびあった。`)] },
+          { v: 'praise', label: '自分だけが称賛されることを望む', then: [say(`${N}「みんな！　わたしを　たたえよ！」`), say('なかまたちは　はくしゅを　した。　すこし　おくれて。')] },
+          { v: 'check', label: '報酬を確認する', then: [say(`${N}は　ほうしゅうの　めいさいを　ねんいりに　かくにんした。`), () => say(`めいさい：けいけんち　３０２　／　ゴールド　１２０${ch.e1 === 'reward' ? '　／　むらびとの　５ゴールド' : ''}${flags.chest ? '　／　やくそう　１' : ''}`)] }
         ]),
         say('──　こうして　でんせつは　はじまった。'),
         { t: 'end' }
@@ -381,7 +378,7 @@ window.Stage4 = (function () {
         if (g > 0) {
           c.save();
           c.globalAlpha = g;
-          c.translate(cx + flags.enemyGone * 300, 0);
+          c.translate(cx, 0);
           const sq = 1 + Math.sin(time * 5) * 0.04;
           c.fillStyle = '#3a8ae8';
           c.strokeStyle = '#fff';
@@ -402,21 +399,14 @@ window.Stage4 = (function () {
           c.restore();
         }
       } else {
-        const leave = Math.max(0, flags.bossLeave - 1);
+        const leave = flags.enemyGone;
         c.save();
         c.globalAlpha = 1 - leave;
-        c.translate(leave * 200, 0);
+        c.translate(W / 2, by); c.scale(1 + leave * 0.4, 1 - leave * 0.6); c.translate(-W / 2, -by);
         c.fillStyle = '#5a2a7a';
         c.beginPath(); c.moveTo(cx - 16, by - 125); c.lineTo(cx - 75, by); c.lineTo(cx + 75, by); c.lineTo(cx + 16, by - 125); c.closePath(); c.fill();
-        drawStick(c, cx, by, 165, { hat: 'horns', color: '#e8e8e8', lw: 8, facing: leave > 0 ? 1 : -1, pose: leave > 0 ? 'walk' : 'stand', phase: time * 8 });
+        drawStick(c, cx, by, 165, { hat: 'horns', color: '#e8e8e8', lw: 8, facing: -1 });
         c.restore();
-        if (flags.bossLeave > 0 && flags.bossLeave < 1.4) {
-          c.fillStyle = '#fff';
-          c.font = `bold 22px ${FONT}`;
-          c.textAlign = 'center';
-          c.textBaseline = 'middle';
-          c.fillText('（ていじ）', cx + 170, 200);
-        }
       }
       // 仲間のステータス
       [N, 'せんし', 'まほう'].forEach((nm, i) => {
