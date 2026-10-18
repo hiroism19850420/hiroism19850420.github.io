@@ -26,7 +26,7 @@ window.Stage4 = (function () {
   const STEP = 0.17;
 
   const FORCED = 'あなたは自分を勇者にしました。自分が世界の主人公だと思う節があります。周りを見ましょう。';
-  const CLOSING = 'あなたは画面の中で世界を救いました。現実のあなたは、今日、誰かを助けましたか。';
+  const CLOSING = 'あなたは画面の中で世界を救いました。現実のあなたは今スマホかPCを見ています。働けば？';
 
   const DIAG = {
     e1: {
