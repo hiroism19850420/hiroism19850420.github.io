@@ -25,25 +25,34 @@ window.Stage1 = (function () {
   const CASTLE_X = 128 * T;
   const WORLD_W = 141 * T;
 
+  // どの終わり方でも、踏んだ敵とコインのことは必ず言う
+  const extras = i => [
+    i.stomps > 0
+      ? `あなたは敵を${i.stomps}匹、踏み潰しました。周りの人を犠牲にして成り立つ人生です。`
+      : 'あなたは敵を1匹も踏みませんでした。誰も犠牲にしなかったのではなく、誰とも関わらなかっただけです。',
+    i.coins > 0
+      ? `あなたはコインを${i.coins}枚取りました。落ちているものを自分の懐に入れる人生です。`
+      : 'あなたはコインを1枚も取りませんでした。目の前に落ちている幸運にすら手を伸ばせない人生です。'
+  ];
+
   const RESULTS = {
     enemy: i => ({
       cleared: false, resultType: 'enemy_collision', diagnosisTag: '衝突型',
-      diagnosisText: `あなたはスタートから${i.m}m地点で、敵に横から正面衝突しました。上から踏めば越えられる相手でした。あなたは壁にぶつかり玉砕するタイプです。`,
-      playResult: `敵に接触（${i.m}m地点）`
+      diagnosisText: [`あなたはスタートから${i.m}m地点で、敵に正面からぶつかって終わりました。上から踏めば越えられる相手でした。あなたは壁にぶつかり玉砕するタイプです。そして、そこから何も学びません。`].concat(extras(i)).join('\n'),
+      playResult: `敵に接触（${i.m}m地点／踏み潰した敵 ${i.stomps}匹／コイン ${i.coins}枚）`
     }),
     pit: i => ({
       cleared: false, resultType: 'pit_fall', diagnosisTag: '後悔型',
-      diagnosisText: `あなたは${i.m}m地点で、穴に落ちました。それまでにジャンプを${i.jumps}回もしていたのに、です。穴があったら入りたいほどの人生です。`,
-      playResult: `穴に転落（${i.m}m地点）`
+      diagnosisText: [(i.jumps > 0
+        ? `あなたは${i.m}m地点で、穴に落ちました。ジャンプは${i.jumps}回もしていたのに、肝心なところで跳びませんでした。`
+        : `あなたは${i.m}m地点で、一度も跳ばずにそのまま穴に落ちました。`)
+        + '穴があったら入りたい人生を送ってきました。そして本当に入りました。'].concat(extras(i)).join('\n'),
+      playResult: `穴に転落（${i.m}m地点／踏み潰した敵 ${i.stomps}匹／コイン ${i.coins}枚）`
     }),
     goal: i => ({
       cleared: true, resultType: 'goal', diagnosisTag: '成功至上型',
-      diagnosisText: (i.stomps > 0
-        ? `あなたは${i.stomps}匹の敵を踏みつけてゴールしました。他人を犠牲にして、自分だけが良ければ良いという人間です。`
-        : 'あなたは敵を1匹も踏まずにゴールしました。それでも、ゴールの旗を下ろしたのはあなた一人です。')
-        + (i.coins > 0 ? `道中では、ブロックを下から叩いてコインを${i.coins}枚ためこみました。` : '')
-        + 'いろんなものを踏み台にして、一人勝ちしてきた人生です。',
-      playResult: `ゴール到達（タイム ${i.time}秒／踏みつけた敵 ${i.stomps}匹／コイン ${i.coins}枚）`
+      diagnosisText: [`あなたは${i.time}秒でゴールし、旗を一人で下ろしました。いろんなものを踏み台にして、一人勝ちしてきた人生です。`].concat(extras(i)).join('\n'),
+      playResult: `ゴール到達（タイム ${i.time}秒／踏み潰した敵 ${i.stomps}匹／コイン ${i.coins}枚）`
     })
   };
 
@@ -108,7 +117,7 @@ window.Stage1 = (function () {
       if (state !== 'play') return;
       state = kind;
       st = 0;
-      failInfo = { m: meters(), jumps };
+      failInfo = { m: meters(), jumps, stomps, coins };
       Sfx.play(kind === 'enemy' ? 'hit' : 'fail');
       if (kind === 'enemy') { p.vy = -560; p.vx = 0; }
     }
@@ -460,6 +469,6 @@ window.Stage1 = (function () {
 
   return {
     create,
-    debugResult(ok) { return ok ? RESULTS.goal({ time: '42.0', stomps: 5, coins: 3 }) : RESULTS.enemy({ m: 30, jumps: 8 }); }
+    debugResult(ok) { return ok ? RESULTS.goal({ time: '42.0', stomps: 5, coins: 3 }) : RESULTS.enemy({ m: 30, jumps: 8, stomps: 3, coins: 2 }); }
   };
 })();
