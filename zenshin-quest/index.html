@@ -26,6 +26,26 @@
   #shop{justify-content:flex-start;gap:10px}
   .palName{font-size:clamp(14px,3.4vw,18px);font-weight:700}
   .palName input{font:inherit;width:9em;padding:6px 10px;border-radius:10px;border:3px solid #fff;background:#fffaf2;color:#23306b;text-align:center;-webkit-user-select:text;user-select:text}
+  #book{justify-content:flex-start;gap:10px;background:rgba(16,32,64,.97)}
+  .bookHead{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;max-width:760px;width:100%}
+  .bookHead b{font-size:clamp(15px,3.6vw,20px);color:#ffe35a;margin:0 6px}
+  .bookHead button.on{background:#ffe35a;box-shadow:0 5px 0 #b98a12}
+  .bookGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:760px;width:100%}
+  .bookGrid.koto{grid-template-columns:repeat(4,1fr)}
+  .bcard{position:relative;background:#ffffff14;border:3px dashed #ffffff55;border-radius:14px;padding:8px 6px;text-align:center;min-height:120px;display:flex;flex-direction:column;align-items:center;gap:3px}
+  .bcard .i{font-size:clamp(30px,7vw,42px);line-height:1.15;filter:grayscale(1);opacity:.4}
+  .bcard .n{font-weight:700;font-size:clamp(13px,3.2vw,16px);opacity:.75}
+  .bcard .h{font-size:clamp(11px,2.7vw,13px);line-height:1.35;opacity:.85}
+  .bcard .no{position:absolute;left:8px;top:4px;font-size:11px;opacity:.6}
+  .bcard.on{background:linear-gradient(#fff8d8,#ffe08a);border:3px solid #c8901a;color:#3a2410}
+  .bcard.on .i{filter:none;opacity:1}.bcard.on .n{opacity:1}
+  .bcard.next{border:3px solid #ffe35a;box-shadow:0 0 12px #ffe35a}
+  .bookGrid.koto .bcard{min-height:84px}
+  .bookPg{display:flex;align-items:center;gap:14px;font-size:clamp(14px,3.4vw,18px)}
+  #cardPop{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);z-index:20;display:none;min-width:220px;background:linear-gradient(#fff8d8,#ffe08a);border:5px solid #c8901a;border-radius:18px;padding:14px 22px;text-align:center;color:#3a2410;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  #cardPop .i{font-size:64px;line-height:1.15}#cardPop .n{font-size:24px;font-weight:700}#cardPop .t{font-size:15px;color:#b3282d;font-weight:700}
+  #bBook{position:absolute;right:10px;top:64px;z-index:5;display:none;font-size:15px;padding:8px 14px;background:#fff;box-shadow:0 4px 0 #8a93b8}
+  #bBook.show{display:block}
   .goods .coins{font-size:.8em;letter-spacing:-.1em;line-height:1.1}
   .shopHead{display:flex;align-items:flex-end;gap:12px;max-width:640px;width:100%}
   .clerk{font-size:clamp(54px,13vw,84px);line-height:1;filter:drop-shadow(0 4px 0 rgba(0,0,0,.35))}
@@ -53,7 +73,7 @@
 
 <div id="pad">
   <button id="pL">←</button><button id="pR">→</button><button id="pJ">ジャンプ</button><button id="pD">しゃがむ</button>
-  <button id="pGuard">ガード</button><button id="pPose">ポーズ</button><span id="padSpells" style="display:contents"></span>
+  <button id="pGuard">ガード</button><button id="pPose">ポーズ</button><button id="pBook">📖</button><span id="padSpells" style="display:contents"></span>
 </div>
 
 <div id="title" class="panel">
@@ -68,7 +88,10 @@
     <div>⚠️ 声が 聞こえたら <b>よける</b>：やり→よこへ／てんじょう→しゃがむ／レーザー→ジャンプ</div>
     <div>🧍 「この ポーズ！」と 言われたら <b>同じ ポーズ</b>を とる</div>
     <div>👹 てきを たおしきると <b>ボスと 1対1</b>。ぜんぶの わざで たたかえ！</div>
+    <div>🗾 <b>ちず</b>で 行き先を えらぶ（声で「ぐんま」、手を かざす、クリック）</div>
+    <div>📖 <b>右手だけ 上げて「ブック」</b> … カードと ことわざずかんを 見る</div>
   </div>
+  <div class="modes" id="contRow" style="display:none"><button id="mCont" class="sub on">▶ つづきから</button><button id="mNew" class="sub">はじめから</button></div>
   <div class="modes"><button id="mEasy" class="sub on">かんたん</button><button id="mHard" class="sub">むずかしい</button></div>
   <div class="modes"><button id="bVoice" class="sub on">🔊 こえの あんない：あり</button></div>
   <div class="palName">🍡 なかまの なまえ：<input id="palName" maxlength="8" placeholder="もちもち"></div>
@@ -89,6 +112,16 @@
   <button id="bLeave" class="sub">おみせを 出る</button>
 </div>
 
+<button id="bBook">📖 ブック</button>
+<div id="cardPop"></div>
+<div id="book" class="panel hide">
+  <div class="bookHead"><button id="tCards" class="sub on">🃏 カード</button><button id="tKoto" class="sub">📜 ことわざ</button><b id="bookCount"></b><button id="bookX" class="sub">✕ とじる</button></div>
+  <div id="bookGrid" class="bookGrid"></div>
+  <div class="bookPg"><button id="bookPrev" class="sub">◀ もどる</button><b id="bookPage"></b><button id="bookNext" class="sub">つぎ ▶</button></div>
+  <div class="note">🎤「つぎ」「もどる」「ことわざ」「カード」「とじる」</div>
+  <button id="bookReset" class="sub" style="background:#5a6478;color:#fff;box-shadow:0 5px 0 #333">🗑 カードと ずかんを ぜんぶ けす</button>
+</div>
+
 <div id="over" class="panel hide">
   <h1 id="overTitle">ゆうしゃは たおれた…</h1>
   <div id="res"></div>
@@ -97,6 +130,7 @@
 </div>
 
 <script src="monsters.js"></script>
+<script src="regions.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="../phonecam.js"></script>
@@ -142,15 +176,50 @@ const DIFF = {             // dmg：うける ダメージの倍率、speed：�
 // しょう。quota：たおす数、spawn：出る間隔（秒）、max：同時に出る数、evGap：よける・ポーズが 来る間隔（秒）、
 // lead：声が 終わってから 当たるまで（秒）、hit：てきに ふれられた時の ダメージ、haz：よけそこねた時の ダメージ
 const CH = [
-  { name: 'はじまりの そうげん', bg: ['#2f7fc4', '#3f9c5a'], types: ['slime', 'slime', 'kawachi'], quota: 30, spawn: 1.3, max: 4, evGap: 11, lead: 1.4, hit: 3, haz: 4, shot: 0, boss: 'muza',
+  { tag: 'はじまり', coin: 5, name: 'はじまりの そうげん', bg: ['#2f7fc4', '#3f9c5a'], types: ['slime', 'slime', 'kawachi'], quota: 30, spawn: 1.3, max: 4, evGap: 11, lead: 1.4, hit: 3, haz: 4, shot: 0, boss: 'muza',
     story: 'だいまおう ミルガドスが、村の えがおを うばった。ゆうしゃよ、からだを うごかして たびに 出よう！' },
-  { name: 'どろぬまの どうくつ', bg: ['#3a2c5c', '#6b4a35'], types: ['doro', 'bat', 'doro', 'slime'], quota: 40, spawn: 1.0, max: 6, evGap: 9, lead: 1.15, hit: 5, haz: 7, shot: 9, boss: 'despi',
+  { tag: 'さいごの たび 1', coin: 6, name: 'どろぬまの どうくつ', bg: ['#3a2c5c', '#6b4a35'], types: ['doro', 'bat', 'doro', 'slime'], quota: 40, spawn: 1.0, max: 6, evGap: 9, lead: 1.15, hit: 5, haz: 7, shot: 9, boss: 'despi',
     story: 'どうくつの おくから、どろの 手が のびてくる。てごわいぞ。おぼえた じゅもんを つかえ！' },
-  { name: 'だいまおうの しろ', bg: ['#2a1038', '#7a2330'], types: ['gaikotsu', 'ghost', 'doro', 'ghost'], quota: 50, spawn: 0.85, max: 8, evGap: 8, lead: 0.95, hit: 7, haz: 10, shot: 6, boss: 'milga',
-    story: 'ついに だいまおうの しろだ。ここまで 来た きみなら、きっと かてる！' }
+  { tag: 'さいごの たび 2', coin: 0, name: 'だいまおうの しろ', bg: ['#2a1038', '#7a2330'], types: ['gaikotsu', 'ghost', 'doro', 'ghost'], quota: 50, spawn: 0.85, max: 8, evGap: 8, lead: 0.95, hit: 7, haz: 10, shot: 6, boss: 'milga',
+    story: 'ついに だいまおうの しろだ。ここまで 来た きみなら、きっと かてる！' },
+  // ---- ちほう（ちずで えらぶ。じゅんばんは じゆう） ----
+  { region: 'gunma', pref: 'ぐんま', icon: '⛰️', coin: 5, name: 'ぐんまの やまやま', bg: ['#5aa9e6', '#4f9a4a'], types: ['tsuru', 'tsuru', 'akagi', 'myogi'], boss: 'daruma',
+    story: 'つるが まう かたちの ぐんま。あかぎやまと みょうぎさんが うごきだした！' },
+  { region: 'yokohama', pref: 'よこはま', icon: '🥟', coin: 5, name: 'よこはまの みなと', bg: ['#ff9a6a', '#1f5fa8'], types: ['shumai', 'shumai', 'nami', 'kamome'], boss: 'wheel',
+    story: 'うみの まち よこはま。シュウマイと なみが おしよせてくる！' },
+  { region: 'chiba', pref: 'ちば', icon: '🥜', coin: 5, name: 'ちばの はなばたけ', bg: ['#8fd4ff', '#6fcf4b'], types: ['rakkasei', 'nanohana', 'rakkasei', 'hikouki'], boss: 'nashi',
+    story: 'なのはなが さく ちば。らっかせいと ひこうきが とんでくる！' },
+  { region: 'tokyo', pref: 'とうきょう', icon: '🗼', coin: 5, name: 'とうきょうの よる', bg: ['#1a1f4a', '#4a3a7a'], types: ['hato', 'densha', 'biru', 'hato'], boss: 'tower',
+    story: 'ビルが ならぶ とうきょう。でんしゃも ハトも てきに なった！' },
+  { region: 'hokkaido', pref: 'ほっかいどう', icon: '⛄', coin: 5, name: 'ほっかいどうの ゆきぐに', bg: ['#0f2a5a', '#dfeaf6'], types: ['yukidaruma', 'kani', 'kuma', 'yukidaruma'], boss: 'shirokuma',
+    story: 'ゆきの くに ほっかいどう。ゆきだるまと クマと カニが まっている！' }
 ];
+const REGION_IDX = CH.map((c, i) => c.region ? i : -1).filter(i => i >= 0);
+// ちほうの むずかしさ。k：いくつめに 行った ちほうか（1〜5）
+function regionStart(i, k){
+  const c = CH[i], b = BOSSES[c.boss];
+  Object.assign(c, { quota: 30, spawn: 1.3 - 0.06 * k, max: 4 + Math.floor(k / 2), evGap: 11 - 0.4 * k, lead: 1.4 - 0.06 * k,
+    hit: 3 + Math.round(k * 0.8), haz: 4 + k, shot: k >= 3 ? 10 - k : 0, hpMul: 1 + 0.35 * (k - 1) });
+  Object.assign(b, { hp: Math.round(220 * (1 + 0.45 * (k - 1))), dmg: 5 + k, n: k >= 4 ? 2 : 1, exp: 20 + 8 * k });
+}
 // てき。hp：かたさ、time：とどくまでの秒数、exp：けいけんち、size：大きさ、art：ドナルゴクエストの 絵の名前
 const TYPES = {
+  // ちほうの てき（絵は regions.js）
+  tsuru:      { name: 'つる',         hp: 1, time: 4.0, exp: 1, size: 0.62, col: '#ffffff', art: 'r_tsuru' },
+  akagi:      { name: 'あかぎやま',   hp: 3, time: 6.5, exp: 2, size: 0.72, col: '#7fcf5a', art: 'r_akagi' },
+  myogi:      { name: 'みょうぎさん', hp: 5, time: 7.0, exp: 3, size: 0.72, col: '#a9a2b8', art: 'r_myogi' },
+  shumai:     { name: 'シュウマイ',   hp: 1, time: 5.0, exp: 1, size: 0.52, col: '#f6dca0', art: 'r_shumai' },
+  nami:       { name: 'なみ',         hp: 3, time: 4.0, exp: 2, size: 0.66, col: '#7fd8ff', art: 'r_nami' },
+  kamome:     { name: 'カモメ',       hp: 2, time: 3.6, exp: 2, size: 0.56, col: '#ffffff', art: 'r_kamome' },
+  rakkasei:   { name: 'らっかせい',   hp: 2, time: 5.0, exp: 1, size: 0.52, col: '#e8c27a', art: 'r_rakkasei' },
+  nanohana:   { name: 'なのはな',     hp: 1, time: 4.5, exp: 1, size: 0.55, col: '#ffe02a', art: 'r_nanohana' },
+  hikouki:    { name: 'ひこうき',     hp: 4, time: 3.8, exp: 3, size: 0.7,  col: '#dfe8f4', art: 'r_hikouki' },
+  densha:     { name: 'でんしゃ',     hp: 5, time: 4.0, exp: 3, size: 0.66, col: '#3fbf6a', art: 'r_densha' },
+  biru:       { name: 'ビル',         hp: 7, time: 7.0, exp: 4, size: 0.72, col: '#8fa0c0', art: 'r_biru' },
+  hato:       { name: 'ハト',         hp: 1, time: 3.5, exp: 1, size: 0.5,  col: '#a9b0c2', art: 'r_hato' },
+  yukidaruma: { name: 'ゆきだるま',   hp: 4, time: 6.0, exp: 2, size: 0.62, col: '#ffffff', art: 'r_yukidaruma' },
+  kuma:       { name: 'クマ',         hp: 6, time: 5.5, exp: 4, size: 0.66, col: '#8a5a34', art: 'r_kuma' },
+  kani:       { name: 'カニ',         hp: 3, time: 4.5, exp: 2, size: 0.56, col: '#e8463a', art: 'r_kani' },
   slime:    { name: 'プルリン',   hp: 1,  time: 5.5, exp: 1, size: 0.55, col: '#5ab4ff', art: 'pururin' },
   kawachi:  { name: 'カワチー',   hp: 1,  time: 4.2, exp: 1, size: 0.45, col: '#ffd9c4', art: 'kawachi' },
   doro:     { name: 'ドロハンズ', hp: 6,  time: 7.0, exp: 4, size: 0.62, col: '#9a6a44', art: 'dorohands' },
@@ -161,6 +230,12 @@ const TYPES = {
 // ボス（絵と 背景は ドナルゴクエストの もの）。dmg：こうげきの ダメージ、n：1ターンの こうげき回数、atks：こうげきの種類、
 // arts：のこり HP の わりあいが これ以下に なったら その絵に かわる、bg：背景、size：絵の大きさの倍率
 const BOSSES = {
+  // ちほうの ボス。hp・dmg は 行った じゅんばんで きまる（regionStart）
+  daruma:    { name: 'だるま だいおう',     hp: 220, dmg: 6, n: 1, exp: 25, bg: 'r_gunma',    size: 0.95, arts: [[1, 'r_daruma1'], [0.5, 'r_daruma2']], atks: ['spearR', 'spearL', 'ceil'], change: ['', 'だるま だいおうの りょうめが ひらいた！'] },
+  wheel:     { name: 'だいかんらんしゃ',     hp: 220, dmg: 6, n: 1, exp: 25, bg: 'r_yokohama', size: 1.0,  arts: [[1, 'r_wheel']], atks: ['laser', 'ceil', 'spearR'] },
+  nashi:     { name: 'なしの おうさま',     hp: 220, dmg: 6, n: 1, exp: 25, bg: 'r_chiba',    size: 0.95, arts: [[1, 'r_nashi']], atks: ['spearL', 'laser', 'spearR'] },
+  tower:     { name: 'タワー きょじん',     hp: 220, dmg: 6, n: 1, exp: 25, bg: 'r_tokyo',    size: 1.05, arts: [[1, 'r_tower']], atks: ['laser', 'spearL', 'ceil'] },
+  shirokuma: { name: 'しろクマ だいおう',   hp: 220, dmg: 6, n: 1, exp: 25, bg: 'r_hokkaido', size: 1.0,  arts: [[1, 'r_shirokuma1'], [0.5, 'r_shirokuma2']], atks: ['ceil', 'spearR', 'laser', 'spearL'], change: ['', 'しろクマ だいおうが ふぶきを よんだ！'] },
   muza:  { name: 'まおうムーザ',         hp: 180,  dmg: 6,  n: 1, exp: 20, bg: 'castle', size: 1.0,  arts: [[1, 'muza']], atks: ['spearR', 'spearL', 'laser'] },
   despi: { name: 'デスピエール',         hp: 600,  dmg: 10, n: 2, exp: 40, bg: 'circus', size: 1.0,  arts: [[1, 'despierre1'], [0.66, 'despierre2'], [0.33, 'despierre3']], atks: ['spearR', 'spearL', 'laser', 'ceil', 'guard'],
            change: ['', 'デスピエールの かめんが かわった！', 'デスピエールが しょうたいを あらわした！'] },
@@ -331,7 +406,10 @@ function art(id){
   im.onload = () => { a.ok = true; };
   let svg = '';
   try {
-    svg = id.startsWith('bg_')
+    const R = window.RegionArt;
+    if (R && id.startsWith('bg_r_')) svg = R.bg(id.slice(5)).replace('viewBox="0 0 400 300"', 'width="800" height="600" viewBox="0 0 400 300"');
+    else if (R && id.startsWith('r_')) svg = R.draw(id.slice(2)).replace('viewBox="0 0 400 400"', 'width="780" height="780" viewBox="-60 -60 520 520"');
+    else svg = id.startsWith('bg_')
       ? window.Monsters.bg(id.slice(3)).replace('viewBox="0 0 400 300"', 'width="800" height="600" viewBox="0 0 400 300"')
       : window.Monsters.draw(id).replace('viewBox="0 0 400 400"', 'width="780" height="780" viewBox="-60 -60 520 520"');
   } catch (e) { return a; }
@@ -424,6 +502,8 @@ function tip(str, sec = 6){ S.tip = str; S.tipUntil = S.now + sec; }
 // 長い名前の 上位じゅもんは 合言葉が 1つでも 聞こえたら それ。なければ ふつうの じゅもんの うち 最後に聞こえたもの
 function hear(str){
   if (S.state === 'shop'){ shopHear(str); return null; }
+  if (bookHear(str)) return null;
+  if (S.state === 'map'){ mapHear(str); return null; }
   if (S.quiz){ quizHear(str); return null; }
   const n = norm(str);
   // あんないの声を マイクが ひろって、じゅもんが 勝手に 出ないようにする
@@ -515,6 +595,8 @@ function onPose(lm, dt){
   S.poseGuard = both && cross < -unit * 0.3 && lw.y > top && lw.y < bot && rw.y > top && rw.y < bot;
   // りょう手を ひろげて 頭より上 → まほうの構え
   S.poseMagic = both && lw.y < nose.y && rw.y < nose.y && gap > unit * 1.0;
+  // みぎ手だけ 頭より上（ひだり手は 肩より下）→「ブック」を 聞く
+  S.rightUp = rw.v > 0.4 && rw.y < nose.y && !(lw.v > 0.4 && lw.y < ls.y);
   // りょう手を にぎり合わせる → 剣（レベル SWORD_LV から）
   const grip = S.lv >= SWORD_LV && lw.v > GRIP_VIS && rw.v > GRIP_VIS && !S.poseGuard && gap < unit * (sword.on ? GRIP_OUT : GRIP_IN);
   sword.hold = grip ? sword.hold + dt : 0;
@@ -639,7 +721,7 @@ function hurtPlayer(n, x = P.x, y = anchor.y){
 function spawn(type){
   const T = TYPES[type], D = DIFF[S.diff];
   S.enemies.push({
-    type, hp: T.hp, maxHp: T.hp, z: 1, speed: D.speed / T.time,
+    type, hp: Math.max(1, Math.round(T.hp * (CH[S.chapter].hpMul || 1))), maxHp: Math.max(1, Math.round(T.hp * (CH[S.chapter].hpMul || 1))), z: 1, speed: D.speed / T.time,
     ux: (Math.random() * 2 - 1) * 2.0, uy: -1.2 + Math.random() * (S.mode === 'cam' ? 3.0 : 2.0),   // カメラのときは 頭の上から こしの下まで
     flash: 0, frozen: 0, lastStroke: 0, wob: Math.random() * 6.28, x: 0, y: 0, r: 0
   });
@@ -671,7 +753,7 @@ function damage(e, n = 1){
   e.z = Math.min(1, e.z + 0.1);   // なぐると すこし おしもどす
   S.fx.push({ kind: 'burst', x: e.x, y: e.y, r: e.r, t: 0, life: 0.18 });
   if (e.hp > 0){ sfx.hit(); return; }
-  e.dead = true; S.kills++;
+  e.dead = true; S.kills++; bump('ko'); bump('ko_' + e.type);
   S.mp = Math.min(maxMp(S.lv), S.mp + 1 + BUF.juice);
   S.coinF += COIN_PER_KILL; while (S.coinF >= 1){ S.coinF--; S.coin++; }
   palCheer();
@@ -716,7 +798,8 @@ function cast(id){
   if (kt){
     // ことわざ：レベル3から どれでも。出る わざは fx の じゅもんと 同じ
     if (S.lv < 3 || S.mp < KOTO_MP){ text(anchor.x, top, S.lv < 3 ? 'じゅもんは レベル3から' : 'MPが たりない！', '#ffd0d0'); sfx.denied(); S.charge = 0; S.magicCD = 0.8; return; }
-    S.mp -= KOTO_MP; S.cnt.spell++;
+    S.mp -= KOTO_MP; S.cnt.spell++; bump('spell'); if (inBattle()) bump('kotoBoss');
+    if (!S.koto.includes(id)){ S.koto.push(id); saveGame(); setTimeout(() => text(W / 2, H * 0.42, '📜 ことわざ ずかんに とうろく！', '#ffe35a', 22, 1.8), 600); }
     S.charge = 0; S.hold = 0; S.magicCD = MAGIC_CD; S.listenUntil = 0;
     text(anchor.x, top, kt.icon + kt.name + '！', kt.col, 24, 1.8);
     id = kt.fx;
@@ -728,7 +811,7 @@ function cast(id){
   }
   const sp = SPELLS[id];
   if (S.mp < sp.mp){ text(anchor.x, top, 'MPが たりない！', '#ffd0d0'); sfx.denied(); S.charge = 0; S.magicCD = 0.8; return; }
-  S.mp -= sp.mp; S.cnt.spell++; S.spellIdx++;
+  S.mp -= sp.mp; S.cnt.spell++; S.spellIdx++; bump('spell');
   S.charge = 0; S.hold = 0; S.magicCD = MAGIC_CD; S.listenUntil = 0;
   text(anchor.x, top, sp.icon + sp.name + '！', sp.col, sp.big ? 26 : 32, sp.big ? 1.6 : 1.0);
   }
@@ -814,7 +897,7 @@ function updateEvent(){
   if (d < hz.win[1]) return;
   S.ev = null;
   if (ev.ok){
-    S.cnt.dodge++; sfx.dodge();
+    S.cnt.dodge++; bump('dodge'); sfx.dodge();
     text(W / 2, H * 0.3, hz.done, '#b6ffb0', 30, 1.2);
     if (inBattle()){ S.mp = Math.min(maxMp(S.lv), S.mp + 2); B.msg = [hz.done, 'MPが 2 かいふくした！']; } else say('じょうず！', 1);
   } else {
@@ -871,15 +954,20 @@ function afterAttack(){
   wait(1.3, B.left > 0 ? nextAttack : playerTurn);
 }
 function bossDown(){
-  const b = BOSSES[B.id], last = S.chapter >= CH.length - 1;
+  const b = BOSSES[B.id], ch = S.chapter;
   S.ev = null; S.charge = 0; S.quiz = null; listen(false);
-  const coin = COIN_BOSS[S.chapter] || 0; S.coin += coin;
+  const coin = CH[ch].coin || 0; S.coin += coin;
+  bump('boss_' + B.id);
+  if (!S.cleared.includes(ch)) S.cleared.push(ch);
   B.msg = [`${B.name}を たおした！`, b.exp ? `けいけんち ${b.exp}と 10円玉 ${coin}まいを 手に入れた！` : 'せかいに えがおが もどった！'];
   palMood('happy', 3, 'やったね〜！');
   sfx.boom(); sfx.win(); dots(W / 2, bossY(), 50, '#ffe35a', 2);
   S.fx.push({ kind: 'ring', x: W / 2, y: bossY(), t: 0, life: 0.8 });
   say(`やった！ ${B.name}を たおした！`, 3);
-  wait(1.5, () => { if (b.exp) gainExp(b.exp); wait(3.5, () => last ? ending() : openShop(() => startChapter(S.chapter + 1))); });
+  // そうげん・ちほう → おみせ → ちず。どうくつ → おみせ → しろ。しろ → おしまい
+  const after = ch === 2 ? null : ch === 1 ? 2 : 'map';
+  S.next = after; if (after != null) saveGame();
+  wait(1.5, () => { if (b.exp) gainExp(b.exp); wait(3.5, () => after == null ? ending() : openShop(() => after === 'map' ? openMap() : startChapter(after))); });
 }
 
 
@@ -1036,7 +1124,7 @@ function quizAnswer(n){
   if (n === ans){
     Q.result = { ok: true, t: 2.4 };
     const coin = Q.helped ? 1 : COIN_QUIZ;
-    S.coin += coin; S.fed++; S.cnt.quiz++;
+    S.coin += coin; S.fed++; S.cnt.quiz++; bump('quiz'); if (Q.byJump) bump('quizJump');
     const heal = Math.round(maxHp(S.lv) * 0.2); S.hp = Math.min(maxHp(S.lv), S.hp + heal);
     sfx.win(); S.fx.push({ kind: 'flash', col: '255,240,170', t: 0, life: 0.4 });
     text(W / 2, H * 0.24, `🪙 10円玉 +${coin}まい`, '#ffe35a', 26, 2);
@@ -1092,7 +1180,7 @@ function updateQuiz(dt){
     Q.jumps += S.cnt.jump - Q.seenJ; Q.seenJ = S.cnt.jump; Q.jt = S.now; Q.idle = 0;
     say(NUMSAY[Math.min(10, Q.jumps)] || String(Q.jumps), 2); sfx.dq();
   }
-  if (Q.jumps > 0 && S.now - Q.jt > 2.2) quizAnswer(Q.jumps);
+  if (Q.jumps > 0 && S.now - Q.jt > 2.2){ Q.byJump = true; quizAnswer(Q.jumps); if (S.quiz && !S.quiz.result) Q.byJump = false; }
   // ヒント：りょう手を 上げると 絵が 出る（レベル3）
   if (S.mode === 'cam' && S.poseMagic){ Q.hold += dt; if (Q.hold > 0.6 && !Q.hint){ Q.hint = true; say('ハンバーグを かぞえてみよう！', 2); } } else Q.hold = 0;
   // こたえが ないときは、なかまが いっしょに かぞえる → それでも ないときは こたえを 見せる
@@ -1137,11 +1225,255 @@ function drawQuiz(){
   outText(foot, W / 2, by + bh - 24, Q.result || Q.jumps ? 30 : 20, Q.result && Q.result.ok ? '#ffe35a' : '#fff');
 }
 
+
+// ---------- ほぞん（この きかいの ブラウザに おぼえる） ----------
+// cards・koto・st は ずっと のこる（はじめからでも きえない）。prog は つづきから 用
+const SAVE_KEY = 'zq_save1';
+let SAVE = {};
+try { SAVE = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') || {}; } catch (e) { SAVE = {}; }
+S.cards = SAVE.cards || []; S.koto = SAVE.koto || []; S.st = SAVE.st || {}; S.cleared = []; S.cont = !!SAVE.prog;
+const st = k => S.st[k] || 0, bump = (k, n = 1) => { S.st[k] = st(k) + n; };
+function saveGame(endProg){
+  if (S.running && S.next != null) SAVE.prog = { lv: S.lv, exp: S.exp, coin: S.coin, coinF: S.coinF, fed: S.fed, qlv: S.qlv, BUF: Object.assign({}, BUF), cleared: S.cleared.slice(), next: S.next };
+  if (endProg) delete SAVE.prog;
+  SAVE.cards = S.cards; SAVE.koto = S.koto; SAVE.st = S.st;
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)); } catch (e) {}
+}
+function showContRow(){
+  const has = !!SAVE.prog;
+  $('contRow').style.display = has ? 'flex' : 'none';
+  if (!has) S.cont = false;
+  $('mCont').classList.toggle('on', S.cont); $('mNew').classList.toggle('on', !S.cont);
+  if (has) $('mCont').textContent = `▶ つづきから（Lv ${SAVE.prog.lv}・ちほう ${SAVE.prog.cleared.filter(i => CH[i] && CH[i].region).length}/5）`;
+}
+
+// ---------- カード ----------
+const bossCard = (id, icon, name, how, boss) => ({ id, icon, name, how, ok: () => st('boss_' + boss) >= 1 });
+const CARDS = [
+  { id: 'punch',  icon: '👊', name: 'はじめの いっぽ',     how: 'てきを 1ぴき たおす', ok: () => st('ko') >= 1 },
+  { id: 'sword',  icon: '⚔️', name: 'けんを てにいれた',   how: 'レベル2に なる', ok: () => st('lv') >= 2 },
+  { id: 'thunder', icon: '⚡', name: 'サンダー',           how: 'レベル3に なって じゅもんを おぼえる', ok: () => st('lv') >= 3 },
+  { id: 'spell',  icon: '✨', name: 'はじめての じゅもん', how: 'りょう手を 上げて じゅもんを となえる', ok: () => st('spell') >= 1 },
+  { id: 'quiz',   icon: '🍖', name: 'はじめての せいかい', how: 'ハンバーグ クイズに せいかい する', ok: () => st('quiz') >= 1 },
+  { id: 'shop',   icon: '🛒', name: 'はじめての おかいもの', how: 'おみせで「○○を ください」と いって かう', ok: () => st('buy') >= 1 },
+  bossCard('muza', '🌱', 'そうげんの へいわ', 'はじまりの そうげんで まおうムーザを たおす', 'muza'),
+  { id: 'koto',   icon: '📜', name: 'ことわざ デビュー',   how: 'ことわざを さけんで まほうを だす', ok: () => S.koto.length >= 1 },
+  { id: 'pose',   icon: '🧍', name: 'ポーズ きまった！',   how: '「この ポーズ！」の ポーズを きめる', ok: () => st('pose') >= 1 },
+  bossCard('gunma', '🎎', 'ぐんま クリア', 'ぐんまで だるま だいおうを たおす', 'daruma'),
+  bossCard('yokohama', '🎡', 'よこはま クリア', 'よこはまで だいかんらんしゃを たおす', 'wheel'),
+  bossCard('chiba', '🍐', 'ちば クリア', 'ちばで なしの おうさまを たおす', 'nashi'),
+  bossCard('tokyo', '🗼', 'とうきょう クリア', 'とうきょうで タワー きょじんを たおす', 'tower'),
+  bossCard('hokkaido', '🐻‍❄️', 'ほっかいどう クリア', 'ほっかいどうで しろクマ だいおうを たおす', 'shirokuma'),
+  { id: 'japan',  icon: '🗾', name: 'にほん たび',         how: '5つの ちほうを ぜんぶ クリア する', ok: () => ['daruma', 'wheel', 'nashi', 'tower', 'shirokuma'].every(b => st('boss_' + b) >= 1) },
+  { id: 'tsuru',  icon: '🕊️', name: 'つる 10わ',           how: 'ぐんまで つるを 10わ たおす', ok: () => st('ko_tsuru') >= 10 },
+  { id: 'shumai', icon: '🥟', name: 'シュウマイ 10こ',     how: 'よこはまで シュウマイを 10こ たおす', ok: () => st('ko_shumai') >= 10 },
+  { id: 'peanut', icon: '🥜', name: 'らっかせい 10こ',     how: 'ちばで らっかせいを 10こ たおす', ok: () => st('ko_rakkasei') >= 10 },
+  { id: 'densha', icon: '🚃', name: 'でんしゃ ストップ',   how: 'とうきょうで でんしゃを 5だい たおす', ok: () => st('ko_densha') >= 5 },
+  { id: 'kani',   icon: '🦀', name: 'カニ 5ひき',          how: 'ほっかいどうで カニを 5ひき たおす', ok: () => st('ko_kani') >= 5 },
+  { id: 'jump',   icon: '🦘', name: 'ジャンプで こたえた', how: 'クイズの こたえを ジャンプで こたえて せいかい', ok: () => st('quizJump') >= 1 },
+  { id: 'quiz3',  icon: '⭐', name: 'クイズ ほし みっつ',  how: 'ハンバーグ クイズで ★★★に なる', ok: () => st('qlv') >= 3 },
+  { id: 'quiz20', icon: '🧮', name: 'けいさん めいじん',   how: 'クイズに 20かい せいかい する', ok: () => st('quiz') >= 20 },
+  { id: 'feed5',  icon: '🍡', name: 'なかよし',            how: 'なかまに ハンバーグを 5こ たべさせる', ok: () => st('fed') >= 5 },
+  { id: 'feed10', icon: '💞', name: 'おおきく なったね',   how: 'なかまに ハンバーグを 10こ たべさせる', ok: () => st('fed') >= 10 },
+  { id: 'koto10', icon: '📚', name: 'ことわざ はかせ',     how: 'ことわざを 10しゅるい つかう', ok: () => S.koto.length >= 10 },
+  { id: 'dodge',  icon: '💨', name: 'よけの めいじん',     how: 'やり・てんじょう・レーザーを 10かい よける', ok: () => st('dodge') >= 10 },
+  { id: 'combo',  icon: '🔥', name: '10 コンボ',           how: 'つづけて こうげきして 10 HIT を だす', ok: () => st('combo') >= 10 },
+  { id: 'coin30', icon: '🪙', name: 'おかねもち',          how: '10円玉を 30まい もつ', ok: () => st('coin') >= 30 },
+  bossCard('despi', '🎭', 'どうくつの ボス', 'どうくつで デスピエールを たおす', 'despi'),
+  bossCard('milga', '🌈', 'せかいを すくった', 'だいまおう ミルガドスを たおす', 'milga'),
+  { id: 'lv10',   icon: '👑', name: 'レベル10',            how: 'レベル10に なる', ok: () => st('lv') >= 10 },
+  { id: 'thanks', icon: '💐', name: 'ありがとうの こころ', how: 'ひみつ。おみせで ある ことばを いうと…', secret: true, ok: () => st('thanks') >= 1 },
+  { id: 'kotoBoss', icon: '🐱', name: 'ことわざ アタック', how: 'ひみつ。ボスに ある ことを すると…', secret: true, ok: () => st('kotoBoss') >= 1 }
+];
+let cardT = 0, cardQ = [], cardShow = 0;
+function checkCards(dt){
+  // まいかい 見る 数（いちばん 大きかった 数を おぼえる）
+  S.st.lv = Math.max(st('lv'), S.lv); S.st.qlv = Math.max(st('qlv'), S.qlv); S.st.coin = Math.max(st('coin'), S.coin); S.st.fed = Math.max(st('fed'), S.fed);
+  if ((cardT += dt) > 0.5){
+    cardT = 0; let got = false;
+    for (const c of CARDS) if (!S.cards.includes(c.id) && c.ok()){ S.cards.push(c.id); cardQ.push(c); got = true; }
+    if (got) saveGame();
+  }
+  if (cardShow > 0){ cardShow -= dt; if (cardShow <= 0) $('cardPop').style.display = 'none'; }
+  else if (cardQ.length && !S.book){
+    const c = cardQ.shift();
+    $('cardPop').innerHTML = `<div class="t">🃏 カード ゲット！</div><div class="i">${c.icon}</div><div class="n">${c.name}</div><div style="font-size:13px">${S.cards.length} / ${CARDS.length} まい</div>`;
+    $('cardPop').style.display = 'block'; cardShow = 2.6; sfx.level();
+    say(`カード ゲット！ ${c.name}！`, 1);
+  }
+}
+
+// ---------- ブック（カードと ことわざずかん） ----------
+const BOOK = { tab: 'cards', page: 0 };
+const KOTO_IDS = Object.keys(KOTO);
+const bookPer = () => BOOK.tab === 'cards' ? 6 : 12;
+const bookList = () => BOOK.tab === 'cards' ? CARDS : KOTO_IDS;
+function renderBook(){
+  const list = bookList(), per = bookPer(), pages = Math.ceil(list.length / per);
+  BOOK.page = clamp(BOOK.page, 0, pages - 1);
+  $('tCards').classList.toggle('on', BOOK.tab === 'cards'); $('tKoto').classList.toggle('on', BOOK.tab === 'koto');
+  const g = $('bookGrid'); g.className = 'bookGrid' + (BOOK.tab === 'koto' ? ' koto' : '');
+  if (BOOK.tab === 'cards'){
+    const nx = CARDS.find(c => !c.secret && !S.cards.includes(c.id));
+    $('bookCount').textContent = `${S.cards.length} / ${CARDS.length} まい`;
+    g.innerHTML = list.slice(BOOK.page * per, BOOK.page * per + per).map((c, j) => {
+      const has = S.cards.includes(c.id), hide = c.secret && !has, i = BOOK.page * per + j;
+      return `<div class="bcard${has ? ' on' : ''}${c === nx ? ' next' : ''}"><span class="no">${i + 1}</span><div class="i">${hide ? '❓' : c.icon}</div><div class="n">${hide ? '？？？' : c.name}</div><div class="h">${has ? '✅ ゲット！' : (c === nx ? '👉 つぎは これ！<br>' : '') + c.how}</div></div>`;
+    }).join('');
+  } else {
+    $('bookCount').textContent = `${S.koto.length} / ${KOTO_IDS.length} こ`;
+    g.innerHTML = list.slice(BOOK.page * per, BOOK.page * per + per).map((k, j) => {
+      const has = S.koto.includes(k), i = BOOK.page * per + j;
+      return `<div class="bcard${has ? ' on' : ''}"><span class="no">${i + 1}</span><div class="i">${has ? KOTO[k].icon : '❓'}</div><div class="n">${has ? KOTO[k].name : '？？？'}</div></div>`;
+    }).join('');
+  }
+  $('bookPage').textContent = `${BOOK.page + 1} / ${pages} ページ`;
+}
+function openBook(on){
+  if (on && (!S.running || S.state === 'card' || S.state === 'shop')) return;
+  S.book = on;
+  if (on){
+    if (BOOK.tab === 'cards'){ const i = CARDS.findIndex(c => !c.secret && !S.cards.includes(c.id)); BOOK.page = i < 0 ? 0 : Math.floor(i / 6); }
+    renderBook(); sfx.dq(); S.bookHint = 0;
+  }
+  $('book').classList.toggle('hide', !on); $('bBook').classList.toggle('show', !on && S.running);
+}
+function turnPage(d){ const pages = Math.ceil(bookList().length / bookPer()), to = clamp(BOOK.page + d, 0, pages - 1); if (to === BOOK.page){ sfx.denied(); return; } BOOK.page = to; renderBook(); sfx.dq(); }
+function bookTab(t){ if (BOOK.tab === t) return; BOOK.tab = t; BOOK.page = 0; renderBook(); sfx.dq(); }
+let bookCmdT = 0;
+// 「ブック」で ひらく・とじる。ひらいている間は ページの めいれい。つかったら true
+function bookHear(str){
+  const n = norm(str);
+  const once = () => { if (S.now - bookCmdT < 1.5) return false; bookCmdT = S.now; return true; };
+  if (/ブック|ブツク|book/.test(n)){
+    if (S.book){ if (once()) openBook(false); return true; }
+    if ((S.rightUp || S.mode !== 'cam' || S.state === 'map') && once()) openBook(true);
+    return S.rightUp || S.state === 'map';
+  }
+  if (!S.book) return false;
+  if (/トジ|閉|オワ|終/.test(n)){ if (once()) openBook(false); }
+  else if (/コトワザ|諺/.test(n)){ if (once()) bookTab('koto'); }
+  else if (/カード|カド/.test(n)){ if (once()) bookTab('cards'); }
+  else if (/ツギ|次/.test(n)){ if (once()) turnPage(1); }
+  else if (/モド|戻|マエ|前/.test(n)){ if (once()) turnPage(-1); }
+  return true;
+}
+
+// ---------- ちず（行き先を えらぶ） ----------
+// x,y は ちずの わくの中の 0〜1。じっさいの 地図より 関東を 大きく かいている
+const PINS = [
+  { ch: 0, name: 'はじまりの むら', icon: '🌱', x: 0.38, y: 0.70, al: [] },
+  { ch: 3, name: 'ぐんま', icon: '⛰️', x: 0.55, y: 0.47, al: ['グンマ', '群馬'] },
+  { ch: 6, name: 'とうきょう', icon: '🗼', x: 0.71, y: 0.53, al: ['トウキョウ', '東京', 'トウキョ'] },
+  { ch: 4, name: 'よこはま', icon: '🥟', x: 0.59, y: 0.71, al: ['ヨコハマ', '横浜'] },
+  { ch: 5, name: 'ちば', icon: '🥜', x: 0.80, y: 0.64, al: ['チバ', '千葉'] },
+  { ch: 7, name: 'ほっかいどう', icon: '⛄', x: 0.82, y: 0.16, al: ['ホッカイドウ', '北海道', 'ホッカイド'] },
+  { ch: 1, name: 'まおうの しま', icon: '🏰', x: 0.17, y: 0.30, al: ['マオウ', '魔王', 'シロ', '城', 'シマ', '島'], castle: true }
+];
+PINS.forEach(p => { p.n = p.al.map(norm); });
+const MAP = { hover: null, hoverT: 0, sel: null, selT: 0, mx: -1, my: -1, mt: -9, msgT: 0 };
+const regionsDone = () => REGION_IDX.filter(i => S.cleared.includes(i)).length;
+const castleOpen = () => regionsDone() >= REGION_IDX.length;
+function openMap(){
+  S.state = 'map'; S.next = 'map'; saveGame();
+  Object.assign(MAP, { hover: null, hoverT: 0, sel: null, selT: 0 });
+  S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.quiz = null; S.charge = 0;
+  sfx.dq();
+  say(castleOpen() ? 'ぜんぶの ちほうを クリアした！ まおうの しまへ いこう！' : 'どこへ いく？ いきたい ところを いってね。', 3);
+}
+function mapRect(){ const padH = S.mode === 'nocam' ? 96 : 0, my = 64, mh = H - my - 16 - padH, mw = Math.min(W - 24, mh * 1.6); return { mx: (W - mw) / 2, my, mw, mh }; }
+function pinXY(p){ const r = mapRect(); return [r.mx + p.x * r.mw, r.my + p.y * r.mh]; }
+const pinR = () => clamp(Math.min(W, H) * 0.06, 22, 44);
+function pickPin(p){
+  if (MAP.sel || !p) return;
+  if (p.ch === 0){ say('はじまりの むらは もう へいわだよ。ほかの ところへ いこう！', 2); return; }
+  if (p.castle && !castleOpen()){ sfx.denied(); say(`まおうの しまは まだ いけないよ。ちほうを あと ${REGION_IDX.length - regionsDone()}つ クリアしてね。`, 3); return; }
+  MAP.sel = p; MAP.selT = 1.8; sfx.ready();
+  say(`${p.name}へ しゅっぱつ！`, 3);
+}
+function mapHear(str){
+  if (S.now < VOICE.until + 0.3) return;
+  const n = norm(str);
+  pickPin(PINS.find(p => p.n.some(w => n.includes(w))));
+}
+function mapClick(x, y){ const R = pinR(); pickPin(PINS.find(p => { const [px, py] = pinXY(p); return Math.hypot(px - x, py - y) < R * 1.2; })); }
+function updateMap(dt){
+  if (MAP.sel){
+    MAP.selT -= dt;
+    if (MAP.selT <= 0){
+      const ch = MAP.sel.ch; MAP.sel = null;
+      if (CH[ch].region) regionStart(ch, Math.min(5, regionsDone() + (S.cleared.includes(ch) ? 0 : 1)) || 1);
+      startChapter(ch);
+    }
+    return;
+  }
+  // 手（カメラ）か マウスを ピンに かざして 1.2びょう
+  const pts = [];
+  if (S.mode === 'cam' && S.body && J.lw && J.rw){ [J.lw, J.rw].forEach(w => { if (w.v > 0.4) pts.push([w.x, w.y]); }); }
+  if (S.now - MAP.mt < 1.5) pts.push([MAP.mx, MAP.my]);
+  const R = pinR();
+  const hov = PINS.find(p => { const [px, py] = pinXY(p); return pts.some(([x, y]) => Math.hypot(px - x, py - y) < R * 1.3); });
+  if (hov && hov === MAP.hover){ MAP.hoverT += dt; if (MAP.hoverT > 1.2){ MAP.hoverT = 0; pickPin(hov); } }
+  else { MAP.hover = hov || null; MAP.hoverT = 0; }
+}
+function landPath(pts){
+  const r = mapRect(), P2 = pts.map(([x, y]) => [r.mx + x * r.mw, r.my + y * r.mh]);
+  ctx.beginPath();
+  for (let i = 0; i < P2.length; i++){
+    const a = P2[i], b = P2[(i + 1) % P2.length], m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    if (i === 0) ctx.moveTo(m[0], m[1]); else ctx.quadraticCurveTo(a[0], a[1], m[0], m[1]);
+  }
+  const a = P2[0], b = P2[1]; ctx.quadraticCurveTo(a[0], a[1], (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+  ctx.closePath();
+}
+const LAND = {
+  honshu: [[0.62, 0.26], [0.74, 0.27], [0.80, 0.40], [0.88, 0.56], [0.90, 0.68], [0.78, 0.78], [0.62, 0.80], [0.48, 0.80], [0.36, 0.84], [0.20, 0.90], [0.08, 0.92], [0.06, 0.82], [0.20, 0.74], [0.34, 0.66], [0.44, 0.58], [0.50, 0.44], [0.56, 0.32]],
+  hokkaido: [[0.70, 0.10], [0.80, 0.03], [0.93, 0.08], [0.96, 0.19], [0.87, 0.26], [0.76, 0.24], [0.69, 0.18]],
+  shikoku: [[0.22, 0.94], [0.32, 0.92], [0.36, 0.97], [0.24, 0.99]],
+  castle: [[0.08, 0.24], [0.18, 0.18], [0.27, 0.24], [0.25, 0.36], [0.14, 0.40], [0.07, 0.33]]
+};
+function drawMap(){
+  const r = mapRect(), R = pinR(), t = S.now;
+  const sea = ctx.createLinearGradient(0, 0, 0, H); sea.addColorStop(0, '#2a7fd0'); sea.addColorStop(1, '#174a96');
+  ctx.fillStyle = sea; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 2;
+  for (let i = 0; i < 14; i++){ const y = r.my + (i / 14) * r.mh + Math.sin(t + i) * 3; ctx.beginPath(); ctx.moveTo(r.mx - 20, y); for (let x = 0; x <= r.mw + 40; x += 30) ctx.lineTo(r.mx - 20 + x, y + Math.sin(x * 0.05 + i) * 4); ctx.stroke(); }
+  const land = (pts, fill, edge) => { landPath(pts); ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = 5; ctx.strokeStyle = edge; ctx.stroke(); };
+  land(LAND.honshu, '#8fd46a', '#4f9a3a'); land(LAND.hokkaido, '#e6f2ff', '#8fb4d8'); land(LAND.shikoku, '#8fd46a', '#4f9a3a');
+  land(LAND.castle, castleOpen() ? '#6a3a8a' : '#3a2a4a', '#24142e');
+  // 山の しるし
+  ctx.fillStyle = '#5aa04a';
+  [[0.50, 0.40], [0.47, 0.52], [0.40, 0.60], [0.30, 0.72]].forEach(([x, y]) => { const px = r.mx + x * r.mw, py = r.my + y * r.mh; ctx.beginPath(); ctx.moveTo(px - 14, py + 8); ctx.lineTo(px, py - 12); ctx.lineTo(px + 14, py + 8); ctx.fill(); });
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  outText('🗾 どこへ いく？', W / 2, 30, 26, '#ffe35a');
+  for (const p of PINS){
+    const [x, y] = pinXY(p), done = S.cleared.includes(p.ch), locked = p.castle && !castleOpen(), hov = MAP.hover === p, sel = MAP.sel === p;
+    const pulse = !done && !locked && p.ch !== 0 ? 1 + Math.sin(t * 4) * 0.06 : 1, rr = R * pulse * (sel ? 1.25 : hov ? 1.12 : 1);
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x, y + rr * 0.95, rr * 0.8, rr * 0.22, 0, 0, 6.28); ctx.fill();
+    ctx.fillStyle = locked ? '#5a5070' : done ? '#fff8d8' : '#fff'; ctx.strokeStyle = sel ? '#ffe35a' : done ? '#c8901a' : '#23306b'; ctx.lineWidth = sel || hov ? 6 : 4;
+    ctx.beginPath(); ctx.arc(x, y, rr, 0, 6.28); ctx.fill(); ctx.stroke();
+    ctx.font = `${Math.round(rr * 1.05)}px sans-serif`; ctx.fillStyle = '#000'; ctx.globalAlpha = locked ? 0.5 : 1; ctx.fillText(p.icon, x, y + 2); ctx.globalAlpha = 1;
+    if (locked){ ctx.font = `${Math.round(rr * 0.6)}px sans-serif`; ctx.fillText('🔒', x + rr * 0.7, y - rr * 0.7); }
+    if (done){ ctx.font = `${Math.round(rr * 0.6)}px sans-serif`; ctx.fillText('⭐', x + rr * 0.75, y - rr * 0.75); }
+    outText(p.name, x, y + rr + 16, Math.max(14, Math.round(R * 0.45)), locked ? '#bbb' : '#fff');
+    if (hov && MAP.hoverT > 0){ ctx.strokeStyle = '#ffe35a'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(x, y, rr + 9, -Math.PI / 2, -Math.PI / 2 + 6.28 * MAP.hoverT / 1.2); ctx.stroke(); }
+  }
+  // カメラの 手
+  if (S.mode === 'cam' && S.body && J.lw && J.rw){
+    ctx.font = `${Math.round(R * 0.9)}px sans-serif`;
+    [J.lw, J.rw].forEach(w => { if (w.v > 0.4){ ctx.globalAlpha = 0.9; ctx.fillText('🖐️', w.x, w.y); ctx.globalAlpha = 1; } });
+  }
+  const padH = S.mode === 'nocam' ? 96 : 0;
+  outText(`ちほう クリア ${regionsDone()} / ${REGION_IDX.length}　　🪙 ${S.coin}まい　Lv ${S.lv}`, W / 2, H - 18 - padH, 17, '#fff');
+  if (!MAP.sel) outText(S.mode === 'cam' ? '「ぐんま」のように いうか、手を かざしてね' : '「ぐんま」のように いうか、クリック してね', W / 2, 58, 16, '#cfe0ff');
+}
+
 // ---------- まちの おみせ（声で かいもの） ----------
 const SHOP = { next: null, pending: null, hold: 0, cool: 0, leaving: false };
 const shopWords = a => a.map(norm);
 const YES  = shopWords(['はい', 'お願い', 'おねがい', 'かいます', '買います', '買う', 'かう', 'ください', '下さい', 'うん', 'ok', 'オッケー', 'いいよ', 'それで', 'どうぞ']);
 const NO   = shopWords(['やめ', '止め', 'いいえ', 'いらない', '要らない', 'やっぱ', 'キャンセル', 'だいじょうぶ', '大丈夫', 'ちがう', '違う']);
+const THANKS = shopWords(['ありがとう', 'ありがと', '有難う', 'サンキュー']);
 const BYE  = shopWords(['いじょう', '以上', 'おわり', '終わり', 'さようなら', 'バイバイ', '出ます', 'でます', 'いってきます', '行ってきます', 'ごちそうさま', 'もういい']);
 GOODS.forEach(g => { g.n = g.al.map(norm); });
 function clerk(str, pri = 3){
@@ -1163,7 +1495,7 @@ function shopRender(){
 function openShop(next){
   S.state = 'shop'; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.charge = 0;
   Object.assign(SHOP, { next, pending: null, hold: 0, cool: 0, leaving: false });
-  $('pad').classList.remove('show'); $('shop').classList.remove('hide');
+  $('pad').classList.remove('show'); $('shop').classList.remove('hide'); $('bBook').classList.remove('show');
   shopRender(); sfx.dq();
   clerk(`いらっしゃい！ 10えんだまが ${S.coin}まい あるね。なにに する？`);
 }
@@ -1178,7 +1510,7 @@ function shopBuy(){
   const g = GOODS.find(x => x.id === SHOP.pending);
   SHOP.pending = null;
   if (!g || S.coin < g.price){ shopRender(); return; }
-  S.coin -= g.price; BUF[g.id]++;
+  S.coin -= g.price; BUF[g.id]++; bump('buy');
   if (g.id === 'hamb') S.fed++;
   S.hp = maxHp(S.lv); S.mp = maxMp(S.lv);
   sfx.heal(); S.fx.push({ kind: 'flash', col: '255,240,170', t: 0, life: 0.3 });
@@ -1191,7 +1523,7 @@ function shopLeave(){
   SHOP.leaving = true; SHOP.pending = null; shopRender();
   clerk('また おいで！ いってらっしゃい！');
   setTimeout(() => {
-    $('shop').classList.add('hide'); $('pad').classList.toggle('show', S.mode === 'nocam');
+    $('shop').classList.add('hide'); $('pad').classList.toggle('show', S.mode === 'nocam'); $('bBook').classList.add('show');
     const f = SHOP.next; SHOP.next = null; buildPad(); f && f();
   }, 2200);
 }
@@ -1205,6 +1537,7 @@ function shopHear(str){
     if (has(NO)){ SHOP.cool = S.now + 0.8; shopCancel(); return; }
     if (has(YES)){ SHOP.cool = S.now + 0.8; shopBuy(); return; }
   }
+  if (has(THANKS) && !has(BYE)){ bump('thanks'); clerk('どういたしまして！ いい子だねえ。'); SHOP.cool = S.now + 1; return; }
   if (has(BYE)) shopLeave();
 }
 function updateShop(dt){
@@ -1220,11 +1553,12 @@ function startChapter(i){
   S.chapter = i; S.kills = 0; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.quiz = null; S.burn = 0; S.evN = 0;
   S.hp = maxHp(S.lv); S.mp = maxMp(S.lv);
   const c = CH[i];
-  showCard([`だい${i + 1}しょう`, c.name, c.story], speechTime(c.story) + 1.5, () => {
+  const tag = c.region ? `${c.icon} ${c.pref}` : c.tag;
+  showCard([tag, c.name, c.story], speechTime(c.story) + 1.5, () => {
     S.state = 'field'; S.spawnT = 1; S.evT = c.evGap; S.shotT = c.shot || 0; sfx.start();
     if (i === 0) palMood('happy', 3, 'いっしょに いくよ！');
     if (i === 0){ say('プルリンが きた！ パンチで たおせ！', 2); tip(S.mode === 'cam' ? '👊 てきに むかって うでを つきだす → パンチ' : '👊 てきを タップ → パンチ', 8); }
-  }, `だい${i + 1}しょう。${c.name}。${c.story}`);
+  }, `${c.region ? c.pref : c.tag}。${c.name}。${c.story}`);
 }
 function startPose(){
   S.enemies.forEach(e => dots(e.x, e.y, 6, '#fff', 0.6)); S.enemies = []; S.shots = [];
@@ -1236,7 +1570,7 @@ function updatePose(dt){
   const p = S.pose; p.t -= dt;
   p.hold = poseOK(p.id) ? p.hold + dt : Math.max(0, p.hold - dt * 2);
   if (p.hold >= POSE_HOLD){
-    S.pose = null; S.cnt.pose++;
+    S.pose = null; S.cnt.pose++; bump('pose');
     const heal = Math.round(maxHp(S.lv) * 0.2); S.hp = Math.min(maxHp(S.lv), S.hp + heal);
     sfx.heal(); text(W / 2, H * 0.3, `ポーズ せいこう！ HP +${heal}`, '#b6ffb0', 30, 1.6);
     say('ナイス ポーズ！', 2); gainExp(2 * (S.chapter + 1));
@@ -1326,7 +1660,11 @@ function update(dt){
   S.fx = S.fx.filter(f => f.t < f.life);
   if (!S.running) return;
   if (S.state === 'shop'){ listen(!SHOP.leaving); updateShop(dt); return; }
+  checkCards(dt);
+  if (S.book){ listen(true); return; }
+  if (S.state === 'map'){ listen(true); updateMap(dt); return; }
   updatePal(dt);
+  if (S.rightUp && S.mode === 'cam'){ S.listenUntil = S.now + 0.8; S.bookHint = S.now + 0.8; }
   // 体が うつっていない間は 止めて待つ
   S.paused = cam && !P.seen;
   if (S.paused){ listen(false); return; }
@@ -1344,6 +1682,7 @@ function update(dt){
   // 名前は 手を上げる前や 上げながら さけんでも 間にあうように、じゅもんが つかえる間は ずっと 聞いておく
   if (cam && !S.noMic && magic && S.magicCD <= 0.4) S.listenUntil = S.now + 0.8;
   if (S.quiz && !S.noMic) S.listenUntil = S.now + 0.8;
+  if (S.combo > st('combo')) S.st.combo = S.combo;
   listen(S.now < S.listenUntil);
   if (S.mode === 'nocam'){ if (S.heard && S.now - S.heard.t < 0.3 && S.magicCD <= 0 && canMagic()) cast(S.heard.id); }
   else if (S.charge >= 1){
@@ -1358,14 +1697,20 @@ function update(dt){
 }
 function begin(){
   Object.keys(BUF).forEach(k => { BUF[k] = 0; });
-  Object.assign(S, { coin: 0, coinF: 0, fed: 0, quiz: null, qlv: 1, qStreak: 0, qMiss: 0 });
-  Object.assign(S, { running: true, time: 0, lv: 1, exp: 0, hp: maxHp(1), mp: 0, fx: [], hurt: 0, combo: 0, comboT: 0,
+  Object.assign(S, { coin: 0, coinF: 0, fed: 0, quiz: null, qlv: 1, qStreak: 0, qMiss: 0, cleared: [], next: null, book: false });
+  const pr = S.cont && SAVE.prog;
+  if (pr){
+    Object.assign(S, { lv: pr.lv, exp: pr.exp, coin: pr.coin, coinF: pr.coinF || 0, fed: pr.fed || 0, qlv: pr.qlv || 1, cleared: pr.cleared || [] });
+    Object.assign(BUF, pr.BUF || {});
+  }
+  Object.assign(S, { running: true, time: 0, lv: pr ? S.lv : 1, exp: pr ? S.exp : 0, hp: maxHp(pr ? S.lv : 1), mp: 0, fx: [], hurt: 0, combo: 0, comboT: 0,
     charge: 0, hold: 0, magicCD: 0, heard: null, shoutT: 0, listenUntil: 0, ready: false, spellIdx: 0, tip: '', tipUntil: 0,
     cnt: { punch: 0, slash: 0, jump: 0, duck: 0, dodge: 0, pose: 0, spell: 0, quiz: 0 } });
   sim.x = 0; P.baseY = null;
   $('title').classList.add('hide'); $('over').classList.add('hide');
-  $('pad').classList.toggle('show', S.mode === 'nocam'); buildPad();
-  startChapter(0);
+  $('pad').classList.toggle('show', S.mode === 'nocam'); buildPad(); $('bBook').classList.add('show');
+  if (pr){ S.hp = maxHp(S.lv); S.mp = maxMp(S.lv); if (pr.next === 'map') openMap(); else startChapter(pr.next); }
+  else startChapter(0);
 }
 function resultText(){
   const m = Math.floor(S.time / 60), s = Math.floor(S.time % 60), c = S.cnt;
@@ -1374,7 +1719,7 @@ function resultText(){
 function endPanel(title, retry){
   S.running = false; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.quiz = null; S.burn = 0; S.charge = 0; listen(false);
   $('overTitle').textContent = title; $('res').textContent = resultText();
-  $('bRetry').textContent = retry; $('pad').classList.remove('show'); $('over').classList.remove('hide');
+  $('bRetry').textContent = retry; $('pad').classList.remove('show'); $('bBook').classList.remove('show'); S.book = false; $('book').classList.add('hide'); $('over').classList.remove('hide');
 }
 function gameOver(){
   sfx.over(); say('ゆうしゃは たおれた。でも だいじょうぶ、つづきから やりなおせるよ。', 3);
@@ -1383,12 +1728,13 @@ function gameOver(){
 function ending(){
   S.state = 'end'; sfx.win(); say('せかいに えがおが もどった！ おつかれさま！ よく がんばったね！', 3);
   S.over = 'win'; endPanel('クリア！ おつかれさま！', 'はじめから あそぶ');
+  S.next = null; saveGame(true);
 }
 function retry(){
-  if (S.over === 'win'){ begin(); return; }
+  if (S.over === 'win'){ S.cont = false; begin(); return; }
   // この しょうの はじめから（レベルは そのまま）
   S.running = true; S.fx = []; S.hurt = 0; S.charge = 0; S.magicCD = 0; S.heard = null;
-  $('over').classList.add('hide'); $('pad').classList.toggle('show', S.mode === 'nocam'); buildPad();
+  $('over').classList.add('hide'); $('pad').classList.toggle('show', S.mode === 'nocam'); buildPad(); $('bBook').classList.add('show');
   startChapter(S.chapter);
 }
 
@@ -1577,6 +1923,7 @@ function draw(){
   const u = anchor.unit;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   if (!S.mode){ return; }
+  if (S.state === 'map' && S.running){ drawMap(); return; }
   if (S.burn > 0 && !battle){
     const al = Math.min(1, S.burn);
     for (let i = 0; i < 26; i++){
@@ -1675,7 +2022,7 @@ function draw(){
   // 上の表示
   drawStatus();
   ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-  outText(`だい${S.chapter + 1}しょう ${c.name}`, W - 12, 22, 15, '#fff', undefined, W - 210);
+  outText(`${c.region ? c.pref : c.tag}　${c.name}`, W - 12, 22, 15, '#fff', undefined, W - 210);
   if (S.state === 'field') outText(`ボスまで あと ${Math.max(0, c.quota - S.kills)}ひき`, W - 12, 48, 19, '#ffe35a', undefined, W - 210);
   ctx.textAlign = 'center';
   if (S.combo >= 3 && !battle){
@@ -1722,6 +2069,7 @@ function draw(){
     }
     return;
   }
+  if (S.bookHint > S.now && !S.book){ ctx.textAlign = 'center'; outText('📖「ブック」と いってね', W / 2, 140, 26, '#ffe35a'); }
   if (S.quiz) return;
   // 下の ひとこと
   const tips = cam
@@ -1747,7 +2095,7 @@ function frame(ts){
   update(dt); draw();
 }
 // テスト用：手動で1コマ進める／関節データを直接わたす
-window.__game = { S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, KOTO, BUF, GOODS, openShop, shopHear, PAL, startQuiz, quizAnswer, quizHear, parseNum, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
+window.__game = { S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, KOTO, BUF, GOODS, openShop, shopHear, PAL, startQuiz, quizAnswer, quizHear, parseNum, openMap, mapHear, pickPin, PINS, openBook, bookHear, CARDS, regionStart, bossDown, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
 const loop = ts => { frame(ts); requestAnimationFrame(loop); };
 requestAnimationFrame(loop);
 
@@ -1866,6 +2214,15 @@ $('bCam').onclick = startCam;
 $('bPhone').onclick = startPhone;
 $('bNoCam').onclick = () => { ensureAudio(); S.mode = 'nocam'; clearPose(); begin(); };
 $('bRetry').onclick = retry;
+$('bBook').onclick = () => { ensureAudio(); openBook(!S.book); };
+$('pBook').addEventListener('pointerdown', e => { e.preventDefault(); openBook(!S.book); });
+$('bookX').onclick = () => openBook(false);
+$('bookPrev').onclick = () => turnPage(-1); $('bookNext').onclick = () => turnPage(1);
+$('tCards').onclick = () => bookTab('cards'); $('tKoto').onclick = () => bookTab('koto');
+$('bookReset').onclick = () => { if (confirm('カード・ことわざずかん・つづきからの きろくを ぜんぶ けしますか？')){ SAVE = {}; S.cards = []; S.koto = []; S.st = {}; try { localStorage.removeItem(SAVE_KEY); } catch (e) {} renderBook(); } };
+$('mCont').onclick = () => { S.cont = true; showContRow(); }; $('mNew').onclick = () => { S.cont = false; showContRow(); };
+showContRow();
+RegionArt && RegionArt.ids.forEach(id => art('r_' + id)); RegionArt && RegionArt.bgs.forEach(id => art('bg_r_' + id));
 try { $('palName').value = localStorage.getItem('zq_pal') || ''; } catch (e) {}
 $('palName').addEventListener('input', () => { try { localStorage.setItem('zq_pal', $('palName').value.trim()); } catch (e) {} });
 $('bYes').onclick = () => { ensureAudio(); shopBuy(); };
@@ -1886,17 +2243,19 @@ $('bVoice').onclick = () => setVoice(!VOICE.on);
 try { if (localStorage.getItem('zenshinQuestVoice') === '0') setVoice(false); } catch (e) {}
 $('mEasy').onclick = () => setDiff('easy'); $('mHard').onclick = () => setDiff('hard');
 try { if (localStorage.getItem('zenshinQuestDiff') === 'hard') setDiff('hard'); } catch (e) {}
-$('bBack').onclick = () => { S.mode = null; S.state = 'title'; $('shop').classList.add('hide'); $('over').classList.add('hide'); $('title').classList.remove('hide'); };
+$('bBack').onclick = () => { S.mode = null; S.state = 'title'; S.book = false; $('book').classList.add('hide'); $('bBook').classList.remove('show'); showContRow(); $('shop').classList.add('hide'); $('over').classList.add('hide'); $('title').classList.remove('hide'); };
 
 // ---------- カメラなしの操作 ----------
 // タップ＝パンチ、なぞる＝剣、ボタン・キー＝よける・ガード・ポーズ・じゅもん
 let ptT = 0, ptOn = false;
 cv.addEventListener('pointerdown', e => {
+  if (S.state === 'map' && S.running){ mapClick(e.clientX, e.clientY); return; }
   if (S.mode !== 'nocam') return;
   punch(e.clientX, e.clientY);
   if (S.lv < SWORD_LV) return;
   ptOn = true; ptT = e.timeStamp; sword.vis = false; swordMove(e.clientX, e.clientY, e.clientX, e.clientY, 0.016);
 });
+cv.addEventListener('pointermove', e => { MAP.mx = e.clientX; MAP.my = e.clientY; MAP.mt = S.now; });
 cv.addEventListener('pointermove', e => {
   if (S.mode !== 'nocam' || !ptOn) return;
   swordMove(e.clientX, e.clientY, e.clientX, e.clientY, Math.max(0.004, (e.timeStamp - ptT) / 1000)); ptT = e.timeStamp;
@@ -1931,6 +2290,7 @@ holdBtn('pJ', () => { sim.jumpT = 0.5; }, () => {});
 holdBtn('pD', () => { sim.down = true; }, () => { sim.down = false; });
 holdBtn('pPose', () => { sim.pose = true; }, () => { sim.pose = false; });
 const KEYS = {
+  KeyB: v => { if (v) openBook(!S.book); },
   KeyG: v => { S.padGuard = v; }, ArrowLeft: v => { sim.l = v; }, ArrowRight: v => { sim.r = v; },
   ArrowUp: v => { if (v) sim.jumpT = 0.5; }, ArrowDown: v => { sim.down = v; }, KeyP: v => { sim.pose = v; }
 };
@@ -1938,6 +2298,7 @@ KEYS.KeyA = KEYS.ArrowLeft; KEYS.KeyD = KEYS.ArrowRight; KEYS.KeyW = KEYS.ArrowU
 addEventListener('keydown', e => {
   if (S.mode !== 'nocam' || e.repeat) return;
   if (KEYS[e.code]){ KEYS[e.code](true); e.preventDefault(); }
+  if (S.book){ if (e.code === 'ArrowRight') turnPage(1); else if (e.code === 'ArrowLeft') turnPage(-1); else if (e.code === 'Escape') openBook(false); if (e.code !== 'KeyB') return; }
   if (S.quiz){ const d = ['Digit0', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9'].indexOf(e.code); if (d >= 0) quizAnswer(d || 10); return; }
   const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7'].indexOf(e.code); if (k >= 0) S.heard = { id: ORDER[k], t: S.now };
 });
