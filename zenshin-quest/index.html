@@ -90,6 +90,7 @@
     <div>👹 てきを たおしきると <b>ボスと 1対1</b>。ぜんぶの わざで たたかえ！</div>
     <div>🗾 <b>ちず</b>で 行き先を えらぶ（声で「ぐんま」、手を かざす、クリック）</div>
     <div>📖 <b>右手だけ 上げて「ブック」</b> … カードと ことわざずかんを 見る</div>
+    <div>🎯 ぐんまの ボスを たおすと ミニゲーム <b>だるまおとし</b>が ひらく</div>
   </div>
   <div class="modes" id="contRow" style="display:none"><button id="mCont" class="sub on">▶ つづきから</button><button id="mNew" class="sub">はじめから</button></div>
   <div class="modes"><button id="mEasy" class="sub on">かんたん</button><button id="mHard" class="sub">むずかしい</button></div>
@@ -504,6 +505,7 @@ function hear(str){
   if (S.state === 'shop'){ shopHear(str); return null; }
   if (bookHear(str)) return null;
   if (S.state === 'map'){ mapHear(str); return null; }
+  if (S.state === 'daruma'){ dgHear(str); return null; }
   if (S.quiz){ quizHear(str); return null; }
   const n = norm(str);
   // あんないの声を マイクが ひろって、じゅもんが 勝手に 出ないようにする
@@ -598,7 +600,12 @@ function onPose(lm, dt){
   // みぎ手だけ 頭より上（ひだり手は 肩より下）→「ブック」を 聞く
   S.rightUp = rw.v > 0.4 && rw.y < nose.y && !(lw.v > 0.4 && lw.y < ls.y);
   // りょう手を にぎり合わせる → 剣（レベル SWORD_LV から）
-  const grip = S.lv >= SWORD_LV && lw.v > GRIP_VIS && rw.v > GRIP_VIS && !S.poseGuard && gap < unit * (sword.on ? GRIP_OUT : GRIP_IN);
+  // だるまおとし：手を たたく（りょう手首が ちかづく）＝みどり
+  if (S.state === 'daruma' && both){
+    if (gap > unit * 0.9) S.clapArm = true;
+    else if (S.clapArm && gap < unit * 0.45){ S.clapArm = false; dgHit(1); }
+  }
+  const grip = S.state !== 'daruma' && S.lv >= SWORD_LV && lw.v > GRIP_VIS && rw.v > GRIP_VIS && !S.poseGuard && gap < unit * (sword.on ? GRIP_OUT : GRIP_IN);
   sword.hold = grip ? sword.hold + dt : 0;
   sword.on = grip && (sword.on || sword.hold > 0.08);
   S.dbg = `手の間 ${(gap / unit).toFixed(2)}　上下 ${P.lift.toFixed(2)}　${sword.on ? '剣' : S.poseGuard ? 'ガード' : S.poseMagic ? 'まほう' : 'パンチ'}`;
@@ -639,7 +646,7 @@ function feedHand(i, x, y, fwd, dt, vis, sx = 0, sy = 0){
   if (sp < PUNCH_REARM || dot(v, np) <= 0){ h.org = np; h.armed = true; return; }
   if (h.armed && sp > PUNCH_SPEED && Math.hypot(np[0] - h.org[0], np[1] - h.org[1], np[2] - h.org[2]) > PUNCH_DIST && S.now - h.punchAt > PUNCH_GAP){
     h.armed = false; h.punchAt = S.now;
-    punch(h.x, h.y);
+    punch(h.x, h.y, i);
   }
 }
 
@@ -733,8 +740,9 @@ function place(e){
   e.x = clamp(anchor.x + e.ux * anchor.unit, e.r, W - e.r);
   e.y = clamp(anchor.y + e.uy * anchor.unit + Math.sin(S.now * 3 + e.wob) * e.r * 0.08, e.r + 110, H - e.r - 50);
 }
-function punch(x, y){
+function punch(x, y, i){
   if (!S.running) return;
+  if (S.state === 'daruma'){ if (i != null) dgHit(i === 0 ? 0 : 2); return; }   // ひだり手を ふる＝赤、みぎ手を ふる＝青
   S.cnt.punch++;
   S.fx.push({ kind: 'fist', x, y, rot: (Math.random() - 0.5) * 0.8, size: anchor.unit * 0.8, t: 0, life: 0.18 });
   if (inBattle()){ bossDamage(atkOf(S.lv), x, y); return; }
@@ -983,6 +991,7 @@ function updatePal(dt){
   const u = anchor.unit, battle = inBattle(), padH = S.mode === 'nocam' ? 96 : 0;
   let tx, ty;
   if (battle){ tx = W * 0.12 + 30; ty = H - 150 - padH; }
+  else if (S.state === 'daruma'){ tx = W - palR() - 30; ty = H - padH - palR() - 150; }
   else if (S.quiz){ tx = W - palR() - 24; ty = H - padH - palR() - 34; }
   else if (S.mode === 'nocam'){ tx = P.x + u * 1.7; ty = P.y + P.T * 1.1; }
   else { const side = anchor.x < W / 2 ? 1 : -1; tx = anchor.x + side * u * 2; ty = anchor.y + u * 1.6; }
@@ -1260,6 +1269,8 @@ const CARDS = [
   { id: 'koto',   icon: '📜', name: 'ことわざ デビュー',   how: 'ことわざを さけんで まほうを だす', ok: () => S.koto.length >= 1 },
   { id: 'pose',   icon: '🧍', name: 'ポーズ きまった！',   how: '「この ポーズ！」の ポーズを きめる', ok: () => st('pose') >= 1 },
   bossCard('gunma', '🎎', 'ぐんま クリア', 'ぐんまで だるま だいおうを たおす', 'daruma'),
+  { id: 'dgplay', icon: '🎯', name: 'だるまおとし デビュー', how: 'ぐんまの ボスを たおして、ちずの 🎯 だるまおとしで 1かい せいこう', ok: () => st('dgClear') >= 1 },
+  { id: 'dg5',    icon: '🏮', name: 'だるまおとし めいじん', how: 'だるまおとしで 5だんかい まで いく', ok: () => st('dgBest') >= 5 },
   bossCard('yokohama', '🎡', 'よこはま クリア', 'よこはまで だいかんらんしゃを たおす', 'wheel'),
   bossCard('chiba', '🍐', 'ちば クリア', 'ちばで なしの おうさまを たおす', 'nashi'),
   bossCard('tokyo', '🗼', 'とうきょう クリア', 'とうきょうで タワー きょじんを たおす', 'tower'),
@@ -1368,6 +1379,7 @@ const PINS = [
   { ch: 4, name: 'よこはま', icon: '🥟', x: 0.59, y: 0.71, al: ['ヨコハマ', '横浜'] },
   { ch: 5, name: 'ちば', icon: '🥜', x: 0.80, y: 0.64, al: ['チバ', '千葉'] },
   { ch: 7, name: 'ほっかいどう', icon: '⛄', x: 0.82, y: 0.16, al: ['ホッカイドウ', '北海道', 'ホッカイド'] },
+  { ch: 'dg', name: 'だるまおとし', icon: '🎯', x: 0.43, y: 0.33, al: ['ダルマオトシ', 'だるま落とし', 'ダルマ落トシ', 'ダルマ'], mini: true },
   { ch: 1, name: 'まおうの しま', icon: '🏰', x: 0.17, y: 0.30, al: ['マオウ', '魔王', 'シロ', '城', 'シマ', '島'], castle: true }
 ];
 PINS.forEach(p => { p.n = p.al.map(norm); });
@@ -1379,13 +1391,17 @@ function openMap(){
   Object.assign(MAP, { hover: null, hoverT: 0, sel: null, selT: 0 });
   S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.quiz = null; S.charge = 0;
   sfx.dq();
-  say(castleOpen() ? 'ぜんぶの ちほうを クリアした！ まおうの しまへ いこう！' : 'どこへ いく？ いきたい ところを いってね。', 3);
+  if (dgOpen() && !st('dgUnlockSaid')){ bump('dgUnlockSaid'); say('ミニゲーム、だるまおとしが あそべるように なったよ！ ちずの まとを えらんでね。', 3); text(W / 2, H * 0.3, '🎯 ミニゲーム「だるまおとし」が ひらいた！', '#ffe35a', 26, 4); }
+  else say(castleOpen() ? 'ぜんぶの ちほうを クリアした！ まおうの しまへ いこう！' : 'どこへ いく？ いきたい ところを いってね。', 3);
 }
 function mapRect(){ const padH = S.mode === 'nocam' ? 96 : 0, my = 64, mh = H - my - 16 - padH, mw = Math.min(W - 24, mh * 1.6); return { mx: (W - mw) / 2, my, mw, mh }; }
 function pinXY(p){ const r = mapRect(); return [r.mx + p.x * r.mw, r.my + p.y * r.mh]; }
 const pinR = () => clamp(Math.min(W, H) * 0.06, 22, 44);
+const dgOpen = () => st('boss_daruma') >= 1;
+const pinsNow = () => PINS.filter(p => !p.mini || dgOpen());
 function pickPin(p){
   if (MAP.sel || !p) return;
+  if (p.mini && !dgOpen()) return;
   if (p.ch === 0){ say('はじまりの むらは もう へいわだよ。ほかの ところへ いこう！', 2); return; }
   if (p.castle && !castleOpen()){ sfx.denied(); say(`まおうの しまは まだ いけないよ。ちほうを あと ${REGION_IDX.length - regionsDone()}つ クリアしてね。`, 3); return; }
   MAP.sel = p; MAP.selT = 1.8; sfx.ready();
@@ -1394,14 +1410,15 @@ function pickPin(p){
 function mapHear(str){
   if (S.now < VOICE.until + 0.3) return;
   const n = norm(str);
-  pickPin(PINS.find(p => p.n.some(w => n.includes(w))));
+  pickPin(pinsNow().find(p => p.n.some(w => n.includes(w))));
 }
-function mapClick(x, y){ const R = pinR(); pickPin(PINS.find(p => { const [px, py] = pinXY(p); return Math.hypot(px - x, py - y) < R * 1.2; })); }
+function mapClick(x, y){ const R = pinR(); pickPin(pinsNow().find(p => { const [px, py] = pinXY(p); return Math.hypot(px - x, py - y) < R * 1.2; })); }
 function updateMap(dt){
   if (MAP.sel){
     MAP.selT -= dt;
     if (MAP.selT <= 0){
       const ch = MAP.sel.ch; MAP.sel = null;
+      if (ch === 'dg'){ startDaruma(); return; }
       if (CH[ch].region) regionStart(ch, Math.min(5, regionsDone() + (S.cleared.includes(ch) ? 0 : 1)) || 1);
       startChapter(ch);
     }
@@ -1412,7 +1429,7 @@ function updateMap(dt){
   if (S.mode === 'cam' && S.body && J.lw && J.rw){ [J.lw, J.rw].forEach(w => { if (w.v > 0.4) pts.push([w.x, w.y]); }); }
   if (S.now - MAP.mt < 1.5) pts.push([MAP.mx, MAP.my]);
   const R = pinR();
-  const hov = PINS.find(p => { const [px, py] = pinXY(p); return pts.some(([x, y]) => Math.hypot(px - x, py - y) < R * 1.3); });
+  const hov = pinsNow().find(p => { const [px, py] = pinXY(p); return pts.some(([x, y]) => Math.hypot(px - x, py - y) < R * 1.3); });
   if (hov && hov === MAP.hover){ MAP.hoverT += dt; if (MAP.hoverT > 1.2){ MAP.hoverT = 0; pickPin(hov); } }
   else { MAP.hover = hov || null; MAP.hoverT = 0; }
 }
@@ -1446,7 +1463,7 @@ function drawMap(){
   [[0.50, 0.40], [0.47, 0.52], [0.40, 0.60], [0.30, 0.72]].forEach(([x, y]) => { const px = r.mx + x * r.mw, py = r.my + y * r.mh; ctx.beginPath(); ctx.moveTo(px - 14, py + 8); ctx.lineTo(px, py - 12); ctx.lineTo(px + 14, py + 8); ctx.fill(); });
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   outText('🗾 どこへ いく？', W / 2, 30, 26, '#ffe35a');
-  for (const p of PINS){
+  for (const p of pinsNow()){
     const [x, y] = pinXY(p), done = S.cleared.includes(p.ch), locked = p.castle && !castleOpen(), hov = MAP.hover === p, sel = MAP.sel === p;
     const pulse = !done && !locked && p.ch !== 0 ? 1 + Math.sin(t * 4) * 0.06 : 1, rr = R * pulse * (sel ? 1.25 : hov ? 1.12 : 1);
     ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(x, y + rr * 0.95, rr * 0.8, rr * 0.22, 0, 0, 6.28); ctx.fill();
@@ -1455,6 +1472,7 @@ function drawMap(){
     ctx.font = `${Math.round(rr * 1.05)}px sans-serif`; ctx.fillStyle = '#000'; ctx.globalAlpha = locked ? 0.5 : 1; ctx.fillText(p.icon, x, y + 2); ctx.globalAlpha = 1;
     if (locked){ ctx.font = `${Math.round(rr * 0.6)}px sans-serif`; ctx.fillText('🔒', x + rr * 0.7, y - rr * 0.7); }
     if (done){ ctx.font = `${Math.round(rr * 0.6)}px sans-serif`; ctx.fillText('⭐', x + rr * 0.75, y - rr * 0.75); }
+    if (p.mini && !st('dgPlay')){ ctx.fillStyle = '#ff5a6a'; ctx.beginPath(); ctx.roundRect(x - rr * 0.9, y - rr * 1.45, rr * 1.8, rr * 0.55, 8); ctx.fill(); ctx.font = `700 ${Math.round(rr * 0.38)}px sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText('NEW!', x, y - rr * 1.17); }
     outText(p.name, x, y + rr + 16, Math.max(14, Math.round(R * 0.45)), locked ? '#bbb' : '#fff');
     if (hov && MAP.hoverT > 0){ ctx.strokeStyle = '#ffe35a'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(x, y, rr + 9, -Math.PI / 2, -Math.PI / 2 + 6.28 * MAP.hoverT / 1.2); ctx.stroke(); }
   }
@@ -1466,6 +1484,184 @@ function drawMap(){
   const padH = S.mode === 'nocam' ? 96 : 0;
   outText(`ちほう クリア ${regionsDone()} / ${REGION_IDX.length}　　🪙 ${S.coin}まい　Lv ${S.lv}`, W / 2, H - 18 - padH, 17, '#fff');
   if (!MAP.sel) outText(S.mode === 'cam' ? '「ぐんま」のように いうか、手を かざしてね' : '「ぐんま」のように いうか、クリック してね', W / 2, 58, 16, '#cfe0ff');
+  drawTextFx();
+}
+
+
+// ---------- ミニゲーム：だるまおとし（ぐんまの ボスを たおすと ひらく） ----------
+// いちばん下の つみきと 同じ色で たたく：ひだり手を ふる＝あか、手を たたく＝みどり、みぎ手を ふる＝あお
+// 「つみき！ぬいて！ネコおろし！ ぜんしん版」と 同じ そうさ
+const DG_COL = [{ c: '#e8463a', d: '#a8241c', l: '#ff9a8a' }, { c: '#3fbf4a', d: '#1f7a2a', l: '#9ae89a' }, { c: '#3a7be8', d: '#1a3ea8', l: '#9ac0ff' }];
+const DG_PATS = [[0, 1, 2], [0, 0, 1, 1, 2, 2], [0, 1, 0, 2], [0, 1, 2, 1], [0, 0, 1, 2]];
+const DG = { phase: 'off', stage: 1, lives: 3, coins: 0, stack: [], n: 0, BH: 30, drop: 0, fly: [], time: 0, timeMax: 1, stun: 0, wob: 0, t: 0, cd: 0, hammer: null, press: [0, 0, 0], hold: 0, best: 0 };
+function dgStack(n){
+  const a = [];
+  while (a.length < n){ const p = pick(DG_PATS), m = [0, 1, 2].sort(() => Math.random() - 0.5); for (const k of p) a.push(m[k]); }
+  return a.slice(0, n);
+}
+function startDaruma(){
+  S.state = 'daruma'; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.quiz = null; S.charge = 0;
+  Object.assign(DG, { stage: 1, lives: 3, coins: 0, best: 0 });
+  bump('dgPlay'); dgStage();
+}
+function dgStage(){
+  const n = 4 + DG.stage * 2, padH = S.mode === 'nocam' ? 96 : 0, floor = H - padH - 120;
+  Object.assign(DG, { phase: 'ready', t: 0, cd: 0, stack: dgStack(n), n, drop: 0, fly: [], stun: 0, wob: 0, hammer: null,
+    BH: clamp((floor - 200) / (n + 3), 16, 44), timeMax: Math.round(n * Math.max(0.9, 2.4 - DG.stage * 0.25) + 3) });
+  DG.time = DG.timeMax; buildPad();
+  say(DG.stage === 1 ? 'だるまおとし！ したの いろを たたこう！' : `だんかい ${DG.stage}！`, 3);
+}
+function dgHit(c){
+  if (DG.phase === 'over'){ if (c === 1) startDaruma(); return; }
+  DG.press[c] = 0.15;
+  if (DG.phase !== 'play' || DG.stun > 0) return;
+  if (DG.stack[0] === c){
+    DG.stack.shift();
+    const side = c === 2 ? 1 : -1;   // みぎ手なら みぎから たたいて ひだりへ とぶ
+    DG.fly.push({ c, x: 0, y: 0, vx: -side * (900 + Math.random() * 300), vy: -200 - Math.random() * 150, rot: 0, vr: -side * (8 + Math.random() * 6), t: 0 });
+    DG.drop += DG.BH; DG.hammer = { side, t: 0.15 };
+    sfx.hit(); tone(880 + Math.random() * 120, 0.06, 'square', 0.08);
+    if (!DG.stack.length){
+      DG.phase = 'clear'; DG.t = 2.4; DG.coins++; S.coin++; bump('dgClear'); DG.best = DG.stage;
+      S.st.dgBest = Math.max(st('dgBest'), DG.stage);
+      sfx.win(); say('せいこう！ じゅうえんだま ゲット！', 3); palMood('happy', 2.4, 'すごーい！');
+    }
+  } else {
+    DG.stun = 0.45; DG.wob = 0.5; sfx.denied(); palMood('cry', 0.8, 'ちがうよ〜');
+  }
+}
+function dgTap(x, y){
+  if (DG.phase === 'over'){ x < W / 2 ? endDaruma() : startDaruma(); return; }
+  dgHit(x < W / 3 ? 0 : x < W * 2 / 3 ? 1 : 2);
+}
+function dgHear(str){
+  if (DG.phase !== 'over' || S.now < VOICE.until + 0.3) return;
+  const n = norm(str);
+  if (/モウイチド|モウ一度|モウイッカイ|モウ1回|ツヅケ/.test(n)) startDaruma();
+  else if (/チズ|地図|オワリ|終ワリ|モドル|戻ル/.test(n)) endDaruma();
+}
+function endDaruma(){ DG.phase = 'off'; saveGame(); openMap(); buildPad(); }
+function updateDaruma(dt){
+  DG.press = DG.press.map(v => Math.max(0, v - dt)); DG.stun = Math.max(0, DG.stun - dt); DG.wob = Math.max(0, DG.wob - dt);
+  if (DG.hammer){ DG.hammer.t -= dt; if (DG.hammer.t <= 0) DG.hammer = null; }
+  if (DG.drop > 0) DG.drop = Math.max(0, DG.drop - dt * Math.max(250, DG.drop * 22));
+  DG.fly.forEach(f => { f.t += dt; f.x += f.vx * dt; f.vy += 1600 * dt; f.y += f.vy * dt; f.rot += f.vr * dt; });
+  DG.fly = DG.fly.filter(f => f.t < 1.4);
+  const away = S.mode === 'cam' && !P.seen;   // うつっていない 間は とけいを とめる
+  if (DG.phase === 'ready'){
+    // さいしょの あんないが おわってから 3・2・1
+    if (DG.cd === 0 && S.now <= VOICE.until) DG.t = 0; else DG.t += dt;
+    const step = DG.t > 0.5 ? Math.floor((DG.t - 0.5) / 0.8) + 1 : 0;
+    if (step > DG.cd){ DG.cd = step; if (step >= 4){ DG.phase = 'play'; sfx.start(); } else { say(['さん', 'に', 'いち'][step - 1], 2); sfx.dq(); } }
+  } else if (DG.phase === 'play'){
+    if (!away) DG.time -= dt;
+    if (DG.time <= 0){
+      DG.time = 0; DG.lives--; DG.phase = 'fail'; DG.t = 2.4;
+      sfx.denied(); say(DG.lives > 0 ? 'じかんぎれ！ もういちど！' : 'じかんぎれ！', 3); palMood('cry', 1.6, 'おしい〜');
+    }
+  } else if (DG.phase === 'clear' || DG.phase === 'fail'){
+    DG.t -= dt;
+    if (DG.t <= 0){
+      if (DG.phase === 'clear'){ DG.stage++; dgStage(); }
+      else if (DG.lives <= 0){
+        DG.phase = 'over'; buildPad(); saveGame();
+        say(`おしまい！ ${DG.best}だんかい まで いけたね。じゅうえんだま ${DG.coins}まい ゲット！`, 3);
+      } else dgStage();
+    }
+  } else if (DG.phase === 'over'){
+    // りょう手を 上げて 1.2びょうで ちずへ
+    DG.hold = S.mode === 'cam' && S.poseMagic ? DG.hold + dt : 0;
+    if (DG.hold > 1.2){ DG.hold = 0; endDaruma(); }
+  }
+}
+function dgBlock(c, x, y, w, h){
+  const t = DG_COL[c];
+  ctx.fillStyle = t.d; ctx.beginPath(); ctx.roundRect(x - w / 2, y - h / 2, w, h, Math.min(10, h * 0.4)); ctx.fill();
+  ctx.fillStyle = t.c; ctx.beginPath(); ctx.roundRect(x - w / 2, y - h / 2, w, h * 0.78, Math.min(10, h * 0.4)); ctx.fill();
+  ctx.fillStyle = t.l; ctx.globalAlpha = 0.8; ctx.fillRect(x - w / 2 + 10, y - h / 2 + 2, w - 20, Math.max(2, h * 0.14)); ctx.globalAlpha = 1;
+  ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(x - w / 2, y - h / 2, w, h, Math.min(10, h * 0.4)); ctx.stroke();
+}
+function drawDaruma(){
+  const padH = S.mode === 'nocam' ? 96 : 0, floor = H - padH - 120, cx = W / 2, BW = clamp(W * 0.26, 140, 300), BH = DG.BH, t = S.now;
+  // へや：しょうじと たたみ
+  const wall = ctx.createLinearGradient(0, 0, 0, floor); wall.addColorStop(0, '#fdf3dc'); wall.addColorStop(1, '#f2dfb4');
+  ctx.fillStyle = wall; ctx.fillRect(0, 0, W, floor);
+  ctx.strokeStyle = 'rgba(160,120,70,.35)'; ctx.lineWidth = 3;
+  for (let x = 0; x < W; x += 70){ ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, floor); ctx.stroke(); }
+  for (let y = 60; y < floor; y += 90){ ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  ctx.fillStyle = '#c9b26a'; ctx.fillRect(0, floor, W, H - floor);
+  ctx.strokeStyle = 'rgba(90,70,30,.35)'; ctx.lineWidth = 2;
+  for (let x = 0; x < W; x += 12){ ctx.beginPath(); ctx.moveTo(x, floor); ctx.lineTo(x, H); ctx.stroke(); }
+  ctx.fillStyle = '#5a7a3a'; ctx.fillRect(0, floor, W, 8);
+  // つみきと だるま
+  const sway = DG.wob > 0 ? Math.sin(t * 50) * 6 : 0;
+  ctx.save(); ctx.translate(sway, 0);
+  for (let k = 0; k < DG.stack.length; k++){
+    const y = floor - k * BH - BH / 2 - DG.drop;
+    if (y < -BH) break;
+    dgBlock(DG.stack[k], cx, y, BW, BH - 2);
+  }
+  const topY = floor - DG.stack.length * BH - DG.drop, sz = BW * 0.78;
+  drawArt(DG.phase === 'fail' || DG.phase === 'over' ? 'r_daruma2' : 'r_daruma1', cx, topY - sz * 1.3 * 0.317 + (DG.phase === 'clear' ? -Math.abs(Math.sin(t * 8)) * 20 : 0), sz);
+  ctx.restore();
+  // とんでいく つみき
+  for (const f of DG.fly){ ctx.save(); ctx.translate(cx + f.x, floor - BH / 2 + f.y); ctx.rotate(f.rot); dgBlock(f.c, 0, 0, BW, BH - 2); ctx.restore(); }
+  // きづち
+  if (DG.hammer){
+    const sd = DG.hammer.side, hx = cx + sd * (BW / 2 + 40), hy = floor - BH / 2;
+    ctx.fillStyle = '#8a5a2b'; ctx.fillRect(sd > 0 ? hx : hx - 80, hy - 5, 80, 10);
+    ctx.fillStyle = '#e8b04a'; ctx.beginPath(); ctx.roundRect(hx - 14, hy - 22, 28, 44, 6); ctx.fill();
+    ctx.fillStyle = '#c48a2a'; ctx.fillRect(hx - 14, hy - 4, 28, 8);
+    ctx.textAlign = 'center'; outText('カン！', hx, hy - 46, 30, '#fff');
+  }
+  // 上の 表示
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  outText(`🎯 だるまおとし　だんかい ${DG.stage}`, cx, 26, 24, '#b3282d', 'rgba(255,255,255,.9)');
+  outText('❤️'.repeat(Math.max(0, DG.lives)) + '🤍'.repeat(Math.max(0, 3 - DG.lives)) + `　🪙 +${DG.coins}`, cx, 58, 20, '#23306b', 'rgba(255,255,255,.9)');
+  const bw = Math.min(420, W - 40), bx = (W - bw) / 2;
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(bx, 80, bw, 12);
+  ctx.fillStyle = DG.time < 4 ? '#ff5a4a' : '#3fbf4a'; ctx.fillRect(bx, 80, bw * DG.time / DG.timeMax, 12);
+  // 下の 3つの あいず
+  const lab = S.mode === 'cam' ? ['👈 ひだり手を ふる', '👏 手を たたく', 'みぎ手を ふる 👉'] : ['1 / ひだり', '2 / まんなか', '3 / みぎ'];
+  const need = DG.phase === 'play' ? DG.stack[0] : -1;
+  for (let i = 0; i < 3; i++){
+    const x = W / 6 + i * W / 3, y = H - padH - 60, r = Math.min(46, W * 0.07) * (need === i ? 1 + Math.sin(t * 8) * 0.06 : 1), pr = DG.press[i] > 0;
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.arc(x, y + 6, r, 0, 6.28); ctx.fill();
+    ctx.globalAlpha = DG.stun > 0 ? 0.5 : 1;
+    ctx.fillStyle = pr ? DG_COL[i].d : DG_COL[i].c; ctx.beginPath(); ctx.arc(x, y + (pr ? 4 : 0), r, 0, 6.28); ctx.fill();
+    if (need === i){ ctx.strokeStyle = '#ffe35a'; ctx.lineWidth = 6; ctx.stroke(); }
+    ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.arc(x, y + (pr ? 4 : 0), r * 0.62, 0, 6.28); ctx.fill();
+    dgBlock(i, x, y + (pr ? 4 : 0), r * 0.85, r * 0.36);
+    ctx.globalAlpha = 1;
+    outText(lab[i], x, y - r - 16, 17, '#fff');
+  }
+  // まんなかの 文字
+  if (DG.phase === 'ready'){ const c = DG.cd >= 1 && DG.cd <= 3 ? String(4 - DG.cd) : `だんかい ${DG.stage}`; outText(c, cx, H * 0.38, 64, '#ffe35a'); }
+  else if (DG.phase === 'play' && DG.time > DG.timeMax - 1) outText('スタート！', cx, H * 0.38, 56, '#fff');
+  else if (DG.phase === 'clear') outText('せいこう！ 🪙+1', cx, H * 0.36, 52, '#ffe35a');
+  else if (DG.phase === 'fail') outText('じかんぎれ…', cx, H * 0.36, 46, '#fff');
+  else if (DG.phase === 'play' && DG.stun > 0) outText('ブッブー！', cx, H * 0.42, 40, '#999');
+  if (DG.phase === 'play' && S.mode === 'cam' && !P.seen) outText('ぜんしんが うつるように はなれてね（とけいは とまっているよ）', cx, H * 0.5, 22, '#b3282d', 'rgba(255,255,255,.9)');
+  if (DG.phase === 'over'){
+    const w = Math.min(560, W - 30), h = 200, x = (W - w) / 2, y = H * 0.24;
+    box(x, y, w, h);
+    outText('だるまおとし おしまい！', cx, y + 40, 28, '#ffe35a');
+    outText(`${DG.best}だんかい まで いけた！　🪙 10円玉 ${DG.coins}まい ゲット`, cx, y + 86, 20, '#fff');
+    outText(`いちばん とおくまで：${st('dgBest')}だんかい`, cx, y + 118, 16, '#cfe0ff');
+    outText(S.mode === 'cam' ? '👏 手を たたくと もういちど ／ 🙌 りょう手を 上げると ちずへ' : '「もういちど」「ちず」と いうか、下の ボタン', cx, y + 162, 16, '#fff');
+    if (DG.hold > 0){ ctx.fillStyle = '#8ff0ff'; ctx.fillRect(x + 20, y + h - 12, (w - 40) * DG.hold / 1.2, 6); }
+  }
+  drawPal();
+  drawTextFx();
+}
+// 文字の fx だけを かく（ちず・ミニゲーム用）
+function drawTextFx(){
+  for (const f of S.fx){
+    if (f.kind !== 'text') continue;
+    const a = 1 - f.t / f.life;
+    ctx.font = `700 ${f.size}px sans-serif`; ctx.globalAlpha = a; ctx.lineWidth = 4; ctx.strokeStyle = '#23306b'; ctx.textAlign = 'center';
+    ctx.strokeText(f.str, f.x, f.y - f.t * 40); ctx.fillStyle = f.col; ctx.fillText(f.str, f.x, f.y - f.t * 40); ctx.globalAlpha = 1;
+  }
 }
 
 // ---------- まちの おみせ（声で かいもの） ----------
@@ -1663,6 +1859,7 @@ function update(dt){
   checkCards(dt);
   if (S.book){ listen(true); return; }
   if (S.state === 'map'){ listen(true); updateMap(dt); return; }
+  if (S.state === 'daruma'){ listen(DG.phase === 'over'); updatePal(dt); updateDaruma(dt); return; }
   updatePal(dt);
   if (S.rightUp && S.mode === 'cam'){ S.listenUntil = S.now + 0.8; S.bookHint = S.now + 0.8; }
   // 体が うつっていない間は 止めて待つ
@@ -1924,6 +2121,7 @@ function draw(){
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   if (!S.mode){ return; }
   if (S.state === 'map' && S.running){ drawMap(); return; }
+  if (S.state === 'daruma' && S.running){ drawDaruma(); return; }
   if (S.burn > 0 && !battle){
     const al = Math.min(1, S.burn);
     for (let i = 0; i < 26; i++){
@@ -2095,7 +2293,7 @@ function frame(ts){
   update(dt); draw();
 }
 // テスト用：手動で1コマ進める／関節データを直接わたす
-window.__game = { S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, KOTO, BUF, GOODS, openShop, shopHear, PAL, startQuiz, quizAnswer, quizHear, parseNum, openMap, mapHear, pickPin, PINS, openBook, bookHear, CARDS, regionStart, bossDown, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
+window.__game = { DG, startDaruma, dgHit, endDaruma, S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, KOTO, BUF, GOODS, openShop, shopHear, PAL, startQuiz, quizAnswer, quizHear, parseNum, openMap, mapHear, pickPin, PINS, openBook, bookHear, CARDS, regionStart, bossDown, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
 const loop = ts => { frame(ts); requestAnimationFrame(loop); };
 requestAnimationFrame(loop);
 
@@ -2250,6 +2448,7 @@ $('bBack').onclick = () => { S.mode = null; S.state = 'title'; S.book = false; $
 let ptT = 0, ptOn = false;
 cv.addEventListener('pointerdown', e => {
   if (S.state === 'map' && S.running){ mapClick(e.clientX, e.clientY); return; }
+  if (S.state === 'daruma' && S.running){ dgTap(e.clientX, e.clientY); return; }
   if (S.mode !== 'nocam') return;
   punch(e.clientX, e.clientY);
   if (S.lv < SWORD_LV) return;
@@ -2264,6 +2463,12 @@ cv.addEventListener('pointermove', e => {
 function buildPad(){
   const box = $('padSpells'); box.innerHTML = '';
   if (S.mode !== 'nocam') return;
+  if (S.state === 'daruma'){
+    const add = (t, f, col) => { const b = document.createElement('button'); b.textContent = t; if (col) b.style.background = col; b.addEventListener('pointerdown', e => { e.preventDefault(); f(); }); box.appendChild(b); };
+    if (DG.phase === 'over'){ add('🗾 ちずへ', endDaruma); add('🔁 もういちど', startDaruma); }
+    else DG_COL.forEach((c, i) => add(['あか', 'みどり', 'あお'][i], () => dgHit(i), c.c));
+    return;
+  }
   if (S.quiz){
     for (let n = 1; n <= 10; n++){
       const b = document.createElement('button'); b.textContent = n;
@@ -2299,6 +2504,7 @@ addEventListener('keydown', e => {
   if (S.mode !== 'nocam' || e.repeat) return;
   if (KEYS[e.code]){ KEYS[e.code](true); e.preventDefault(); }
   if (S.book){ if (e.code === 'ArrowRight') turnPage(1); else if (e.code === 'ArrowLeft') turnPage(-1); else if (e.code === 'Escape') openBook(false); if (e.code !== 'KeyB') return; }
+  if (S.state === 'daruma'){ const d = { Digit1: 0, KeyZ: 0, ArrowLeft: 0, Digit2: 1, KeyX: 1, ArrowDown: 1, Space: 1, Digit3: 2, KeyC: 2, ArrowRight: 2 }[e.code]; if (d != null){ e.preventDefault(); dgHit(d); } if (e.code === 'Escape' && DG.phase === 'over') endDaruma(); return; }
   if (S.quiz){ const d = ['Digit0', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9'].indexOf(e.code); if (d >= 0) quizAnswer(d || 10); return; }
   const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7'].indexOf(e.code); if (k >= 0) S.heard = { id: ORDER[k], t: S.now };
 });
