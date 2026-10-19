@@ -23,6 +23,23 @@
   .modes button.on{background:#8ff0ff;box-shadow:0 5px 0 #3c9db0}
   #pad{position:absolute;left:0;right:0;bottom:8px;display:none;justify-content:center;flex-wrap:wrap;gap:6px;padding:0 8px}
   #pad.show{display:flex}
+  #shop{justify-content:flex-start;gap:10px}
+  .shopHead{display:flex;align-items:flex-end;gap:12px;max-width:640px;width:100%}
+  .clerk{font-size:clamp(54px,13vw,84px);line-height:1;filter:drop-shadow(0 4px 0 rgba(0,0,0,.35))}
+  .bubble{flex:1;position:relative;background:#fff;color:#23306b;border-radius:16px;padding:12px 16px;font-size:clamp(16px,3.8vw,22px);font-weight:700;text-align:left;min-height:2.6em;line-height:1.45}
+  .bubble:before{content:"";position:absolute;left:-12px;bottom:14px;border:8px solid transparent;border-right:12px solid #fff;border-left:0}
+  #wallet{font-size:clamp(17px,4vw,24px);font-weight:700;color:#ffe35a}
+  .goods{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px;max-width:640px;width:100%}
+  .goods button{display:flex;flex-direction:column;align-items:center;gap:2px;background:#fff8e6;color:#23306b;border-radius:14px;padding:8px 6px;box-shadow:0 4px 0 #c9a96a;font-size:clamp(13px,3.2vw,16px)}
+  .goods button.on{background:#ffe35a}
+  .goods button.poor{opacity:.45}
+  .goods .ic{font-size:clamp(28px,7vw,38px);line-height:1.1}
+  .goods .pr{color:#c4401c}
+  .goods .ef{font-size:.78em;font-weight:400}
+  .goods .own{font-size:.75em;color:#3c7d3c}
+  #shopNote{font-size:clamp(12px,3vw,15px);opacity:.9;max-width:640px}
+  #shopHold{height:8px;width:min(320px,80%);background:#334;border-radius:4px;overflow:hidden}
+  #shopHold i{display:block;height:100%;width:0;background:#8ff0ff}
   #pad button{font-size:clamp(12px,3.2vw,16px);padding:9px 12px;background:#fff;box-shadow:0 4px 0 #8a93b8}
   #pad button.on{background:#8ff0ff}
 </style>
@@ -54,6 +71,16 @@
   <button id="bNoCam" class="sub">カメラなしで ためす（マウス・ゆび）</button>
   <div id="msg"></div>
   <div class="note">頭から 足まで <b>ぜんしん</b>が うつるように、はなれて 立ってください。まわりに ぶつかる物が ないか たしかめよう。<br>カメラと マイクは この たんまつの中で つかいます。えいぞうは どこにも おくりません（スマホを カメラにするときは、スマホから この PC へ じかに おくります）。じゅもんの 聞きとりには、ブラウザの 音声にんしきを つかいます。</div>
+</div>
+
+<div id="shop" class="panel hide">
+  <div class="shopHead"><div class="clerk">👵</div><div id="bubble" class="bubble"></div></div>
+  <div id="wallet"></div>
+  <div id="goods" class="goods"></div>
+  <div id="ask" class="modes" style="display:none"><button id="bYes">はい（かう）</button><button id="bNo" class="sub">やめる</button></div>
+  <div id="shopNote">「チョコレートを ください」のように 声で たのもう。ねだんを 言われたら「はい」で かえるよ。<br>おわったら「いじょうです」と 言うか、りょう手を 上げて 2びょう まつ</div>
+  <div id="shopHold"><i></i></div>
+  <button id="bLeave" class="sub">おみせを 出る</button>
 </div>
 
 <div id="over" class="panel hide">
@@ -230,10 +257,23 @@ const KOTO = Object.fromEntries([
   ['あとの まつり', '🎆', 'fire', '後の祭|あとのまつ|あとの祭'],
   ['一を 聞いて 十を 知る', '🔟', 'thunder', '一を聞|いちをき|十を知|じゅうをし']
 ].map(([name, icon, fx, al], i) => ['k' + i, { name, icon, fx, col: { thunder: '#ffe35a', fire: '#ff9a3c', ice: '#8ff0ff', heal: '#b6ffb0' }[fx], al: al.split('|').map(norm) }]));
+// まちの おみせ（しょうと しょうの 間）。かった ぶんだけ BUF が ふえて、ずっと きく。al：聞きとりの 合言葉
+const GOODS = [
+  { id: 'onigiri', name: 'おにぎり',     icon: '🍙', price: 100, ef: 'HPの さいだい +5',          al: ['おにぎり', 'おむすび', 'お握り', 'お結び'] },
+  { id: 'choco',   name: 'チョコレート', icon: '🍫', price: 150, ef: 'まりょく（MP）+3',           al: ['チョコ', 'ちょこ', 'chocolate'] },
+  { id: 'pencil',  name: 'えんぴつ',     icon: '✏️', price: 200, ef: 'こうげき +1',               al: ['えんぴつ', '鉛筆', 'エンピツ', 'pencil'] },
+  { id: 'milk',    name: 'ぎゅうにゅう', icon: '🥛', price: 200, ef: 'うける ダメージ -10%',       al: ['ぎゅうにゅう', '牛乳', 'ミルク', 'ぎゅうにゅ'] },
+  { id: 'juice',   name: 'ジュース',     icon: '🧃', price: 250, ef: 'てきを たおすと MP +1',      al: ['ジュース', 'じゅーす', 'juice'] },
+  { id: 'ruler',   name: 'ものさし',     icon: '📏', price: 300, ef: '剣が ながくなる',            al: ['ものさし', '物差し', '物差', '定規', 'じょうぎ'] },
+  { id: 'note',    name: 'ノート',       icon: '📓', price: 300, ef: 'けいけんち +20%',            al: ['ノート', 'note', 'のーと'] }
+];
+const BUF = { onigiri: 0, choco: 0, pencil: 0, milk: 0, juice: 0, ruler: 0, note: 0 };
+const YEN_PER_KILL = exp => 10 + 10 * exp;   // ざこ 1体の おかね
+const YEN_BOSS = [300, 600, 0];              // ボスを たおした時の おかね（しょうごと）
 const needExp = lv => Math.round((2 + lv + lv * lv / 6) * 1.7);      // 次のレベルまでの けいけんち
-const maxHp = lv => 20 + 6 * (lv - 1);
-const maxMp = lv => lv < 3 ? 0 : 6 + 3 * (lv - 3);
-const atkOf = lv => 1 + Math.floor(lv / 3);                  // パンチ1発の 強さ（剣は 2ばい）
+const maxHp = lv => 20 + 6 * (lv - 1) + 5 * BUF.onigiri;
+const maxMp = lv => lv < 3 ? 0 : 6 + 3 * (lv - 3) + 3 * BUF.choco;
+const atkOf = lv => 1 + Math.floor(lv / 3) + BUF.pencil;     // パンチ1発の 強さ（剣は 2ばい）
 const DEBUG = new URLSearchParams(location.search).has('debug');
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
@@ -252,7 +292,7 @@ addEventListener('resize', resize); resize();
 
 const S = {
   mode: null, diff: 'easy', state: 'title', running: false, now: 0, time: 0,
-  lv: 1, exp: 0, hp: 20, mp: 0, chapter: 0, kills: 0,
+  lv: 1, exp: 0, hp: 20, mp: 0, chapter: 0, kills: 0, yen: 0,
   enemies: [], fx: [], shots: [], spawnT: 0, shotT: 0, evT: 0, evN: 0, ev: null, pose: null, card: null,
   body: false, full: true, poseGuard: false, padGuard: false, poseMagic: false, hurt: 0, combo: 0, comboT: 0,
   charge: 0, hold: 0, magicCD: 0, burn: 0, burnT: 0, heard: null, shoutT: 0, shoutUntil: 0, listenUntil: 0, ready: false, spellIdx: 0,
@@ -353,14 +393,14 @@ const sfx = {
 // ---------- こえの あんない ----------
 const VOICE = { on: true, until: 0, pri: 0, text: '' };
 const speechTime = text => 0.4 + text.length * 0.13;
-function say(text, pri = 1){
+function say(text, pri = 1, pitch = 1.2, rate = 1.1){
   S.said.push(text); if (S.said.length > 40) S.said.shift();
   if (!VOICE.on || !window.speechSynthesis) return true;
   if (S.now < VOICE.until && pri < VOICE.pri) return false;   // 話している とちゅうは、同じか もっと 大事な ことだけ わりこむ
   try {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'ja-JP'; u.rate = 1.1; u.pitch = 1.2;
+    u.lang = 'ja-JP'; u.rate = rate; u.pitch = pitch;
     speechSynthesis.speak(u);
   } catch (e) {}
   VOICE.pri = pri; VOICE.until = S.now + speechTime(text); VOICE.text = text;
@@ -372,6 +412,7 @@ function tip(str, sec = 6){ S.tip = str; S.tipUntil = S.now + sec; }
 // ---------- じゅもんの名前の聞きとり ----------
 // 長い名前の 上位じゅもんは 合言葉が 1つでも 聞こえたら それ。なければ ふつうの じゅもんの うち 最後に聞こえたもの
 function hear(str){
+  if (S.state === 'shop'){ shopHear(str); return null; }
   const n = norm(str);
   // あんないの声を マイクが ひろって、じゅもんが 勝手に 出ないようにする
   const mine = S.now < VOICE.until + 0.3 ? norm(VOICE.text) : '';
@@ -472,7 +513,8 @@ function onPose(lm, dt){
     const gx = (lw.x + rw.x) / 2, gy = (lw.y + rw.y) / 2, dx = gx - anchor.tx, dy = gy - (anchor.ty + unit * 0.3), d = Math.hypot(dx, dy);
     if (d > unit * 0.35){ sword.dx += (dx / d - sword.dx) * 0.5; sword.dy += (dy / d - sword.dy) * 0.5; }
     const n = Math.hypot(sword.dx, sword.dy) || 1;
-    swordMove(gx, gy, gx + sword.dx / n * unit * SWORD_LEN, gy + sword.dy / n * unit * SWORD_LEN, dt);
+    const len = unit * (SWORD_LEN + 0.3 * BUF.ruler);
+    swordMove(gx, gy, gx + sword.dx / n * len, gy + sword.dy / n * len, dt);
     return;
   }
   sword.vis = false; sword.slashing = false;
@@ -551,7 +593,7 @@ const poseOK = id => S.mode === 'nocam' ? sim.pose : (P.seen && POSES[id].ok());
 
 // ---------- 成長 ----------
 function gainExp(n){
-  S.exp += n;
+  S.exp += Math.round(n * (1 + 0.2 * BUF.note));
   while (S.exp >= needExp(S.lv)){
     S.exp -= needExp(S.lv); S.lv++;
     S.hp = maxHp(S.lv); S.mp = maxMp(S.lv);
@@ -573,7 +615,7 @@ function gainExp(n){
   }
 }
 function hurtPlayer(n, x = P.x, y = anchor.y){
-  n = Math.max(1, Math.round(n * DIFF[S.diff].dmg));
+  n = Math.max(1, Math.round(n * DIFF[S.diff].dmg * (1 - Math.min(0.5, 0.1 * BUF.milk))));
   S.hp = Math.max(0, S.hp - n); S.hurt = 0.4; S.combo = 0; sfx.hurt();
   text(x, y - 40, `-${n}`, '#ff8a8a', 34, 1.0);
   if (S.hp <= 0) gameOver();
@@ -616,7 +658,8 @@ function damage(e, n = 1){
   S.fx.push({ kind: 'burst', x: e.x, y: e.y, r: e.r, t: 0, life: 0.18 });
   if (e.hp > 0){ sfx.hit(); return; }
   e.dead = true; S.kills++;
-  S.mp = Math.min(maxMp(S.lv), S.mp + 1);
+  S.mp = Math.min(maxMp(S.lv), S.mp + 1 + BUF.juice);
+  S.yen += YEN_PER_KILL(T.exp);
   text(e.x, e.y - e.r, `+${T.exp}`, '#ffe35a', 22, 0.7);
   dots(e.x, e.y, 10, T.col);
   ice ? sfx.shatter() : sfx.pop();
@@ -815,11 +858,89 @@ function afterAttack(){
 function bossDown(){
   const b = BOSSES[B.id], last = S.chapter >= CH.length - 1;
   S.ev = null; S.charge = 0; listen(false);
-  B.msg = [`${B.name}を たおした！`, b.exp ? `けいけんち ${b.exp}を 手に入れた！` : 'せかいに えがおが もどった！'];
+  const yen = YEN_BOSS[S.chapter] || 0; S.yen += yen;
+  B.msg = [`${B.name}を たおした！`, b.exp ? `けいけんち ${b.exp}と ${yen}円を 手に入れた！` : 'せかいに えがおが もどった！'];
   sfx.boom(); sfx.win(); dots(W / 2, bossY(), 50, '#ffe35a', 2);
   S.fx.push({ kind: 'ring', x: W / 2, y: bossY(), t: 0, life: 0.8 });
   say(`やった！ ${B.name}を たおした！`, 3);
-  wait(1.5, () => { if (b.exp) gainExp(b.exp); wait(3.5, () => last ? ending() : startChapter(S.chapter + 1)); });
+  wait(1.5, () => { if (b.exp) gainExp(b.exp); wait(3.5, () => last ? ending() : openShop(() => startChapter(S.chapter + 1))); });
+}
+
+
+// ---------- まちの おみせ（声で かいもの） ----------
+const SHOP = { next: null, pending: null, hold: 0, cool: 0, leaving: false };
+const shopWords = a => a.map(norm);
+const YES  = shopWords(['はい', 'お願い', 'おねがい', 'かいます', '買います', '買う', 'かう', 'ください', '下さい', 'うん', 'ok', 'オッケー', 'いいよ', 'それで', 'どうぞ']);
+const NO   = shopWords(['やめ', '止め', 'いいえ', 'いらない', '要らない', 'やっぱ', 'キャンセル', 'だいじょうぶ', '大丈夫', 'ちがう', '違う']);
+const BYE  = shopWords(['いじょう', '以上', 'おわり', '終わり', 'さようなら', 'バイバイ', '出ます', 'でます', 'いってきます', '行ってきます', 'ごちそうさま', 'もういい']);
+GOODS.forEach(g => { g.n = g.al.map(norm); });
+function clerk(str, pri = 3){
+  $('bubble').textContent = str;
+  say(str, pri, 0.95, 1.0);
+}
+function shopRender(){
+  $('wallet').textContent = `💴 さいふ　${S.yen}円`;
+  const box = $('goods'); box.innerHTML = '';
+  GOODS.forEach(g => {
+    const b = document.createElement('button');
+    if (SHOP.pending === g.id) b.className = 'on'; else if (S.yen < g.price) b.className = 'poor';
+    b.innerHTML = `<span class="ic">${g.icon}</span><span>${g.name}</span><span class="pr">${g.price}円</span><span class="ef">${g.ef}</span>` + (BUF[g.id] ? `<span class="own">もっている ×${BUF[g.id]}</span>` : '');
+    b.onclick = () => { ensureAudio(); shopAsk(g.id); };
+    box.appendChild(b);
+  });
+  $('ask').style.display = SHOP.pending ? 'flex' : 'none';
+}
+function openShop(next){
+  S.state = 'shop'; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.charge = 0;
+  Object.assign(SHOP, { next, pending: null, hold: 0, cool: 0, leaving: false });
+  $('pad').classList.remove('show'); $('shop').classList.remove('hide');
+  shopRender(); sfx.dq();
+  clerk(`いらっしゃい！ ${S.yen}円 もってるね。なにに する？`);
+}
+function shopAsk(id){
+  if (SHOP.leaving) return;
+  const g = GOODS.find(x => x.id === id);
+  if (S.yen < g.price){ SHOP.pending = null; shopRender(); sfx.denied(); clerk(`${g.name}は ${g.price}円だよ。あら、おかねが たりないねえ。`); return; }
+  SHOP.pending = id; shopRender(); sfx.ready();
+  clerk(`${g.name}だね。${g.price}円です。`);
+}
+function shopBuy(){
+  const g = GOODS.find(x => x.id === SHOP.pending);
+  SHOP.pending = null;
+  if (!g || S.yen < g.price){ shopRender(); return; }
+  S.yen -= g.price; BUF[g.id]++;
+  S.hp = maxHp(S.lv); S.mp = maxMp(S.lv);
+  sfx.heal(); S.fx.push({ kind: 'flash', col: '255,240,170', t: 0, life: 0.3 });
+  shopRender();
+  clerk(`${g.price}円 ちょうだいします。まいど ありがとう！ ${g.ef.replace('+', 'プラス').replace('-', 'マイナス')}！`);
+}
+function shopCancel(){ SHOP.pending = null; shopRender(); clerk('はいはい。ほかに なにか いる？'); }
+function shopLeave(){
+  if (SHOP.leaving) return;
+  SHOP.leaving = true; SHOP.pending = null; shopRender();
+  clerk('また おいで！ いってらっしゃい！');
+  setTimeout(() => {
+    $('shop').classList.add('hide'); $('pad').classList.toggle('show', S.mode === 'nocam');
+    const f = SHOP.next; SHOP.next = null; buildPad(); f && f();
+  }, 2200);
+}
+// 聞こえた ことばで かいものを すすめる
+function shopHear(str){
+  if (SHOP.leaving || S.now < VOICE.until + 0.6 || S.now < SHOP.cool) return;   // おみせの人の 声を ひろわない
+  const n = norm(str), has = ws => ws.some(w => n.includes(w));
+  const g = GOODS.find(x => x.n.some(w => n.includes(w)));
+  if (g && g.id !== SHOP.pending){ SHOP.cool = S.now + 0.8; shopAsk(g.id); return; }
+  if (SHOP.pending){
+    if (has(NO)){ SHOP.cool = S.now + 0.8; shopCancel(); return; }
+    if (has(YES)){ SHOP.cool = S.now + 0.8; shopBuy(); return; }
+  }
+  if (has(BYE)) shopLeave();
+}
+function updateShop(dt){
+  // りょう手を 上げて 2びょうで おみせを 出る
+  SHOP.hold = S.mode === 'cam' && S.poseMagic && !SHOP.leaving ? SHOP.hold + dt : Math.max(0, SHOP.hold - dt * 2);
+  $('shopHold').firstElementChild.style.width = Math.min(100, SHOP.hold / 2 * 100) + '%';
+  if (SHOP.hold >= 2) shopLeave();
 }
 
 // ---------- 進行 ----------
@@ -930,6 +1051,7 @@ function update(dt){
   for (const f of S.fx){ f.t += dt; if (f.kind === 'dot'){ f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 400 * dt; } }
   S.fx = S.fx.filter(f => f.t < f.life);
   if (!S.running) return;
+  if (S.state === 'shop'){ listen(!SHOP.leaving); updateShop(dt); return; }
   // 体が うつっていない間は 止めて待つ
   S.paused = cam && !P.seen;
   if (S.paused){ listen(false); return; }
@@ -959,6 +1081,7 @@ function update(dt){
   else if (S.state === 'battle') updateBattle(dt);
 }
 function begin(){
+  Object.keys(BUF).forEach(k => { BUF[k] = 0; }); S.yen = 0;
   Object.assign(S, { running: true, time: 0, lv: 1, exp: 0, hp: maxHp(1), mp: 0, fx: [], hurt: 0, combo: 0, comboT: 0,
     charge: 0, hold: 0, magicCD: 0, heard: null, shoutT: 0, listenUntil: 0, ready: false, spellIdx: 0, tip: '', tipUntil: 0,
     cnt: { punch: 0, slash: 0, jump: 0, duck: 0, dodge: 0, pose: 0, spell: 0 } });
@@ -1096,6 +1219,7 @@ function drawStatus(){
   // おぼえた わざ
   const got = (S.lv >= SWORD_LV ? ['⚔️'] : []).concat(ORDER.filter(learned).map(k => SPELLS[k].icon));
   ctx.font = '18px sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('👊' + got.join(''), 12, h + 26);
+  ctx.font = '700 17px sans-serif'; ctx.fillStyle = '#ffe35a'; ctx.fillText(`💴 ${S.yen}円`, 14, h + 52);
 }
 // よける相手（やり・てんじょう・レーザー）
 function drawHazard(ev){
@@ -1342,7 +1466,7 @@ function frame(ts){
   update(dt); draw();
 }
 // テスト用：手動で1コマ進める／関節データを直接わたす
-window.__game = { S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, KOTO, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
+window.__game = { S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, KOTO, BUF, GOODS, openShop, shopHear, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
 const loop = ts => { frame(ts); requestAnimationFrame(loop); };
 requestAnimationFrame(loop);
 
@@ -1461,6 +1585,9 @@ $('bCam').onclick = startCam;
 $('bPhone').onclick = startPhone;
 $('bNoCam').onclick = () => { ensureAudio(); S.mode = 'nocam'; clearPose(); begin(); };
 $('bRetry').onclick = retry;
+$('bYes').onclick = () => { ensureAudio(); shopBuy(); };
+$('bNo').onclick = () => { ensureAudio(); shopCancel(); };
+$('bLeave').onclick = () => { ensureAudio(); shopLeave(); };
 function setDiff(k){
   S.diff = k;
   $('mEasy').classList.toggle('on', k === 'easy'); $('mHard').classList.toggle('on', k === 'hard');
@@ -1476,7 +1603,7 @@ $('bVoice').onclick = () => setVoice(!VOICE.on);
 try { if (localStorage.getItem('zenshinQuestVoice') === '0') setVoice(false); } catch (e) {}
 $('mEasy').onclick = () => setDiff('easy'); $('mHard').onclick = () => setDiff('hard');
 try { if (localStorage.getItem('zenshinQuestDiff') === 'hard') setDiff('hard'); } catch (e) {}
-$('bBack').onclick = () => { S.mode = null; S.state = 'title'; $('over').classList.add('hide'); $('title').classList.remove('hide'); };
+$('bBack').onclick = () => { S.mode = null; S.state = 'title'; $('shop').classList.add('hide'); $('over').classList.add('hide'); $('title').classList.remove('hide'); };
 
 // ---------- カメラなしの操作 ----------
 // タップ＝パンチ、なぞる＝剣、ボタン・キー＝よける・ガード・ポーズ・じゅもん
