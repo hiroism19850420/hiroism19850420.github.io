@@ -90,7 +90,7 @@
     <div>👹 てきを たおしきると <b>ボスと 1対1</b>。ぜんぶの わざで たたかえ！</div>
     <div>🗾 <b>ちず</b>で 行き先を えらぶ（声で「ぐんま」、手を かざす、クリック）</div>
     <div>📖 <b>右手だけ 上げて「ブック」</b> … カードと ことわざずかんを 見る</div>
-    <div>🎯 ぐんまの ボスを たおすと ミニゲーム <b>だるまおとし</b>が ひらく</div>
+    <div>🎯 ぐんまの ボスを たおすと ミニゲーム <b>だるまおとし</b>、🧗 とうきょうなら <b>スカイツリーのぼり</b>が ひらく</div>
   </div>
   <div class="modes" id="contRow" style="display:none"><button id="mCont" class="sub on">▶ つづきから</button><button id="mNew" class="sub">はじめから</button></div>
   <div class="modes"><button id="mEasy" class="sub on">かんたん</button><button id="mHard" class="sub">むずかしい</button></div>
@@ -506,6 +506,7 @@ function hear(str){
   if (bookHear(str)) return null;
   if (S.state === 'map'){ mapHear(str); return null; }
   if (S.state === 'daruma'){ dgHear(str); return null; }
+  if (S.state === 'tower'){ twHear(str); return null; }
   if (S.quiz){ quizHear(str); return null; }
   const n = norm(str);
   // あんないの声を マイクが ひろって、じゅもんが 勝手に 出ないようにする
@@ -600,12 +601,19 @@ function onPose(lm, dt){
   // みぎ手だけ 頭より上（ひだり手は 肩より下）→「ブック」を 聞く
   S.rightUp = rw.v > 0.4 && rw.y < nose.y && !(lw.v > 0.4 && lw.y < ls.y);
   // りょう手を にぎり合わせる → 剣（レベル SWORD_LV から）
+  // スカイツリー のぼり：その がわの 手を 頭より 上へ のばす＝つかむ（下ろすと 次を うけつける）
+  if (S.state === 'tower'){
+    [lw, rw].forEach((w, i) => {
+      const up = w.v > 0.4 && w.y < nose.y - unit * 0.1, down = w.v < 0.4 || w.y > Math.min(ls.y, rs.y);
+      if (!TW.up[i] && up){ TW.up[i] = true; twReach(i); } else if (TW.up[i] && down) TW.up[i] = false;
+    });
+  }
   // だるまおとし：手を たたく（りょう手首が ちかづく）＝みどり
   if (S.state === 'daruma' && both){
     if (gap > unit * 0.9) S.clapArm = true;
     else if (S.clapArm && gap < unit * 0.45){ S.clapArm = false; dgHit(1); }
   }
-  const grip = S.state !== 'daruma' && S.lv >= SWORD_LV && lw.v > GRIP_VIS && rw.v > GRIP_VIS && !S.poseGuard && gap < unit * (sword.on ? GRIP_OUT : GRIP_IN);
+  const grip = S.state !== 'daruma' && S.state !== 'tower' && S.lv >= SWORD_LV && lw.v > GRIP_VIS && rw.v > GRIP_VIS && !S.poseGuard && gap < unit * (sword.on ? GRIP_OUT : GRIP_IN);
   sword.hold = grip ? sword.hold + dt : 0;
   sword.on = grip && (sword.on || sword.hold > 0.08);
   S.dbg = `手の間 ${(gap / unit).toFixed(2)}　上下 ${P.lift.toFixed(2)}　${sword.on ? '剣' : S.poseGuard ? 'ガード' : S.poseMagic ? 'まほう' : 'パンチ'}`;
@@ -991,7 +999,7 @@ function updatePal(dt){
   const u = anchor.unit, battle = inBattle(), padH = S.mode === 'nocam' ? 96 : 0;
   let tx, ty;
   if (battle){ tx = W * 0.12 + 30; ty = H - 150 - padH; }
-  else if (S.state === 'daruma'){ tx = W - palR() - 30; ty = H - padH - palR() - 150; }
+  else if (S.state === 'daruma' || S.state === 'tower'){ tx = W - palR() - 30; ty = H - padH - palR() - 150; }
   else if (S.quiz){ tx = W - palR() - 24; ty = H - padH - palR() - 34; }
   else if (S.mode === 'nocam'){ tx = P.x + u * 1.7; ty = P.y + P.T * 1.1; }
   else { const side = anchor.x < W / 2 ? 1 : -1; tx = anchor.x + side * u * 2; ty = anchor.y + u * 1.6; }
@@ -1274,6 +1282,8 @@ const CARDS = [
   bossCard('yokohama', '🎡', 'よこはま クリア', 'よこはまで だいかんらんしゃを たおす', 'wheel'),
   bossCard('chiba', '🍐', 'ちば クリア', 'ちばで なしの おうさまを たおす', 'nashi'),
   bossCard('tokyo', '🗼', 'とうきょう クリア', 'とうきょうで タワー きょじんを たおす', 'tower'),
+  { id: 'tw1',    icon: '🧗', name: 'てんぼうデッキ とうちゃく', how: 'とうきょうの ボスを たおして、ちずの 🧗 スカイツリーのぼりで 350メートルまで のぼる', ok: () => st('twBest') >= 1 },
+  { id: 'tw634',  icon: '🏙️', name: 'てっぺん 634メートル', how: 'スカイツリーのぼりで てっぺんまで のぼる', ok: () => st('twBest') >= 3 },
   bossCard('hokkaido', '🐻‍❄️', 'ほっかいどう クリア', 'ほっかいどうで しろクマ だいおうを たおす', 'shirokuma'),
   { id: 'japan',  icon: '🗾', name: 'にほん たび',         how: '5つの ちほうを ぜんぶ クリア する', ok: () => ['daruma', 'wheel', 'nashi', 'tower', 'shirokuma'].every(b => st('boss_' + b) >= 1) },
   { id: 'tsuru',  icon: '🕊️', name: 'つる 10わ',           how: 'ぐんまで つるを 10わ たおす', ok: () => st('ko_tsuru') >= 10 },
@@ -1379,6 +1389,7 @@ const PINS = [
   { ch: 4, name: 'よこはま', icon: '🥟', x: 0.59, y: 0.71, al: ['ヨコハマ', '横浜'] },
   { ch: 5, name: 'ちば', icon: '🥜', x: 0.80, y: 0.64, al: ['チバ', '千葉'] },
   { ch: 7, name: 'ほっかいどう', icon: '⛄', x: 0.82, y: 0.16, al: ['ホッカイドウ', '北海道', 'ホッカイド'] },
+  { ch: 'tw', name: 'スカイツリー', icon: '🧗', x: 0.79, y: 0.43, al: ['スカイツリ', 'スカイ', 'ノボリ', '登リ', 'ボルダリング', 'タワー'], mini: 'tw' },
   { ch: 'dg', name: 'だるまおとし', icon: '🎯', x: 0.43, y: 0.33, al: ['ダルマオトシ', 'だるま落とし', 'ダルマ落トシ', 'ダルマ'], mini: true },
   { ch: 1, name: 'まおうの しま', icon: '🏰', x: 0.17, y: 0.30, al: ['マオウ', '魔王', 'シロ', '城', 'シマ', '島'], castle: true }
 ];
@@ -1391,17 +1402,20 @@ function openMap(){
   Object.assign(MAP, { hover: null, hoverT: 0, sel: null, selT: 0 });
   S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.quiz = null; S.charge = 0;
   sfx.dq();
-  if (dgOpen() && !st('dgUnlockSaid')){ bump('dgUnlockSaid'); say('ミニゲーム、だるまおとしが あそべるように なったよ！ ちずの まとを えらんでね。', 3); text(W / 2, H * 0.3, '🎯 ミニゲーム「だるまおとし」が ひらいた！', '#ffe35a', 26, 4); }
+  if (twOpen() && !st('twUnlockSaid')){ bump('twUnlockSaid'); say('ミニゲーム、スカイツリーのぼりが あそべるように なったよ！ ちずの とうきょうの そばを えらんでね。', 3); text(W / 2, H * 0.3, '🧗 ミニゲーム「スカイツリーのぼり」が ひらいた！', '#ffe35a', 26, 4); }
+  else if (dgOpen() && !st('dgUnlockSaid')){ bump('dgUnlockSaid'); say('ミニゲーム、だるまおとしが あそべるように なったよ！ ちずの まとを えらんでね。', 3); text(W / 2, H * 0.3, '🎯 ミニゲーム「だるまおとし」が ひらいた！', '#ffe35a', 26, 4); }
   else say(castleOpen() ? 'ぜんぶの ちほうを クリアした！ まおうの しまへ いこう！' : 'どこへ いく？ いきたい ところを いってね。', 3);
 }
 function mapRect(){ const padH = S.mode === 'nocam' ? 96 : 0, my = 64, mh = H - my - 16 - padH, mw = Math.min(W - 24, mh * 1.6); return { mx: (W - mw) / 2, my, mw, mh }; }
 function pinXY(p){ const r = mapRect(); return [r.mx + p.x * r.mw, r.my + p.y * r.mh]; }
 const pinR = () => clamp(Math.min(W, H) * 0.06, 22, 44);
 const dgOpen = () => st('boss_daruma') >= 1;
-const pinsNow = () => PINS.filter(p => !p.mini || dgOpen());
+const twOpen = () => st('boss_tower') >= 1;
+const pinOpen = p => !p.mini || (p.mini === 'tw' ? twOpen() : dgOpen());
+const pinsNow = () => PINS.filter(pinOpen);
 function pickPin(p){
   if (MAP.sel || !p) return;
-  if (p.mini && !dgOpen()) return;
+  if (!pinOpen(p)) return;
   if (p.ch === 0){ say('はじまりの むらは もう へいわだよ。ほかの ところへ いこう！', 2); return; }
   if (p.castle && !castleOpen()){ sfx.denied(); say(`まおうの しまは まだ いけないよ。ちほうを あと ${REGION_IDX.length - regionsDone()}つ クリアしてね。`, 3); return; }
   MAP.sel = p; MAP.selT = 1.8; sfx.ready();
@@ -1419,6 +1433,7 @@ function updateMap(dt){
     if (MAP.selT <= 0){
       const ch = MAP.sel.ch; MAP.sel = null;
       if (ch === 'dg'){ startDaruma(); return; }
+      if (ch === 'tw'){ startTower(); return; }
       if (CH[ch].region) regionStart(ch, Math.min(5, regionsDone() + (S.cleared.includes(ch) ? 0 : 1)) || 1);
       startChapter(ch);
     }
@@ -1472,7 +1487,7 @@ function drawMap(){
     ctx.font = `${Math.round(rr * 1.05)}px sans-serif`; ctx.fillStyle = '#000'; ctx.globalAlpha = locked ? 0.5 : 1; ctx.fillText(p.icon, x, y + 2); ctx.globalAlpha = 1;
     if (locked){ ctx.font = `${Math.round(rr * 0.6)}px sans-serif`; ctx.fillText('🔒', x + rr * 0.7, y - rr * 0.7); }
     if (done){ ctx.font = `${Math.round(rr * 0.6)}px sans-serif`; ctx.fillText('⭐', x + rr * 0.75, y - rr * 0.75); }
-    if (p.mini && !st('dgPlay')){ ctx.fillStyle = '#ff5a6a'; ctx.beginPath(); ctx.roundRect(x - rr * 0.9, y - rr * 1.45, rr * 1.8, rr * 0.55, 8); ctx.fill(); ctx.font = `700 ${Math.round(rr * 0.38)}px sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText('NEW!', x, y - rr * 1.17); }
+    if (p.mini && !st(p.mini === 'tw' ? 'twPlay' : 'dgPlay')){ ctx.fillStyle = '#ff5a6a'; ctx.beginPath(); ctx.roundRect(x - rr * 0.9, y - rr * 1.45, rr * 1.8, rr * 0.55, 8); ctx.fill(); ctx.font = `700 ${Math.round(rr * 0.38)}px sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText('NEW!', x, y - rr * 1.17); }
     outText(p.name, x, y + rr + 16, Math.max(14, Math.round(R * 0.45)), locked ? '#bbb' : '#fff');
     if (hov && MAP.hoverT > 0){ ctx.strokeStyle = '#ffe35a'; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(x, y, rr + 9, -Math.PI / 2, -Math.PI / 2 + 6.28 * MAP.hoverT / 1.2); ctx.stroke(); }
   }
@@ -1487,6 +1502,212 @@ function drawMap(){
   drawTextFx();
 }
 
+
+
+// ---------- ミニゲーム：スカイツリーのぼり（とうきょうの ボスを たおすと ひらく） ----------
+// 「つかめ！ホールド！てっぺんだ！ ぜんしん版」と 同じ そうさ：
+// ひかる ホールドが ひだりなら ひだり手、みぎなら みぎ手を 頭より上へ。金色は ジャンプで ランジ。てっぺんは どちらの 手でも
+// 3だんかい：0→350m（てんぼうデッキ）→450m（てんぼうかいろう）→634m（てっぺん）
+const TW_STAGES = [{ from: 0, to: 350, name: 'てんぼうデッキ' }, { from: 350, to: 450, name: 'てんぼうかいろう' }, { from: 450, to: 634, name: 'てっぺん' }];
+const TW_HOLD = [{ c: '#e8463a', d: '#a8241c', l: '#ff9a8a' }, { c: '#3a7be8', d: '#1a3ea8', l: '#9ac0ff' }];
+const TW_GOLD = { c: '#ffc531', d: '#c88a12', l: '#fff0a0' }, TW_GRAY = { c: '#dde3ec', d: '#98a2b4', l: '#fff' };
+const TW = { phase: 'off', stage: 0, lives: 3, coins: 0, route: [], cur: 0, camH: 0, hands: [], time: 0, timeMax: 1, stun: 0, shake: 0, fallD: 0, fallV: 0, t: 0, cd: 0, up: [false, false], best: 0, gap: 70, puff: [], hold: 0 };
+function startTower(){
+  S.state = 'tower'; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.quiz = null; S.charge = 0;
+  Object.assign(TW, { stage: 0, lives: 3, coins: 0, best: 0 });
+  bump('twPlay'); twStage();
+}
+function twStage(){
+  const k = TW.stage, n = 9 + k * 3, gap = clamp(H * 0.11, 55, 90), cx = W / 2, bw = clamp(W * 0.34, 180, 360), r = [];
+  let h = 120;
+  for (let i = 0; i < n; i++){
+    let type = i === 0 ? 'start' : i === n - 1 ? 'top' : (k >= 1 && i % 5 === 4) ? 'lunge' : 'normal';
+    if (i > 0) h += type === 'lunge' ? gap * 2 : gap;
+    const side = i % 2;
+    const x = type === 'normal' ? cx + (side ? 1 : -1) * bw * (0.22 + Math.random() * 0.16) : cx + (Math.random() - 0.5) * 30;
+    const pts = []; for (let q = 0; q < 8; q++) pts.push(0.75 + Math.random() * 0.45);
+    r.push({ type, x, h, side, pts, rot: Math.random() * 6 });
+  }
+  const s0 = r[0], lunges = r.filter(o => o.type === 'lunge').length;
+  Object.assign(TW, { phase: 'ready', t: 0, cd: 0, route: r, cur: 0, camH: 0, stun: 0, shake: 0, fallD: 0, fallV: 0, gap, puff: [], up: [false, false],
+    hands: [{ x: s0.x - 16, h: s0.h, tx: s0.x - 16, th: s0.h }, { x: s0.x + 16, h: s0.h, tx: s0.x + 16, th: s0.h }],
+    timeMax: Math.round((n - 1) * (S.mode === 'cam' ? 2.2 : 1.4) + lunges * 2 + 4) });
+  TW.time = TW.timeMax; buildPad();
+  const st0 = TW_STAGES[k];
+  say(k === 0 ? 'スカイツリーのぼり！ ひかる ほうの てを うえに のばそう！' : `つぎは ${st0.to}メートルの ${st0.name}まで！`, 3);
+}
+const twBase = () => H - (S.mode === 'nocam' ? 96 : 0) - 80;
+const twY = h => twBase() - (h - TW.camH);
+const twMeter = () => { const st0 = TW_STAGES[TW.stage], top = TW.route[TW.route.length - 1].h, s0 = TW.route[0].h, hh = Math.max(TW.hands[0].th, TW.hands[1].th) - TW.fallD; return Math.round(st0.from + clamp((hh - s0) / (top - s0), 0, 1) * (st0.to - st0.from)); };
+function twGrab(o, both){
+  sfx.hit(); TW.puff.push({ x: o.x, h: o.h, t: 0 });
+  if (both){ TW.hands[0].tx = o.x - 16; TW.hands[0].th = o.h; TW.hands[1].tx = o.x + 16; TW.hands[1].th = o.h; }
+  else { const hd = TW.hands[o.side]; hd.tx = o.x; hd.th = o.h; }
+}
+function twReach(i){
+  if (TW.phase === 'over'){ i === 1 ? startTower() : endTower(); return; }
+  if (TW.phase !== 'play' || TW.stun > 0) return;
+  const nx = TW.route[TW.cur + 1]; if (!nx || nx.type === 'lunge') return;
+  if (nx.type === 'top' || nx.side === i){
+    TW.cur++; twGrab(nx, nx.type === 'top');
+    if (nx.type === 'top') twClear();
+  } else { TW.stun = 0.4; TW.shake = 0.4; sfx.denied(); text(W / 2, H * 0.55, nx.side ? 'みぎ手だよ！' : 'ひだり手だよ！', '#fff', 28, 0.8); }
+}
+function twJump(){
+  if (TW.phase !== 'play' || TW.stun > 0) return;
+  const nx = TW.route[TW.cur + 1]; if (!nx || nx.type !== 'lunge') return;
+  TW.cur++; twGrab(nx, true); sfx.big(); text(W / 2, H * 0.3, 'ランジ せいこう！', '#ffc531', 36, 1);
+}
+function twClear(){
+  const k = TW.stage, last = k >= TW_STAGES.length - 1, c = last ? 3 : 1;
+  TW.phase = 'clear'; TW.t = last ? 4 : 2.6; TW.coins += c; S.coin += c; TW.best = k + 1;
+  S.st.twBest = Math.max(st('twBest'), k + 1); bump('twClear');
+  sfx.win(); palMood('happy', 3, last ? 'てっぺんだ〜！' : 'たかーい！');
+  say(last ? 'てっぺん とうちゃく！ ろっぴゃく さんじゅう よん メートル！' : `${TW_STAGES[k].to}メートル！ ${TW_STAGES[k].name}に とうちゃく！`, 3);
+  if (last) for (let i = 0; i < 6; i++) setTimeout(() => { dots(W * (0.2 + Math.random() * 0.6), H * (0.15 + Math.random() * 0.3), 24, pick(['#ffe35a', '#ff7ac0', '#8ff0ff', '#b6ffb0']), 1.6); sfx.pop(); }, i * 400);
+}
+function twTap(x, y){
+  if (TW.phase === 'over'){ x < W / 2 ? endTower() : startTower(); return; }
+  twReach(x < W / 2 ? 0 : 1);
+}
+function twHear(str){
+  if (TW.phase !== 'over' || S.now < VOICE.until + 0.3) return;
+  const n = norm(str);
+  if (/モウイチド|モウ一度|モウイッカイ|モウ1回|ツヅケ/.test(n)) startTower();
+  else if (/チズ|地図|オワリ|終ワリ|モドル|戻ル/.test(n)) endTower();
+}
+function endTower(){ TW.phase = 'off'; saveGame(); openMap(); buildPad(); }
+function updateTower(dt){
+  TW.stun = Math.max(0, TW.stun - dt); TW.shake = Math.max(0, TW.shake - dt);
+  TW.puff.forEach(q => { q.t += dt; }); TW.puff = TW.puff.filter(q => q.t < 0.6);
+  const k = Math.min(1, dt * 16); TW.hands.forEach(hd => { hd.x += (hd.tx - hd.x) * k; hd.h += (hd.th - hd.h) * k; });
+  // ジャンプ（ランジ）
+  if (P.seen){ if (!TW.air && P.lift > JUMP_H){ TW.air = true; twJump(); } else if (P.lift < JUMP_H / 2) TW.air = false; }
+  // いのちづなで ゆっくり おりる
+  if (TW.phase === 'fail'){ const feet = (TW.hands[0].h + TW.hands[1].h) / 2 - TW.route[0].h; TW.fallV = Math.min(TW.fallV + 600 * dt, 500); TW.fallD = Math.min(feet, TW.fallD + TW.fallV * dt); }
+  const top = Math.max(TW.hands[0].h, TW.hands[1].h) - TW.fallD;
+  TW.camH += (Math.max(0, top - H * 0.3) - TW.camH) * Math.min(1, dt * 5);
+  const away = S.mode === 'cam' && !P.seen;
+  if (TW.phase === 'ready'){
+    if (TW.cd === 0 && S.now <= VOICE.until) TW.t = 0; else TW.t += dt;
+    const step = TW.t > 0.5 ? Math.floor((TW.t - 0.5) / 0.8) + 1 : 0;
+    if (step > TW.cd){ TW.cd = step; if (step >= 4){ TW.phase = 'play'; sfx.start(); } else { say(['さん', 'に', 'いち'][step - 1], 2); sfx.dq(); } }
+  } else if (TW.phase === 'play'){
+    if (!away) TW.time -= dt;
+    if (TW.time <= 0){
+      TW.time = 0; TW.lives--; TW.phase = 'fail'; TW.t = 3; TW.fallV = 0; TW.fallD = 0;
+      sfx.denied(); say(TW.lives > 0 ? 'じかんぎれ！ いのちづなで セーフ！ もういちど！' : 'じかんぎれ！ いのちづなで セーフ！', 3); palMood('cry', 1.6, 'おしい〜');
+    }
+  } else if (TW.phase === 'clear' || TW.phase === 'fail'){
+    TW.t -= dt;
+    if (TW.t <= 0){
+      const done = TW.phase === 'clear' && TW.stage >= TW_STAGES.length - 1;
+      if (TW.phase === 'clear' && !done){ TW.stage++; twStage(); }
+      else if (done || TW.lives <= 0){
+        TW.phase = 'over'; buildPad(); saveGame();
+        say(done ? `てっぺんまで のぼれたね！ じゅうえんだま ${TW.coins}まい ゲット！` : `${twMeter()}メートル まで のぼれたね。じゅうえんだま ${TW.coins}まい ゲット！`, 3);
+      } else twStage();
+    }
+  } else if (TW.phase === 'over'){
+    TW.hold = S.mode === 'cam' && S.poseMagic ? TW.hold + dt : 0;
+    if (TW.hold > 1.2){ TW.hold = 0; endTower(); }
+  }
+}
+function twHoldShape(x, y, r, col, pts, rot){
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  const path = () => { ctx.beginPath(); pts.forEach((q, i) => { const a = i / pts.length * 6.28; ctx.lineTo(Math.cos(a) * r * q, Math.sin(a) * r * q * 0.8); }); ctx.closePath(); };
+  ctx.save(); ctx.translate(0, 3); ctx.fillStyle = 'rgba(0,0,0,.25)'; path(); ctx.fill(); ctx.restore();
+  ctx.fillStyle = col.d; path(); ctx.fill();
+  ctx.save(); ctx.translate(-r * 0.08, -r * 0.1); ctx.scale(0.85, 0.8); ctx.fillStyle = col.c; path(); ctx.fill(); ctx.restore();
+  ctx.fillStyle = col.l; ctx.beginPath(); ctx.ellipse(-r * 0.3, -r * 0.3, r * 0.25, r * 0.12, -0.5, 0, 6.28); ctx.fill();
+  ctx.restore();
+}
+function drawTower(){
+  const cx = W / 2, bw = clamp(W * 0.34, 180, 360), base = twBase(), m = twMeter(), kk = m / 634, t = S.now, padH = S.mode === 'nocam' ? 96 : 0;
+  ctx.save();
+  if (TW.shake > 0) ctx.translate(Math.sin(TW.shake * 60) * 5, 0);
+  // そら（たかく なるほど こい あお）
+  const mix = (a, b) => '#' + [0, 2, 4].map(i => Math.round(parseInt(a.substr(1 + i, 2), 16) * (1 - kk) + parseInt(b.substr(1 + i, 2), 16) * kk).toString(16).padStart(2, '0')).join('');
+  const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, mix('#6fc0ff', '#1b2f7a')); sky.addColorStop(1, mix('#dff3ff', '#6a8ad8'));
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  // くも（ゆっくり 下へ ながれる）
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  for (let i = 0; i < 6; i++){ const yy = ((i * 173 + TW.camH * 0.5 + TW.stage * 300) % (H + 200)) - 100, xx = (i * 211) % W; ctx.beginPath(); ctx.ellipse(xx, yy, 70, 18, 0, 0, 6.28); ctx.ellipse(xx + 40, yy - 10, 40, 16, 0, 0, 6.28); ctx.fill(); }
+  // まち（のぼると 下へ 小さく なる）
+  const gy = base + 60 + TW.camH * 0.35 + TW.stage * 220;
+  if (gy < H + 10){
+    for (let i = 0; i < 22; i++){ const w = W / 22, hh = 30 + (i * 53 % 70); ctx.fillStyle = i % 3 ? '#5a6a90' : '#4a5a80'; ctx.fillRect(i * w, gy - hh, w - 3, hh + 400); }
+    ctx.fillStyle = '#3f8f4a'; ctx.fillRect(0, gy, W, H);
+  }
+  // とう（しろい てっこつ）
+  const topH = TW.route[TW.route.length - 1].h + 60, yTop = twY(topH), yBot = Math.min(H, twY(0) + 400);
+  ctx.fillStyle = 'rgba(235,242,252,.95)'; ctx.fillRect(cx - bw / 2, yTop, bw, yBot - yTop);
+  ctx.strokeStyle = '#9fb2cc'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(cx - bw / 2, yTop); ctx.lineTo(cx - bw / 2, yBot); ctx.moveTo(cx + bw / 2, yTop); ctx.lineTo(cx + bw / 2, yBot); ctx.stroke();
+  ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(140,160,190,.7)';
+  const step = 60, h0 = Math.floor((TW.camH - 200) / step) * step;
+  for (let h = Math.max(0, h0); h < topH; h += step){ const y1 = twY(h), y2 = twY(h + step); if (y1 < -step || y2 > H + step) continue; ctx.beginPath(); ctx.moveTo(cx - bw / 2, y1); ctx.lineTo(cx + bw / 2, y2); ctx.moveTo(cx + bw / 2, y1); ctx.lineTo(cx - bw / 2, y2); ctx.moveTo(cx - bw / 2, y1); ctx.lineTo(cx + bw / 2, y1); ctx.stroke(); }
+  // てんぼうデッキ（スタートと ゴール）
+  const deck = (h, label) => { const y = twY(h); if (y < -60 || y > H + 60) return; ctx.fillStyle = '#c8d6ea'; ctx.beginPath(); ctx.roundRect(cx - bw * 0.85, y - 26, bw * 1.7, 44, 14); ctx.fill(); ctx.strokeStyle = '#7f92b0'; ctx.lineWidth = 3; ctx.stroke(); ctx.fillStyle = '#7cc8ff'; for (let i = 0; i < 9; i++) ctx.fillRect(cx - bw * 0.78 + i * bw * 0.175, y - 16, bw * 0.13, 18); ctx.textAlign = 'center'; outText(label, cx, y + 34, 15, '#fff'); };
+  if (TW.stage > 0) deck(TW.route[0].h - 50, `${TW_STAGES[TW.stage].from}m`);
+  if (TW.stage < 2) deck(topH + 10, `${TW_STAGES[TW.stage].to}m ${TW_STAGES[TW.stage].name}`);
+  else { const y = twY(topH); ctx.strokeStyle = '#dfe8f4'; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(cx, y); ctx.lineTo(cx, y - 160); ctx.stroke(); ctx.fillStyle = '#ff5a5a'; ctx.beginPath(); ctx.arc(cx, y - 164, 7, 0, 6.28); ctx.fill(); ctx.textAlign = 'center'; outText('634m てっぺん', cx, y - 186, 16, '#ffe35a'); }
+  // ホールド
+  TW.route.forEach((o, i) => {
+    const y = twY(o.h); if (y < -50 || y > H + 50) return;
+    const col = o.type === 'lunge' ? TW_GOLD : o.type === 'start' ? TW_GRAY : o.type === 'top' ? TW_GOLD : TW_HOLD[o.side], r = o.type === 'normal' ? 18 : 24;
+    if (i === TW.cur + 1 && (TW.phase === 'play' || TW.phase === 'ready')){ ctx.strokeStyle = `rgba(255,255,255,${0.5 + 0.5 * Math.sin(t * 11)})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(o.x, y, r + 12, 0, 6.28); ctx.stroke(); }
+    twHoldShape(o.x, y, r, col, o.pts, o.rot);
+    if (o.type === 'top'){ ctx.textAlign = 'center'; outText('TOP', o.x, y + 32, 13, '#fff'); }
+  });
+  // いのちづな
+  const L = { x: TW.hands[0].x, y: twY(TW.hands[0].h - TW.fallD) }, R = { x: TW.hands[1].x, y: twY(TW.hands[1].h - TW.fallD) };
+  const bx = (L.x + R.x) / 2 + (TW.shake > 0 ? Math.sin(TW.shake * 70) * 5 : 0), shY = (L.y + R.y) / 2 + 55, hipY = shY + 55, ftY = hipY + 55, knY = (hipY + ftY) / 2;
+  ctx.strokeStyle = '#ffb020'; ctx.lineWidth = 3; ctx.setLineDash([8, 6]); ctx.beginPath(); ctx.moveTo(bx, hipY); ctx.lineTo(cx + bw * 0.45, Math.min(yTop, twY(topH))); ctx.stroke(); ctx.setLineDash([]);
+  // クライマー（うしろすがた）
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#345'; ctx.lineWidth = 11; ctx.beginPath(); ctx.moveTo(bx - 7, hipY); ctx.lineTo(bx - 24, knY); ctx.lineTo(bx - 16, ftY); ctx.moveTo(bx + 7, hipY); ctx.lineTo(bx + 24, knY); ctx.lineTo(bx + 16, ftY); ctx.stroke();
+  ctx.fillStyle = '#e60'; ctx.beginPath(); ctx.ellipse(bx - 19, ftY + 2, 10, 5, 0, 0, 6.28); ctx.ellipse(bx + 19, ftY + 2, 10, 5, 0, 0, 6.28); ctx.fill();
+  ctx.strokeStyle = '#2a9'; ctx.lineWidth = 24; ctx.beginPath(); ctx.moveTo(bx, shY + 6); ctx.lineTo(bx, hipY - 4); ctx.stroke();
+  ctx.strokeStyle = '#ffb020'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(bx - 13, hipY - 4); ctx.lineTo(bx + 13, hipY - 4); ctx.stroke();
+  ctx.strokeStyle = '#fc9'; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(bx - 11, shY + 4); ctx.lineTo(L.x, L.y + 6); ctx.moveTo(bx + 11, shY + 4); ctx.lineTo(R.x, R.y + 6); ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(L.x, L.y + 4, 7, 0, 6.28); ctx.arc(R.x, R.y + 4, 7, 0, 6.28); ctx.fill();
+  const hy = shY - 20;
+  ctx.fillStyle = '#fc9'; ctx.beginPath(); ctx.arc(bx - 16, hy + 2, 4, 0, 6.28); ctx.arc(bx + 16, hy + 2, 4, 0, 6.28); ctx.fill();
+  ctx.fillStyle = '#432'; ctx.beginPath(); ctx.arc(bx, hy, 16, 0, 6.28); ctx.fill();
+  ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(bx, hy - 2, 17, Math.PI, 0); ctx.fill();   // ヘルメット
+  TW.puff.forEach(q => { ctx.globalAlpha = 1 - q.t / 0.6; ctx.fillStyle = '#fff'; for (let i = 0; i < 6; i++){ ctx.beginPath(); ctx.arc(q.x + Math.cos(i) * q.t * 60, twY(q.h) + Math.sin(i * 2) * q.t * 40, 4 + q.t * 6, 0, 6.28); ctx.fill(); } ctx.globalAlpha = 1; });
+  ctx.restore();
+  // 上の 表示
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  outText(`🧗 スカイツリーのぼり　${m}メートル`, cx, 26, 24, '#fff');
+  outText('❤️'.repeat(Math.max(0, TW.lives)) + '🤍'.repeat(Math.max(0, 3 - TW.lives)) + `　🪙 +${TW.coins}　めざせ ${TW_STAGES[TW.stage].to}m`, cx, 58, 18, '#fff');
+  const tb = Math.min(420, W - 40), tx = (W - tb) / 2;
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(tx, 80, tb, 12);
+  ctx.fillStyle = TW.time < 5 ? '#ff5a4a' : '#3fbf4a'; ctx.fillRect(tx, 80, tb * TW.time / TW.timeMax, 12);
+  // つぎの あいず
+  const nx = TW.route[TW.cur + 1];
+  if (TW.phase === 'play' && nx){
+    const y = twY(nx.h) - 46, lab = nx.type === 'lunge' ? '🦘 ジャンプ！' : nx.type === 'top' ? '🙌 手を のばせ！' : nx.side ? 'みぎ手 👉' : '👈 ひだり手';
+    outText(lab, nx.type === 'normal' ? (nx.side ? Math.min(W - 80, nx.x + 90) : Math.max(80, nx.x - 90)) : cx, clamp(y, 120, H - 80), 30, nx.type === 'lunge' ? '#ffc531' : nx.side ? '#9ac0ff' : '#ff9a8a');
+  }
+  if (TW.phase === 'ready'){ outText(TW.cd >= 1 && TW.cd <= 3 ? String(4 - TW.cd) : `めざせ ${TW_STAGES[TW.stage].to}メートル！`, cx, H * 0.4, TW.cd >= 1 ? 72 : 36, '#ffe35a'); }
+  else if (TW.phase === 'play' && TW.time > TW.timeMax - 1) outText('スタート！', cx, H * 0.4, 56, '#fff');
+  else if (TW.phase === 'clear') outText(TW.stage >= 2 ? '🎉 てっぺん！ 634メートル！' : `${TW_STAGES[TW.stage].to}メートル とうちゃく！`, cx, H * 0.36, 40, '#ffe35a');
+  else if (TW.phase === 'fail') outText('じかんぎれ… いのちづなで セーフ！', cx, H * 0.36, 30, '#fff');
+  if (TW.phase === 'play' && S.mode === 'cam' && !P.seen) outText('ぜんしんが うつるように はなれてね（とけいは とまっているよ）', cx, H * 0.5, 20, '#fff');
+  if (TW.phase === 'over'){
+    const w = Math.min(560, W - 30), h = 200, x = (W - w) / 2, y = H * 0.24;
+    box(x, y, w, h);
+    outText(TW.best >= 3 ? 'てっぺんまで のぼった！' : 'スカイツリーのぼり おしまい！', cx, y + 40, 28, '#ffe35a');
+    outText(`${TW.best >= 3 ? 634 : TW.best ? TW_STAGES[TW.best - 1].to : twMeter()}メートル まで　🪙 10円玉 ${TW.coins}まい ゲット`, cx, y + 86, 20, '#fff');
+    outText(`いちばん たかく：${st('twBest') ? TW_STAGES[st('twBest') - 1].to : 0}メートル`, cx, y + 118, 16, '#cfe0ff');
+    outText(S.mode === 'cam' ? '👉 みぎ手を 上げると もういちど ／ 👈 ひだり手を 上げると ちずへ' : '「もういちど」「ちず」と いうか、下の ボタン', cx, y + 162, 16, '#fff');
+    if (TW.hold > 0){ ctx.fillStyle = '#8ff0ff'; ctx.fillRect(x + 20, y + h - 12, (w - 40) * TW.hold / 1.2, 6); }
+  }
+  drawPal();
+  drawTextFx();
+}
 
 // ---------- ミニゲーム：だるまおとし（ぐんまの ボスを たおすと ひらく） ----------
 // いちばん下の つみきと 同じ色で たたく：ひだり手を ふる＝あか、手を たたく＝みどり、みぎ手を ふる＝あお
@@ -1860,6 +2081,7 @@ function update(dt){
   if (S.book){ listen(true); return; }
   if (S.state === 'map'){ listen(true); updateMap(dt); return; }
   if (S.state === 'daruma'){ listen(DG.phase === 'over'); updatePal(dt); updateDaruma(dt); return; }
+  if (S.state === 'tower'){ listen(TW.phase === 'over'); updatePal(dt); updateTower(dt); return; }
   updatePal(dt);
   if (S.rightUp && S.mode === 'cam'){ S.listenUntil = S.now + 0.8; S.bookHint = S.now + 0.8; }
   // 体が うつっていない間は 止めて待つ
@@ -2122,6 +2344,7 @@ function draw(){
   if (!S.mode){ return; }
   if (S.state === 'map' && S.running){ drawMap(); return; }
   if (S.state === 'daruma' && S.running){ drawDaruma(); return; }
+  if (S.state === 'tower' && S.running){ drawTower(); return; }
   if (S.burn > 0 && !battle){
     const al = Math.min(1, S.burn);
     for (let i = 0; i < 26; i++){
@@ -2293,7 +2516,7 @@ function frame(ts){
   update(dt); draw();
 }
 // テスト用：手動で1コマ進める／関節データを直接わたす
-window.__game = { DG, startDaruma, dgHit, endDaruma, S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, KOTO, BUF, GOODS, openShop, shopHear, PAL, startQuiz, quizAnswer, quizHear, parseNum, openMap, mapHear, pickPin, PINS, openBook, bookHear, CARDS, regionStart, bossDown, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
+window.__game = { TW, startTower, twReach, twJump, endTower, DG, startDaruma, dgHit, endDaruma, S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, KOTO, BUF, GOODS, openShop, shopHear, PAL, startQuiz, quizAnswer, quizHear, parseNum, openMap, mapHear, pickPin, PINS, openBook, bookHear, CARDS, regionStart, bossDown, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
 const loop = ts => { frame(ts); requestAnimationFrame(loop); };
 requestAnimationFrame(loop);
 
@@ -2449,6 +2672,7 @@ let ptT = 0, ptOn = false;
 cv.addEventListener('pointerdown', e => {
   if (S.state === 'map' && S.running){ mapClick(e.clientX, e.clientY); return; }
   if (S.state === 'daruma' && S.running){ dgTap(e.clientX, e.clientY); return; }
+  if (S.state === 'tower' && S.running){ twTap(e.clientX, e.clientY); return; }
   if (S.mode !== 'nocam') return;
   punch(e.clientX, e.clientY);
   if (S.lv < SWORD_LV) return;
@@ -2463,6 +2687,12 @@ cv.addEventListener('pointermove', e => {
 function buildPad(){
   const box = $('padSpells'); box.innerHTML = '';
   if (S.mode !== 'nocam') return;
+  if (S.state === 'tower'){
+    const add = (t, f, col) => { const b = document.createElement('button'); b.textContent = t; if (col) b.style.background = col; b.addEventListener('pointerdown', e => { e.preventDefault(); f(); }); box.appendChild(b); };
+    if (TW.phase === 'over'){ add('🗾 ちずへ', endTower); add('🔁 もういちど', startTower); }
+    else { add('👈 ひだり手', () => twReach(0), '#ff9a8a'); add('みぎ手 👉', () => twReach(1), '#9ac0ff'); }
+    return;
+  }
   if (S.state === 'daruma'){
     const add = (t, f, col) => { const b = document.createElement('button'); b.textContent = t; if (col) b.style.background = col; b.addEventListener('pointerdown', e => { e.preventDefault(); f(); }); box.appendChild(b); };
     if (DG.phase === 'over'){ add('🗾 ちずへ', endDaruma); add('🔁 もういちど', startDaruma); }
@@ -2504,6 +2734,7 @@ addEventListener('keydown', e => {
   if (S.mode !== 'nocam' || e.repeat) return;
   if (KEYS[e.code]){ KEYS[e.code](true); e.preventDefault(); }
   if (S.book){ if (e.code === 'ArrowRight') turnPage(1); else if (e.code === 'ArrowLeft') turnPage(-1); else if (e.code === 'Escape') openBook(false); if (e.code !== 'KeyB') return; }
+  if (S.state === 'tower'){ const d = { Digit1: 0, KeyZ: 0, ArrowLeft: 0, Digit3: 1, KeyC: 1, ArrowRight: 1 }[e.code]; if (d != null){ e.preventDefault(); twReach(d); } if (e.code === 'Escape' && TW.phase === 'over') endTower(); return; }
   if (S.state === 'daruma'){ const d = { Digit1: 0, KeyZ: 0, ArrowLeft: 0, Digit2: 1, KeyX: 1, ArrowDown: 1, Space: 1, Digit3: 2, KeyC: 2, ArrowRight: 2 }[e.code]; if (d != null){ e.preventDefault(); dgHit(d); } if (e.code === 'Escape' && DG.phase === 'over') endDaruma(); return; }
   if (S.quiz){ const d = ['Digit0', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9'].indexOf(e.code); if (d >= 0) quizAnswer(d || 10); return; }
   const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7'].indexOf(e.code); if (k >= 0) S.heard = { id: ORDER[k], t: S.now };
