@@ -41,7 +41,7 @@
   <div class="how">
     <div>👊 <b>うでを つきだす</b> … パンチ。てきを たおすと レベルが 上がる</div>
     <div>⚔️ <b>りょう手を くっつけて ふる</b> … 剣（レベル2で 手に入る）</div>
-    <div>✨ <b>りょう手を 上げて、じゅもんを さけぶ</b> … レベルが 上がると おぼえる</div>
+    <div>✨ <b>りょう手を 上げる</b> → すぐ じゅもん（名前を さけびながら 上げると えらべる）… レベルが 上がると おぼえる</div>
     <div>⚠️ 声が 聞こえたら <b>よける</b>：やり→よこへ／てんじょう→しゃがむ／レーザー→ジャンプ</div>
     <div>🧍 「この ポーズ！」と 言われたら <b>同じ ポーズ</b>を とる</div>
     <div>👹 てきを たおしきると <b>ボスと 1対1</b>。ぜんぶの わざで たたかえ！</div>
@@ -88,9 +88,8 @@ const SWORD_LEN   = 1.6;   // 剣の長さ（肩はば単位）
 const GRIP_IN     = 0.6;   // りょう手首が これより近づいたら 剣を にぎったことにする
 const GRIP_OUT    = 0.9;   // これより はなれたら 剣を しまう
 const GRIP_VIS    = 0.15;  // にぎると 手首が かくれやすいので、剣は 見え方が あいまいでも みとめる
-const CHARGE_TIME = 0.5;   // まほうの構えが完成するまでの秒数
+const CHARGE_TIME = 0.2;   // まほうの構えが完成するまでの秒数（そろったら すぐ となえる）
 const SHOUT_MIN   = 0.06;  // 声の大きさの最低ライン（0〜1）
-const NAME_WAIT   = 0.9;   // 声が出てから じゅもんの名前の聞きとりを待つ秒数
 const MAGIC_CD    = 2.5;   // じゅもんを となえてから 次を ためられるまで（秒）
 const SHOT_HIT    = 0.6;   // 赤い玉の当たりはんい（肩はば単位）
 // --- よける（長さの単位は「どうの長さ＝肩〜こし」。「きけ！よけろ！ぜんしん勇者！」と同じ） ---
@@ -481,7 +480,7 @@ function gainExp(n){
       const sp = SPELLS[got];
       text(W / 2, H * 0.3 + 44, `${sp.icon} ${sp.name} を おぼえた！`, sp.col, sp.big ? 22 : 28, 2.6);
       say(`レベル${S.lv}！ ${sp.name} を おぼえた！`, 2);
-      tip(S.mode === 'cam' ? `${sp.icon} りょう手を 上げて「${sp.name}」と さけべ！` : `${sp.icon} の ボタンで ${sp.name}！`, 9);
+      tip(S.mode === 'cam' ? `${sp.icon}「${sp.name}」と さけびながら りょう手を 上げろ！` : `${sp.icon} の ボタンで ${sp.name}！`, 9);
     } else say(`レベル${S.lv}！`, 1);
     buildPad();
   }
@@ -629,11 +628,6 @@ function cast(id){
     S.shots.forEach(b => dots(b.tx, b.ty, 8, '#ffd0ff')); S.shots = [];
     all(25, '#ffb0f0');
   }
-}
-function shouting(){
-  if (S.mode === 'cam' && S.noMic) return S.hold > 1.0;       // マイクなし：構えを1秒つづける
-  if (S.mode === 'cam') return S.vol > Math.max(SHOUT_MIN, S.noise * 4);
-  return S.now < S.shoutUntil;
 }
 
 // ---------- よける ----------
@@ -853,17 +847,14 @@ function update(dt){
   const magic = canMagic() && S.lv >= 3;
   S.magicCD -= dt;
   S.charge = magic && S.poseMagic && S.magicCD <= 0 ? Math.min(1, S.charge + dt / CHARGE_TIME) : Math.max(0, S.charge - dt * 2.5);
-  if (cam && !S.noMic && magic && S.poseMagic && S.magicCD <= 0.4) S.listenUntil = S.now + 0.8;
+  // 名前は 手を上げる前や 上げながら さけんでも 間にあうように、じゅもんが つかえる間は ずっと 聞いておく
+  if (cam && !S.noMic && magic && S.magicCD <= 0.4) S.listenUntil = S.now + 0.8;
   listen(S.now < S.listenUntil);
   if (S.mode === 'nocam'){ if (S.heard && S.now - S.heard.t < 0.3 && S.magicCD <= 0 && canMagic()) cast(S.heard.id); }
   else if (S.charge >= 1){
     if (!S.ready){ S.ready = true; sfx.ready(); }
-    S.hold += dt;
-    if (S.heard && S.now - S.heard.t < 1.5) cast(S.heard.id);
-    else {
-      if (!S.shoutT && shouting()) S.shoutT = S.now;
-      if (S.shoutT && (!recOn || S.now - S.shoutT > NAME_WAIT)) cast(nextSpell());
-    }
+    // りょう手が 上がったら すぐ となえる。少し前に 名前が 聞こえていたら その じゅもん、なければ「おまかせ」
+    cast(S.heard && S.now - S.heard.t < 2.0 ? S.heard.id : nextSpell());
   } else { S.hold = 0; S.shoutT = 0; S.ready = false; }
 
   if (S.state === 'card'){ S.card.t -= dt; if (S.card.t <= 0){ const f = S.card.next; S.card = null; f(); } }
@@ -1232,7 +1223,7 @@ function draw(){
   }
   // 下の ひとこと
   const tips = cam
-    ? ['うでを つきだす → パンチ', S.lv >= SWORD_LV ? 'りょう手を くっつけて ふる → 剣' : 'レベル2で 剣が 手に入る', S.lv >= 3 ? 'りょう手を 上げて じゅもんを さけぶ' : 'レベル3で じゅもんを おぼえる', 'むねの前で うでを クロス → ガード']
+    ? ['うでを つきだす → パンチ', S.lv >= SWORD_LV ? 'りょう手を くっつけて ふる → 剣' : 'レベル2で 剣が 手に入る', S.lv >= 3 ? 'りょう手を 上げる → じゅもん' : 'レベル3で じゅもんを おぼえる', 'むねの前で うでを クロス → ガード']
     : ['タップ → パンチ', 'なぞる → 剣', '下の ボタンで よける・じゅもん'];
   let hint = S.now < S.tipUntil ? S.tip : tips[Math.floor(S.now / 3.5) % tips.length], bigT = S.now < S.tipUntil;
   if (cam && S.charge >= 1){ hint = S.noMic ? 'そのまま キープ！' : 'いまだ！ じゅもんの 名前を さけべ！  ' + ORDER.filter(learned).map(k => SPELLS[k].icon + (SPELLS[k].big ? SPELLS[k].al[0] : SPELLS[k].name)).join(' / '); bigT = true; }
