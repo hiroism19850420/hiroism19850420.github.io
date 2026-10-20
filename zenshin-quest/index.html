@@ -83,7 +83,6 @@
     <div>⚔️ <b>りょう手を くっつけて ふる</b> … 剣（レベル2で 手に入る）</div>
     <div>✨ <b>りょう手を 上げる</b> → すぐ じゅもん（名前を さけびながら 上げると えらべる）… レベルが 上がると おぼえる</div>
     <div>📜 ことわざでも 魔法が 出るよ</div>
-    <div>🍖 ハンバーグ クイズ … こたえを <b>声で 言う</b>か、その数だけ <b>ジャンプ</b></div>
     <div>🍡 なかまが いっしょに たたかう。ハンバーグを たべると 大きく つよくなる</div>
     <div>⚠️ 声が 聞こえたら <b>よける</b>：やり→よこへ／てんじょう→しゃがむ／レーザー→ジャンプ</div>
     <div>🧍 「この ポーズ！」と 言われたら <b>同じ ポーズ</b>を とる</div>
@@ -354,7 +353,6 @@ const BUF = { hamb: 0, onigiri: 0, choco: 0, pencil: 0, milk: 0, juice: 0, ruler
 // おかねは 10円玉の まい数（6さいでも 数えられるように 小さい数に する）
 const COIN_PER_KILL = 0.4;                   // ざこ 1体で 10円玉 0.4まい（2〜3体で 1まい）
 const COIN_BOSS = [5, 6, 0];                 // ボスを たおした時（しょうごと）
-const COIN_QUIZ = 2;                         // クイズに せいかい
 // 10円玉を 5まいずつ まとめて ならべる（数えやすいように）
 const coinRow = n => Array.from({ length: Math.ceil(n / 5) }, (_, i) => '🪙'.repeat(Math.min(5, n - i * 5))).join(' ');
 const needExp = lv => Math.round((2 + lv + lv * lv / 6) * 1.7);      // 次のレベルまでの けいけんち
@@ -379,12 +377,12 @@ addEventListener('resize', resize); resize();
 
 const S = {
   mode: null, diff: 'easy', state: 'title', running: false, now: 0, time: 0,
-  lv: 1, exp: 0, hp: 20, mp: 0, chapter: 0, kills: 0, coin: 0, coinF: 0, fed: 0, quiz: null, qlv: 1, qStreak: 0, qMiss: 0,
+  lv: 1, exp: 0, hp: 20, mp: 0, chapter: 0, kills: 0, coin: 0, coinF: 0, fed: 0,
   enemies: [], fx: [], shots: [], spawnT: 0, shotT: 0, evT: 0, evN: 0, ev: null, pose: null, card: null,
   body: false, full: true, poseGuard: false, padGuard: false, poseMagic: false, hurt: 0, combo: 0, comboT: 0,
   charge: 0, hold: 0, magicCD: 0, burn: 0, burnT: 0, heard: null, shoutT: 0, shoutUntil: 0, listenUntil: 0, ready: false, spellIdx: 0,
   vol: 0, noise: 0.02, noMic: false, strokeId: 0, tip: '', tipUntil: 0,
-  cnt: { punch: 0, slash: 0, jump: 0, duck: 0, dodge: 0, pose: 0, spell: 0, quiz: 0 }
+  cnt: { punch: 0, slash: 0, jump: 0, duck: 0, dodge: 0, pose: 0, spell: 0 }
 };
 const B = { id: '', name: '', hp: 0, maxHp: 0, phase: '', t: 0, next: null, msg: [], left: 0, frozen: false, iceCD: 0, shake: 0, dealt: 0, burn: 0 };   // ボス戦
 const P = { seen: false, x: 0, y: 0, T: 120, lift: 0, baseY: null, kd: 0, air: false, low: false };   // からだ全体（どうの まん中・高さ）
@@ -507,7 +505,6 @@ function hear(str){
   if (S.state === 'map'){ mapHear(str); return null; }
   if (S.state === 'daruma'){ dgHear(str); return null; }
   if (S.state === 'tower'){ twHear(str); return null; }
-  if (S.quiz){ quizHear(str); return null; }
   const n = norm(str);
   // あんないの声を マイクが ひろって、じゅもんが 勝手に 出ないようにする
   const mine = S.now < VOICE.until + 0.3 ? norm(VOICE.text) : '';
@@ -797,7 +794,7 @@ function dots(x, y, n, col, pow = 1){
 function text(x, y, str, col, size = 24, life = 0.8){ S.fx.push({ kind: 'text', x, y, str, col, size, t: 0, life }); }
 
 // ---------- じゅもん ----------
-const canMagic = () => S.running && ((S.state === 'field' && !S.pose && !S.quiz) || (inBattle() && B.phase === 'player'));
+const canMagic = () => S.running && ((S.state === 'field' && !S.pose) || (inBattle() && B.phase === 'player'));
 // 名前が 聞きとれなかった時の「おまかせ」。HP が 少なければ 回復、あとは おぼえた こうげきを じゅんばんに
 function nextSpell(){
   const ok = ORDER.filter(k => learned(k) && S.mp >= SPELLS[k].mp);
@@ -971,7 +968,7 @@ function afterAttack(){
 }
 function bossDown(){
   const b = BOSSES[B.id], ch = S.chapter;
-  S.ev = null; S.charge = 0; S.quiz = null; listen(false);
+  S.ev = null; S.charge = 0; listen(false);
   const coin = CH[ch].coin || 0; S.coin += coin;
   bump('boss_' + B.id);
   if (!S.cleared.includes(ch)) S.cleared.push(ch);
@@ -1000,7 +997,6 @@ function updatePal(dt){
   let tx, ty;
   if (battle){ tx = W * 0.12 + 30; ty = H - 150 - padH; }
   else if (S.state === 'daruma' || S.state === 'tower'){ tx = W - palR() - 30; ty = H - padH - palR() - 150; }
-  else if (S.quiz){ tx = W - palR() - 24; ty = H - padH - palR() - 34; }
   else if (S.mode === 'nocam'){ tx = P.x + u * 1.7; ty = P.y + P.T * 1.1; }
   else { const side = anchor.x < W / 2 ? 1 : -1; tx = anchor.x + side * u * 2; ty = anchor.y + u * 1.6; }
   const r = palR();
@@ -1010,7 +1006,7 @@ function updatePal(dt){
   PAL.moodT -= dt; if (PAL.moodT <= 0) PAL.mood = '';
   PAL.msgT -= dt; PAL.eatT -= dt; PAL.blinkT -= dt; if (PAL.blinkT < -0.12) PAL.blinkT = 2 + Math.random() * 2;
   // こうげき：ときどき ほしを なげる（ハンバーグを たべるほど はやく、つよく）
-  if (S.state === 'field' && !S.pose && !S.quiz){
+  if (S.state === 'field' && !S.pose){
     PAL.atkT -= dt;
     const tg = S.enemies.filter(e => !e.dead).sort((a, b) => a.z - b.z)[0];
     if (PAL.atkT <= 0 && tg){
@@ -1104,145 +1100,6 @@ function drawHamb(x, y, sz, glow){
   ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.ellipse(x - sz * 0.14, y - sz * 0.13, sz * 0.09, sz * 0.04, -0.3, 0, 6.28); ctx.fill();
 }
 
-// ---------- ハンバーグ クイズ（たしざん。10まで） ----------
-// qlv 1：絵だけ（こたえ 5まで）、2：絵と数字（8まで）、3：数字だけ（10まで。りょう手を 上げると 絵の ヒント）
-// 3回 つづけて せいかいで レベルアップ、こたえを 2回 見せたら レベルダウン。まちがえても ばつは なし
-const QMAX = [0, 5, 8, 10];
-const NUMSAY = ['ゼロ', 'いち', 'に', 'さん', 'よん', 'ご', 'ろく', 'なな', 'はち', 'きゅう', 'じゅう'];
-const NUMW = [['ジュウ', 10], ['トオ', 10], ['キュウ', 9], ['ココノツ', 9], ['ハチ', 8], ['ヤッツ', 8], ['ナナ', 7], ['シチ', 7], ['ロク', 6], ['ムッツ', 6], ['イツツ', 5], ['ヨン', 4], ['ヨッツ', 4], ['サン', 3], ['ミッツ', 3], ['フタツ', 2], ['イチ', 1], ['ヒトツ', 1]];
-const NUM1 = { 'ニ': 2, 'ゴ': 5, 'シ': 4, 'ク': 9, '十': 10, '九': 9, '八': 8, '七': 7, '六': 6, '五': 5, '四': 4, '三': 3, '二': 2, '一': 1 };
-function parseNum(str){
-  const z = str.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
-  const m = z.match(/\d+/); if (m) return +m[0];
-  const n = norm(z);
-  for (const [w, v] of NUMW) if (n.includes(w)) return v;
-  const c = n.replace(/(デス|ダヨ|カナ|コ|個|ツ|ダ)+$/, '');
-  return NUM1[c] || null;
-}
-function startQuiz(){
-  S.enemies.forEach(e => dots(e.x, e.y, 6, '#fff', 0.6)); S.enemies = []; S.shots = [];
-  const max = QMAX[S.qlv];
-  const a = 1 + Math.floor(Math.random() * (max - 1)), b = 1 + Math.floor(Math.random() * (max - a));
-  S.quiz = { a, b, t: 0, idle: 0, seenJ: S.cnt.jump, jumps: 0, jt: 0, tries: 0, helped: false, hint: S.qlv < 3, hold: 0, count: null, result: null };
-  sfx.ready(); buildPad();
-  say(S.qlv === 1 ? 'ハンバーグ クイズ！ ハンバーグは ぜんぶで いくつ？' : `ハンバーグ クイズ！ ${a} たす ${b} は？`, 3);
-  palMood('happy', 2, 'クイズだ〜！');
-}
-function quizHear(str){
-  const Q = S.quiz;
-  if (!Q || Q.result || Q.count || S.now < VOICE.until + 0.5) return;   // じぶんの 声（問題や かぞえる声）は ひろわない
-  const n = parseNum(str);
-  if (n != null && n >= 0 && n <= 20) quizAnswer(n);
-}
-function quizAnswer(n){
-  const Q = S.quiz; if (!Q || Q.result) return;
-  const ans = Q.a + Q.b;
-  Q.jumps = 0; Q.idle = 0;
-  if (n === ans){
-    Q.result = { ok: true, t: 2.4 };
-    const coin = Q.helped ? 1 : COIN_QUIZ;
-    S.coin += coin; S.fed++; S.cnt.quiz++; bump('quiz'); if (Q.byJump) bump('quizJump');
-    const heal = Math.round(maxHp(S.lv) * 0.2); S.hp = Math.min(maxHp(S.lv), S.hp + heal);
-    sfx.win(); S.fx.push({ kind: 'flash', col: '255,240,170', t: 0, life: 0.4 });
-    text(W / 2, H * 0.24, `🪙 10円玉 +${coin}まい`, '#ffe35a', 26, 2);
-    say(`せいかい！ ${Q.a} たす ${Q.b} は ${ans}！`, 3);
-    palEat();
-    if (Q.helped) S.qStreak = 0; else if (++S.qStreak >= 3 && S.qlv < 3){ S.qlv++; S.qStreak = 0; Q.lvUp = true; }
-    S.qMiss = 0;
-    gainExp(2 * (S.chapter + 1));
-    return;
-  }
-  Q.tries++;
-  sfx.denied(); text(W / 2, H * 0.24, `${n}…？`, '#ffd0d0', 30, 1.2);
-  if (Q.tries === 1 && !Q.helped){ palMood('happy', 2, 'いっしょに かぞえよ！'); say('おしい！ いっしょに かぞえよう！', 3); startCount(false); }
-  else { revealQuiz(); }
-}
-function startCount(reveal){
-  const Q = S.quiz; Q.helped = true; Q.hint = true;
-  Q.count = { i: 0, t: 1.6, reveal };
-}
-function revealQuiz(){
-  const Q = S.quiz, ans = Q.a + Q.b;
-  Q.result = { ok: false, t: 3.2 }; S.qStreak = 0;
-  if (++S.qMiss >= 2 && S.qlv > 1){ S.qlv--; S.qMiss = 0; }
-  say(`こたえは ${ans} だよ。つぎは きっと できるよ！`, 3);
-  palMood('happy', 2.5, 'つぎ がんばろ！');
-}
-function endQuiz(){
-  S.quiz = null; buildPad();
-  S.spawnT = 1.2; S.evT = CH[S.chapter].evGap * 0.7;
-}
-function updateQuiz(dt){
-  const Q = S.quiz; Q.t += dt;
-  if (Q.result){
-    Q.result.t -= dt;
-    if (Q.result.t <= 0){ const up = Q.lvUp; endQuiz(); if (up){ say('クイズ レベルアップ！ つぎは すこし むずかしいよ！', 2); text(W / 2, H * 0.62, 'クイズ レベルアップ！', '#8ff0ff', 30, 2); } }
-    return;
-  }
-  // いっしょに かぞえる：ハンバーグを 1こずつ ひからせて 声で かぞえる
-  if (Q.count){
-    Q.count.t -= dt; Q.seenJ = S.cnt.jump;
-    if (Q.count.t <= 0){
-      const ans = Q.a + Q.b;
-      if (Q.count.i < ans){ Q.count.i++; say(NUMSAY[Q.count.i], 2); sfx.dq(); Q.count.t = 0.85; }
-      else {
-        const rv = Q.count.reveal; Q.count = null; Q.idle = 0;
-        if (rv) revealQuiz(); else say('ぜんぶで いくつ だった？ いってみて！', 3);
-      }
-    }
-    return;
-  }
-  // ジャンプで こたえる：とんだ 数を かぞえて、2びょう とまったら こたえ
-  if (S.cnt.jump > Q.seenJ){
-    Q.jumps += S.cnt.jump - Q.seenJ; Q.seenJ = S.cnt.jump; Q.jt = S.now; Q.idle = 0;
-    say(NUMSAY[Math.min(10, Q.jumps)] || String(Q.jumps), 2); sfx.dq();
-  }
-  if (Q.jumps > 0 && S.now - Q.jt > 2.2){ Q.byJump = true; quizAnswer(Q.jumps); if (S.quiz && !S.quiz.result) Q.byJump = false; }
-  // ヒント：りょう手を 上げると 絵が 出る（レベル3）
-  if (S.mode === 'cam' && S.poseMagic){ Q.hold += dt; if (Q.hold > 0.6 && !Q.hint){ Q.hint = true; say('ハンバーグを かぞえてみよう！', 2); } } else Q.hold = 0;
-  // こたえが ないときは、なかまが いっしょに かぞえる → それでも ないときは こたえを 見せる
-  if (Q.jumps === 0 && S.now > VOICE.until) Q.idle += dt;
-  if (Q.idle > 16){ Q.idle = 0; if (!Q.helped){ say('いっしょに かぞえよう！', 3); startCount(false); } else startCount(true); }
-}
-function quizSpots(cx, cy, n, sz){
-  const cols = Math.min(n, 3), rows = Math.ceil(n / cols), out = [];
-  for (let i = 0; i < n; i++){
-    const r = Math.floor(i / cols), inRow = Math.min(cols, n - r * cols), c = i % cols;
-    out.push([cx + (c - (inRow - 1) / 2) * sz * 1.1, cy + (r - (rows - 1) / 2) * sz * 0.82]);
-  }
-  return out;
-}
-function drawQuiz(){
-  const Q = S.quiz, cam = S.mode === 'cam', padH = S.mode === 'nocam' ? 96 : 0;
-  const bw = Math.min(760, W - 20), by = 60, bh = Math.min(H - by - padH - 14, 420), bx = (W - bw) / 2;
-  box(bx, by, bw, bh);
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  outText('🍖 ハンバーグ クイズ', W / 2, by + 24, 20, '#ffd9a0');
-  ctx.textAlign = 'right'; outText('★'.repeat(S.qlv) + '☆'.repeat(3 - S.qlv), bx + bw - 16, by + 24, 18, '#ffe35a'); ctx.textAlign = 'center';
-  const ans = Q.a + Q.b, showPics = Q.hint || S.qlv < 3;
-  const head = S.qlv === 1 ? 'ぜんぶで いくつ？' : `${Q.a} ＋ ${Q.b} ＝ ${Q.result ? ans : '？'}`;
-  outText(head, W / 2, by + 62, S.qlv === 1 ? 28 : 40, '#fff');
-  const rows = Math.ceil(Math.max(Q.a, Q.b) / 3), sz = Math.max(18, Math.min(bw * 0.1, (bh - 150) / (rows * 0.82 + 0.9)));
-  const cy = by + 92 + (bh - 92 - 56) / 2, lx = W / 2 - bw * 0.25, rx = W / 2 + bw * 0.25;
-  if (showPics){
-    [[lx, Q.a], [rx, Q.b]].forEach(([cx, n]) => { ctx.fillStyle = '#f4f1ea'; ctx.beginPath(); ctx.ellipse(cx, cy, sz * 2.0, sz * (0.55 + rows * 0.5), 0, 0, 6.28); ctx.fill(); ctx.strokeStyle = '#c9c2b2'; ctx.lineWidth = 3; ctx.stroke(); });
-    const spots = quizSpots(lx, cy, Q.a, sz).concat(quizSpots(rx, cy, Q.b, sz));
-    const lit = Q.count ? Q.count.i : Q.result ? ans : 0;
-    spots.forEach(([x, y], i) => {
-      drawHamb(x, y, sz, i < lit);
-      if (i < lit){ outText(String(i + 1), x, y - sz * 0.55, Math.round(sz * 0.5), '#ffe35a'); }
-    });
-    outText('＋', W / 2, cy, 40, '#fff');
-    if (S.qlv === 2){ const top = cy - sz * (0.55 + rows * 0.5);
-      [[lx, Q.a], [rx, Q.b]].forEach(([x, n]) => { ctx.fillStyle = '#23306b'; ctx.beginPath(); ctx.arc(x, top, 22, 0, 6.28); ctx.fill(); outText(String(n), x, top + 1, 30, '#8ff0ff'); }); }
-  } else {
-    outText(cam ? 'わからなかったら りょう手を 上げてね（ヒント）' : 'わからなかったら すこし まってね（ヒント）', W / 2, cy, 18, '#cfe0ff');
-  }
-  let foot = Q.result ? (Q.result.ok ? 'せいかい！ 🎉' : `こたえは ${ans}`) : Q.count ? 'いっしょに かぞえよう！' : Q.jumps ? `🦘 ${Q.jumps}` : (cam ? 'こえで いうか、その かずだけ ジャンプ！' : 'したの ボタンで こたえてね');
-  outText(foot, W / 2, by + bh - 24, Q.result || Q.jumps ? 30 : 20, Q.result && Q.result.ok ? '#ffe35a' : '#fff');
-}
-
-
 // ---------- ほぞん（この きかいの ブラウザに おぼえる） ----------
 // cards・koto・st は ずっと のこる（はじめからでも きえない）。prog は つづきから 用
 const SAVE_KEY = 'zq_save1';
@@ -1251,7 +1108,7 @@ try { SAVE = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') || {}; } catch (
 S.cards = SAVE.cards || []; S.koto = SAVE.koto || []; S.st = SAVE.st || {}; S.cleared = []; S.cont = !!SAVE.prog;
 const st = k => S.st[k] || 0, bump = (k, n = 1) => { S.st[k] = st(k) + n; };
 function saveGame(endProg){
-  if (S.running && S.next != null) SAVE.prog = { lv: S.lv, exp: S.exp, coin: S.coin, coinF: S.coinF, fed: S.fed, qlv: S.qlv, BUF: Object.assign({}, BUF), cleared: S.cleared.slice(), next: S.next };
+  if (S.running && S.next != null) SAVE.prog = { lv: S.lv, exp: S.exp, coin: S.coin, coinF: S.coinF, fed: S.fed, BUF: Object.assign({}, BUF), cleared: S.cleared.slice(), next: S.next };
   if (endProg) delete SAVE.prog;
   SAVE.cards = S.cards; SAVE.koto = S.koto; SAVE.st = S.st;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(SAVE)); } catch (e) {}
@@ -1271,7 +1128,6 @@ const CARDS = [
   { id: 'sword',  icon: '⚔️', name: 'けんを てにいれた',   how: 'レベル2に なる', ok: () => st('lv') >= 2 },
   { id: 'thunder', icon: '⚡', name: 'サンダー',           how: 'レベル3に なって じゅもんを おぼえる', ok: () => st('lv') >= 3 },
   { id: 'spell',  icon: '✨', name: 'はじめての じゅもん', how: 'りょう手を 上げて じゅもんを となえる', ok: () => st('spell') >= 1 },
-  { id: 'quiz',   icon: '🍖', name: 'はじめての せいかい', how: 'ハンバーグ クイズに せいかい する', ok: () => st('quiz') >= 1 },
   { id: 'shop',   icon: '🛒', name: 'はじめての おかいもの', how: 'おみせで「○○を ください」と いって かう', ok: () => st('buy') >= 1 },
   bossCard('muza', '🌱', 'そうげんの へいわ', 'はじまりの そうげんで まおうムーザを たおす', 'muza'),
   { id: 'koto',   icon: '📜', name: 'ことわざ デビュー',   how: 'ことわざを さけんで まほうを だす', ok: () => S.koto.length >= 1 },
@@ -1291,9 +1147,6 @@ const CARDS = [
   { id: 'peanut', icon: '🥜', name: 'らっかせい 10こ',     how: 'ちばで らっかせいを 10こ たおす', ok: () => st('ko_rakkasei') >= 10 },
   { id: 'densha', icon: '🚃', name: 'でんしゃ ストップ',   how: 'とうきょうで でんしゃを 5だい たおす', ok: () => st('ko_densha') >= 5 },
   { id: 'kani',   icon: '🦀', name: 'カニ 5ひき',          how: 'ほっかいどうで カニを 5ひき たおす', ok: () => st('ko_kani') >= 5 },
-  { id: 'jump',   icon: '🦘', name: 'ジャンプで こたえた', how: 'クイズの こたえを ジャンプで こたえて せいかい', ok: () => st('quizJump') >= 1 },
-  { id: 'quiz3',  icon: '⭐', name: 'クイズ ほし みっつ',  how: 'ハンバーグ クイズで ★★★に なる', ok: () => st('qlv') >= 3 },
-  { id: 'quiz20', icon: '🧮', name: 'けいさん めいじん',   how: 'クイズに 20かい せいかい する', ok: () => st('quiz') >= 20 },
   { id: 'feed5',  icon: '🍡', name: 'なかよし',            how: 'なかまに ハンバーグを 5こ たべさせる', ok: () => st('fed') >= 5 },
   { id: 'feed10', icon: '💞', name: 'おおきく なったね',   how: 'なかまに ハンバーグを 10こ たべさせる', ok: () => st('fed') >= 10 },
   { id: 'koto10', icon: '📚', name: 'ことわざ はかせ',     how: 'ことわざを 10しゅるい つかう', ok: () => S.koto.length >= 10 },
@@ -1306,10 +1159,11 @@ const CARDS = [
   { id: 'thanks', icon: '💐', name: 'ありがとうの こころ', how: 'ひみつ。おみせで ある ことばを いうと…', secret: true, ok: () => st('thanks') >= 1 },
   { id: 'kotoBoss', icon: '🐱', name: 'ことわざ アタック', how: 'ひみつ。ボスに ある ことを すると…', secret: true, ok: () => st('kotoBoss') >= 1 }
 ];
+S.cards = S.cards.filter(id => CARDS.some(c => c.id === id));   // けした カード（クイズ）は かぞえない
 let cardT = 0, cardQ = [], cardShow = 0;
 function checkCards(dt){
   // まいかい 見る 数（いちばん 大きかった 数を おぼえる）
-  S.st.lv = Math.max(st('lv'), S.lv); S.st.qlv = Math.max(st('qlv'), S.qlv); S.st.coin = Math.max(st('coin'), S.coin); S.st.fed = Math.max(st('fed'), S.fed);
+  S.st.lv = Math.max(st('lv'), S.lv); S.st.coin = Math.max(st('coin'), S.coin); S.st.fed = Math.max(st('fed'), S.fed);
   if ((cardT += dt) > 0.5){
     cardT = 0; let got = false;
     for (const c of CARDS) if (!S.cards.includes(c.id) && c.ok()){ S.cards.push(c.id); cardQ.push(c); got = true; }
@@ -1400,7 +1254,7 @@ const castleOpen = () => regionsDone() >= REGION_IDX.length;
 function openMap(){
   S.state = 'map'; S.next = 'map'; saveGame();
   Object.assign(MAP, { hover: null, hoverT: 0, sel: null, selT: 0 });
-  S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.quiz = null; S.charge = 0;
+  S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.charge = 0;
   sfx.dq();
   if (twOpen() && !st('twUnlockSaid')){ bump('twUnlockSaid'); say('ミニゲーム、スカイツリーのぼりが あそべるように なったよ！ ちずの とうきょうの そばを えらんでね。', 3); text(W / 2, H * 0.3, '🧗 ミニゲーム「スカイツリーのぼり」が ひらいた！', '#ffe35a', 26, 4); }
   else if (dgOpen() && !st('dgUnlockSaid')){ bump('dgUnlockSaid'); say('ミニゲーム、だるまおとしが あそべるように なったよ！ ちずの まとを えらんでね。', 3); text(W / 2, H * 0.3, '🎯 ミニゲーム「だるまおとし」が ひらいた！', '#ffe35a', 26, 4); }
@@ -1513,7 +1367,7 @@ const TW_HOLD = [{ c: '#e8463a', d: '#a8241c', l: '#ff9a8a' }, { c: '#3a7be8', d
 const TW_GOLD = { c: '#ffc531', d: '#c88a12', l: '#fff0a0' }, TW_GRAY = { c: '#dde3ec', d: '#98a2b4', l: '#fff' };
 const TW = { phase: 'off', stage: 0, lives: 3, coins: 0, route: [], cur: 0, camH: 0, hands: [], time: 0, timeMax: 1, stun: 0, shake: 0, fallD: 0, fallV: 0, t: 0, cd: 0, up: [false, false], best: 0, gap: 70, puff: [], hold: 0 };
 function startTower(){
-  S.state = 'tower'; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.quiz = null; S.charge = 0;
+  S.state = 'tower'; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.charge = 0;
   Object.assign(TW, { stage: 0, lives: 3, coins: 0, best: 0 });
   bump('twPlay'); twStage();
 }
@@ -1721,7 +1575,7 @@ function dgStack(n){
   return a.slice(0, n);
 }
 function startDaruma(){
-  S.state = 'daruma'; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.quiz = null; S.charge = 0;
+  S.state = 'daruma'; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.charge = 0;
   Object.assign(DG, { stage: 1, lives: 3, coins: 0, best: 0 });
   bump('dgPlay'); dgStage();
 }
@@ -1967,7 +1821,7 @@ function updateShop(dt){
 // ---------- 進行 ----------
 function showCard(lines, dur, next, voice){ S.state = 'card'; S.card = { lines, t: dur, next }; if (voice) say(voice, 3); }
 function startChapter(i){
-  S.chapter = i; S.kills = 0; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.quiz = null; S.burn = 0; S.evN = 0;
+  S.chapter = i; S.kills = 0; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.burn = 0; S.evN = 0;
   S.hp = maxHp(S.lv); S.mp = maxMp(S.lv);
   const c = CH[i];
   const tag = c.region ? `${c.icon} ${c.pref}` : c.tag;
@@ -1997,7 +1851,6 @@ function updatePose(dt){
 function updateField(dt){
   const c = CH[S.chapter], D = DIFF[S.diff];
   if (S.pose){ updatePose(dt); return; }
-  if (S.quiz){ updateQuiz(dt); return; }
   if (S.burn > 0){
     S.burn -= dt; S.burnT -= dt;
     if (S.burnT <= 0){
@@ -2038,8 +1891,7 @@ function updateField(dt){
     S.evT -= dt;
     if (S.evT <= 0 && S.kills < c.quota){
       S.evN++; S.evT = c.evGap;
-      // 4回で ひとまわり：よける → ハンバーグ クイズ → よける → ポーズ
-      if (S.evN % 4 === 0) startPose(); else if (S.evN % 4 === 2) startQuiz(); else startEvent(pick(['spearR', 'spearL', 'ceil', 'laser'].filter(t => t !== S.lastHaz)));
+      if (S.evN % 3 === 0) startPose(); else startEvent(pick(['spearR', 'spearL', 'ceil', 'laser'].filter(t => t !== S.lastHaz)));
       if (S.ev) S.lastHaz = S.ev.type;
     }
     if (S.kills >= c.quota && S.running) startBoss();
@@ -2100,7 +1952,6 @@ function update(dt){
   S.charge = magic && S.poseMagic && S.magicCD <= 0 ? Math.min(1, S.charge + dt / CHARGE_TIME) : Math.max(0, S.charge - dt * 2.5);
   // 名前は 手を上げる前や 上げながら さけんでも 間にあうように、じゅもんが つかえる間は ずっと 聞いておく
   if (cam && !S.noMic && magic && S.magicCD <= 0.4) S.listenUntil = S.now + 0.8;
-  if (S.quiz && !S.noMic) S.listenUntil = S.now + 0.8;
   if (S.combo > st('combo')) S.st.combo = S.combo;
   listen(S.now < S.listenUntil);
   if (S.mode === 'nocam'){ if (S.heard && S.now - S.heard.t < 0.3 && S.magicCD <= 0 && canMagic()) cast(S.heard.id); }
@@ -2116,15 +1967,15 @@ function update(dt){
 }
 function begin(){
   Object.keys(BUF).forEach(k => { BUF[k] = 0; });
-  Object.assign(S, { coin: 0, coinF: 0, fed: 0, quiz: null, qlv: 1, qStreak: 0, qMiss: 0, cleared: [], next: null, book: false });
+  Object.assign(S, { coin: 0, coinF: 0, fed: 0, cleared: [], next: null, book: false });
   const pr = S.cont && SAVE.prog;
   if (pr){
-    Object.assign(S, { lv: pr.lv, exp: pr.exp, coin: pr.coin, coinF: pr.coinF || 0, fed: pr.fed || 0, qlv: pr.qlv || 1, cleared: pr.cleared || [] });
+    Object.assign(S, { lv: pr.lv, exp: pr.exp, coin: pr.coin, coinF: pr.coinF || 0, fed: pr.fed || 0, cleared: pr.cleared || [] });
     Object.assign(BUF, pr.BUF || {});
   }
   Object.assign(S, { running: true, time: 0, lv: pr ? S.lv : 1, exp: pr ? S.exp : 0, hp: maxHp(pr ? S.lv : 1), mp: 0, fx: [], hurt: 0, combo: 0, comboT: 0,
     charge: 0, hold: 0, magicCD: 0, heard: null, shoutT: 0, listenUntil: 0, ready: false, spellIdx: 0, tip: '', tipUntil: 0,
-    cnt: { punch: 0, slash: 0, jump: 0, duck: 0, dodge: 0, pose: 0, spell: 0, quiz: 0 } });
+    cnt: { punch: 0, slash: 0, jump: 0, duck: 0, dodge: 0, pose: 0, spell: 0 } });
   sim.x = 0; P.baseY = null;
   $('title').classList.add('hide'); $('over').classList.add('hide');
   $('pad').classList.toggle('show', S.mode === 'nocam'); buildPad(); $('bBook').classList.add('show');
@@ -2133,10 +1984,10 @@ function begin(){
 }
 function resultText(){
   const m = Math.floor(S.time / 60), s = Math.floor(S.time % 60), c = S.cnt;
-  return `レベル ${S.lv}　／　じかん ${m}ふん ${s}びょう\n👊 パンチ ${c.punch}回　⚔️ 剣 ${c.slash}回　✨ じゅもん ${c.spell}回\n🦘 ジャンプ ${c.jump}回　🧎 しゃがむ ${c.duck}回\n💨 よけた ${c.dodge}回　🧍 ポーズ ${c.pose}回\n🍖 クイズ せいかい ${c.quiz}回　🍡 ${palName()}が たべた ハンバーグ ${S.fed}こ`;
+  return `レベル ${S.lv}　／　じかん ${m}ふん ${s}びょう\n👊 パンチ ${c.punch}回　⚔️ 剣 ${c.slash}回　✨ じゅもん ${c.spell}回\n🦘 ジャンプ ${c.jump}回　🧎 しゃがむ ${c.duck}回\n💨 よけた ${c.dodge}回　🧍 ポーズ ${c.pose}回\n🍡 ${palName()}が たべた ハンバーグ ${S.fed}こ`;
 }
 function endPanel(title, retry){
-  S.running = false; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.quiz = null; S.burn = 0; S.charge = 0; listen(false);
+  S.running = false; S.enemies = []; S.shots = []; S.ev = null; S.pose = null; S.burn = 0; S.charge = 0; listen(false);
   $('overTitle').textContent = title; $('res').textContent = resultText();
   $('bRetry').textContent = retry; $('pad').classList.remove('show'); $('bBook').classList.remove('show'); S.book = false; $('book').classList.add('hide'); $('over').classList.remove('hide');
 }
@@ -2375,7 +2226,7 @@ function draw(){
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(bx, by, br, 0, 6.28); ctx.fill();
   }
   if (S.ev && S.running) drawHazard(S.ev);
-  if (S.running && S.state !== 'shop' && S.state !== 'card' && !S.quiz) drawPal();
+  if (S.running && S.state !== 'shop' && S.state !== 'card') drawPal();
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
   if (cam) for (const h of hands){
     if (!h.vis) continue;
@@ -2413,7 +2264,6 @@ function draw(){
     outText('この ポーズを とれ！', W / 2, 140, 28, '#ffe35a');
     outText(`${POSES[p.id].name}　あと ${Math.ceil(p.t)}びょう`, W / 2, 176, 24);
   }
-  if (S.quiz && S.running){ drawQuiz(); drawPal(); }
   for (const f of S.fx){
     const a = 1 - f.t / f.life;
     if (f.kind === 'star'){ const k = f.t / f.life; ctx.font = `${Math.round(u * 0.45)}px sans-serif`; ctx.fillStyle = '#fff'; ctx.fillText('⭐', f.x0 + (f.x1 - f.x0) * k, f.y0 + (f.y1 - f.y0) * k - Math.sin(k * 3.14) * u * 0.6); }
@@ -2491,7 +2341,6 @@ function draw(){
     return;
   }
   if (S.bookHint > S.now && !S.book){ ctx.textAlign = 'center'; outText('📖「ブック」と いってね', W / 2, 140, 26, '#ffe35a'); }
-  if (S.quiz) return;
   // 下の ひとこと
   const tips = cam
     ? ['うでを つきだす → パンチ', S.lv >= SWORD_LV ? 'りょう手を くっつけて ふる → 剣' : 'レベル2で 剣が 手に入る', S.lv >= 3 ? 'りょう手を 上げる → じゅもん' : 'レベル3で じゅもんを おぼえる', 'むねの前で うでを クロス → ガード']
@@ -2516,7 +2365,7 @@ function frame(ts){
   update(dt); draw();
 }
 // テスト用：手動で1コマ進める／関節データを直接わたす
-window.__game = { TW, startTower, twReach, twJump, endTower, DG, startDaruma, dgHit, endDaruma, S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, KOTO, BUF, GOODS, openShop, shopHear, PAL, startQuiz, quizAnswer, quizHear, parseNum, openMap, mapHear, pickPin, PINS, openBook, bookHear, CARDS, regionStart, bossDown, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
+window.__game = { TW, startTower, twReach, twJump, endTower, DG, startDaruma, dgHit, endDaruma, S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, KOTO, BUF, GOODS, openShop, shopHear, PAL, openMap, mapHear, pickPin, PINS, openBook, bookHear, CARDS, regionStart, bossDown, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
 const loop = ts => { frame(ts); requestAnimationFrame(loop); };
 requestAnimationFrame(loop);
 
@@ -2699,14 +2548,6 @@ function buildPad(){
     else DG_COL.forEach((c, i) => add(['あか', 'みどり', 'あお'][i], () => dgHit(i), c.c));
     return;
   }
-  if (S.quiz){
-    for (let n = 1; n <= 10; n++){
-      const b = document.createElement('button'); b.textContent = n;
-      b.addEventListener('pointerdown', e => { e.preventDefault(); quizAnswer(n); });
-      box.appendChild(b);
-    }
-    return;
-  }
   ORDER.filter(learned).forEach(k => {
     const b = document.createElement('button'); b.textContent = SPELLS[k].icon;
     b.addEventListener('pointerdown', e => { e.preventDefault(); S.heard = { id: k, t: S.now }; });
@@ -2736,7 +2577,6 @@ addEventListener('keydown', e => {
   if (S.book){ if (e.code === 'ArrowRight') turnPage(1); else if (e.code === 'ArrowLeft') turnPage(-1); else if (e.code === 'Escape') openBook(false); if (e.code !== 'KeyB') return; }
   if (S.state === 'tower'){ const d = { Digit1: 0, KeyZ: 0, ArrowLeft: 0, Digit3: 1, KeyC: 1, ArrowRight: 1 }[e.code]; if (d != null){ e.preventDefault(); twReach(d); } if (e.code === 'Escape' && TW.phase === 'over') endTower(); return; }
   if (S.state === 'daruma'){ const d = { Digit1: 0, KeyZ: 0, ArrowLeft: 0, Digit2: 1, KeyX: 1, ArrowDown: 1, Space: 1, Digit3: 2, KeyC: 2, ArrowRight: 2 }[e.code]; if (d != null){ e.preventDefault(); dgHit(d); } if (e.code === 'Escape' && DG.phase === 'over') endDaruma(); return; }
-  if (S.quiz){ const d = ['Digit0', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9'].indexOf(e.code); if (d >= 0) quizAnswer(d || 10); return; }
   const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7'].indexOf(e.code); if (k >= 0) S.heard = { id: ORDER[k], t: S.now };
 });
 addEventListener('keyup', e => { if (KEYS[e.code]) KEYS[e.code](false); });
