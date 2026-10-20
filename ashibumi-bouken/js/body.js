@@ -8,7 +8,8 @@ const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
 // ---------- 調整用の数値（長さの単位は「どうの長さ（肩〜腰）」） ----------
-const STEP_TH = 0.10;     // 左右の ひざ（足首）の 高さの差が これを こえたら「1歩」
+const STEP_TH = 0.12;     // ひざが じっと立っている時より これだけ 上がったら「1歩」（腰からの 高さで 見る）
+const STEP_GAP = 1.0;     // 左右 交互の 2歩が この秒数の 間に 来たら 歩きはじめる
 const WALK_KEEP = 0.75;   // 最後の1歩から これだけ（秒）は 歩きつづける
 const AIR_KEEP = 1.2;     // ジャンプ中は 最後の1歩から これだけ 歩く向きを たもつ（穴を こえられるように）
 const JUMP_H = 0.18;      // からだが ふだんより これだけ 上がったら「ジャンプ」
@@ -21,7 +22,8 @@ const Body = {
   cam: false, pose: null, lastVT: -1,
   full: false, seen: false, lm: null,
   baseY: null, lift: 0, T: 1,
-  armed: true, lastStep: -9, steps: 0, back: false, handsUp: false,
+  knee: [null, null], kbase: [null, null], kup: [false, false], lastLeg: -1, streak: 0,
+  lastStep: -9, steps: 0, back: false, handsUp: false,
   air: false, jumpT: 0, held: new Set(),
   lostT: 0, okT: 0, autoPaused: false,
   handsT: 0, handsCD: 0, now: 0
@@ -37,7 +39,7 @@ const handsBar = document.getElementById('handsBar');
 function readPose(lm, dt) {
   const vw = video.videoWidth || 640, vh = video.videoHeight || 480;
   const pt = i => ({ x: lm[i].x * vw, y: lm[i].y * vh, v: lm[i].visibility ?? 1 });
-  const ls = pt(11), rs = pt(12), lh = pt(23), rh = pt(24), lk = pt(25), rk = pt(26), la = pt(27), ra = pt(28);
+  const ls = pt(11), rs = pt(12), lh = pt(23), rh = pt(24), lk = pt(25), rk = pt(26);
   const lw = pt(15), rw = pt(16), nose = pt(0);
   Body.lm = lm;
   Body.seen = ls.v > 0.5 && rs.v > 0.5;
@@ -55,14 +57,26 @@ function readPose(lm, dt) {
   if (Body.baseY == null) Body.baseY = y;
   Body.lift = (Body.baseY - y) / Body.T;
   Body.baseY += (y - Body.baseY) * Math.min(1, dt / (Math.abs(Body.lift) < 0.1 ? 0.8 : 8));
-  // 足踏み：左右の ひざの 高さの差（足首が 見えていれば 足首も 見る）
-  let sig = (lk.y - rk.y) / Body.T;
-  if (la.v > 0.5 && ra.v > 0.5) {
-    const a = (la.y - ra.y) / Body.T * 0.8;
-    if (Math.abs(a) > Math.abs(sig)) sig = a;
+  // 足踏み：ひざごとに「腰から どれだけ 上がったか」を、じっと立っている時の 高さと くらべる
+  // （からだの かたむきや ゆれ、ジャンプでは ふえない。ぶれは なめらかに する）
+  const lift = [];
+  [lk, rk].forEach((k, i) => {
+    const rel = (hy - k.y) / Body.T;
+    Body.knee[i] = Body.knee[i] == null ? rel : Body.knee[i] + (rel - Body.knee[i]) * 0.5;
+    if (Body.kbase[i] == null) Body.kbase[i] = Body.knee[i];
+    lift[i] = Body.knee[i] - Body.kbase[i];
+    // ふだんの 高さは、下がっている間は 早めに、上がっている間は ゆっくり 合わせなおす
+    Body.kbase[i] += (Body.knee[i] - Body.kbase[i]) * Math.min(1, dt / (lift[i] < STEP_TH * 0.4 ? 1.0 : 8));
+  });
+  for (let i = 0; i < 2; i++) {
+    const o = 1 - i;
+    if (!Body.kup[i] && lift[i] > STEP_TH && lift[o] < STEP_TH * 0.5 && Body.lift < JUMP_H) {
+      Body.kup[i] = true;
+      // 左右 交互に 来た 歩だけ つなげる（同じ足ばかり・間が あきすぎは 1歩目から やりなおし）
+      Body.streak = i !== Body.lastLeg && Body.now - Body.lastStep < STEP_GAP ? Body.streak + 1 : 1;
+      Body.lastLeg = i; Body.lastStep = Body.now; Body.steps++;
+    } else if (Body.kup[i] && lift[i] < STEP_TH * 0.4) Body.kup[i] = false;
   }
-  if (Body.armed && Math.abs(sig) > STEP_TH && Body.lift < JUMP_H) { Body.armed = false; Body.lastStep = Body.now; Body.steps++; }
-  else if (Math.abs(sig) < STEP_TH * 0.5) Body.armed = true;
   // 左手を 横に 出している（肩より 外へ、高さは 頭の上〜腰のあいだ）
   const out = (lw.x - ls.x) * Math.sign(ls.x - rs.x);
   Body.back = lw.v > 0.4 && out > unit * ARM_OUT && lw.y < hy && lw.y > nose.y - Body.T * 0.8;
@@ -86,7 +100,7 @@ function applyInput(dt) {
   if (!playing) { setKey('ArrowLeft', false); setKey('ArrowRight', false); setKey('Space', false); return; }
   const p = api.inst && api.inst._dbg && api.inst._dbg.p;
   const since = Body.now - Body.lastStep;
-  const walking = since < WALK_KEEP || (p && !p.onGround && since < AIR_KEEP);
+  const walking = Body.streak >= 2 && (since < WALK_KEEP || (p && !p.onGround && since < AIR_KEEP));
   const dir = walking ? (Body.back ? -1 : 1) : 0;
   setKey('ArrowRight', dir > 0);
   setKey('ArrowLeft', dir < 0);
@@ -117,7 +131,7 @@ function watchLost(dt) {
     Body.lostT = 0;
     if (Body.autoPaused && Loop.paused) {
       Body.okT += dt;
-      if (Body.okT > 0.5) { Body.autoPaused = false; Body.baseY = null; Loop.resume(); }
+      if (Body.okT > 0.5) { Body.autoPaused = false; Body.baseY = null; Body.kbase = [null, null]; Body.streak = 0; Loop.resume(); }
     }
   }
 }
@@ -159,7 +173,7 @@ function drawCam() {
   if (!Body.seen) s = 'からだが 見えません';
   else if (!Body.full) s = 'ひざまで うつして';
   else if (Body.air) s = '⤴ ジャンプ！';
-  else if (Body.now - Body.lastStep < WALK_KEEP) s = Body.back ? '◀ うしろへ' : 'まえへ ▶';
+  else if (Body.streak >= 2 && Body.now - Body.lastStep < WALK_KEEP) s = Body.back ? '◀ うしろへ' : 'まえへ ▶';
   else s = Body.back ? '（左手 → うしろ）' : 'あしぶみで すすむ';
   if (camState.textContent !== s) camState.textContent = s;
 }
@@ -272,7 +286,7 @@ function bodyIntro() {
     <button id="bGo" class="btn primary">はじめる</button>
   `, 'stage-intro');
   Screens.bind('bGo', () => {
-    Body.baseY = null; Body.lastStep = -9; Body.jumpT = 0;
+    Body.baseY = null; Body.lastStep = -9; Body.streak = 0; Body.kbase = [null, null]; Body.jumpT = 0;
     startStage(1);
     if (Body.cam) Pad.hide();
   }, true);

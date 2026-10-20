@@ -21,6 +21,7 @@ window.Stage1 = (function () {
   // 階段（ゴール前）
   const STAIRS = [[112, 1], [113, 2], [114, 3], [115, 4], [116, 4]];
   const ENEMIES = [12, 21, 33, 42, 55, 62, 80, 85, 98, 104, 119];
+  const LIVES = 3;       // ライフ。0 になるまでは 失敗しても その場の少し先から つづける
   const POLE_X = 124 * T + T / 2;
   const CASTLE_X = 128 * T;
   const WORLD_W = 141 * T;
@@ -33,7 +34,9 @@ window.Stage1 = (function () {
     i.coins > 0
       ? `あなたはコインを${i.coins}枚取りました。落ちているものを自分の懐に入れる人生です。`
       : 'あなたはコインを1枚も取りませんでした。目の前に落ちている幸運にすら手を伸ばせない人生です。'
-  ];
+  ].concat(i.misses > 0
+    ? [`あなたは${i.misses}回失敗して、そのたびに何事もなかったような顔で、少し先からやり直しました。`]
+    : []);
 
   const RESULTS = {
     enemy: i => ({
@@ -65,8 +68,8 @@ window.Stage1 = (function () {
     solids.push({ x: 124 * T, y: GY - T, w: T, h: T, k: 'h' }); // 旗竿の台
 
     const enemies = ENEMIES.map(tx => ({ x: tx * T, y: GY - 32, w: 32, h: 32, vx: -55, vy: 0, alive: true, flat: 0, awake: false, gone: false }));
-    const p = { x: 80, y: GY - 54, w: 22, h: 54, vx: 0, vy: 0, onGround: false, face: 1, phase: 0, coyote: 0, buffer: 0 };
-    let cam = 0, time = 0, state = 'play', st = 0, stomps = 0, coins = 0, jumps = 0, failInfo = null;
+    const p = { x: 80, y: GY - 54, w: 22, h: 54, vx: 0, vy: 0, onGround: false, face: 1, phase: 0, coyote: 0, buffer: 0, inv: 0 };
+    let cam = 0, time = 0, state = 'play', st = 0, stomps = 0, coins = 0, jumps = 0, failInfo = null, lives = LIVES, misses = 0;
     let flagY = 0, inCastle = false;
     const puffs = [], coinFx = [];
 
@@ -116,11 +119,31 @@ window.Stage1 = (function () {
       }
     }
 
+    // ライフが のこっていれば、穴なら その穴の すこし右、敵なら その場で つづける
+    function loseLife(kind) {
+      lives--; misses++;
+      Sfx.play(kind === 'enemy' ? 'hit' : 'fail');
+      Fx.shake(8, 0.3);
+      if (kind === 'pit') {
+        const seg = GROUND.find(([a]) => a * T > p.x - T);
+        if (seg) p.x = Math.max(p.x, (seg[0] + 1) * T);
+        p.y = GY - p.h - 80;
+        p.vx = 0;
+        p.vy = 0;
+      } else {
+        p.vy = -420;
+      }
+      p.inv = 2;
+      Fx.texts.push({ kind: 'pop', text: `ライフ -1（のこり ${lives}）`, x: p.x + p.w / 2 - cam, y: Math.min(p.y, GY - 120) - 30, t: 0, dur: 1.4 });
+    }
+
     function fail(kind) {
       if (state !== 'play') return;
+      if (lives > 1) { loseLife(kind); return; }
+      lives = 0; misses++;
       state = kind;
       st = 0;
-      failInfo = { m: meters(), jumps, stomps, coins };
+      failInfo = { m: meters(), jumps, stomps, coins, misses };
       Fx.taunt(kind === 'enemy' ? '上から踏めばよかったのに〜〜' : '穴があったら、本当に入っちゃいましたね〜〜');
       Sfx.play(kind === 'enemy' ? 'hit' : 'fail');
       if (kind === 'enemy') { p.vy = -560; p.vx = 0; }
@@ -131,6 +154,7 @@ window.Stage1 = (function () {
       for (const s of solids) if (s.bump > 0) s.bump = Math.max(0, s.bump - dt);
       if (state === 'play') {
         time += dt;
+        if (p.inv > 0) p.inv -= dt;
         const dir = (Input.isDown('ArrowRight') ? 1 : 0) - (Input.isDown('ArrowLeft') ? 1 : 0);
         const acc = p.onGround ? 2200 : 1300;
         const target = dir * RUN;
@@ -167,7 +191,7 @@ window.Stage1 = (function () {
               p.vy = Input.isDown('Space', 'ArrowUp', 'KeyZ') ? -620 : -430;
               Fx.explode(e.x + e.w / 2 - cam, e.y + e.h / 2, 1.3, ['ドカーン！', 'ボカーン！', 'ズドーン！'][stomps % 3]);
               Sfx.play('stomp');
-            } else fail('enemy');
+            } else if (p.inv <= 0) fail('enemy');
           }
         }
 
@@ -198,7 +222,7 @@ window.Stage1 = (function () {
         moveBody(p, dt);
         p.phase += p.vx * dt * 0.045;
         if (p.x > CASTLE_X + 2.5 * T - p.w / 2) inCastle = true;
-        if (st > 3.4) api.end(RESULTS.goal({ time: time.toFixed(1), stomps, coins }));
+        if (st > 3.4) api.end(RESULTS.goal({ time: time.toFixed(1), stomps, coins, misses }));
       }
 
       const want = p.x - W * 0.38;
@@ -443,7 +467,7 @@ window.Stage1 = (function () {
         if (state === 'enemy' || !p.onGround) pose = 'jump';
         else if (Math.abs(p.vx) > 20) pose = 'walk';
         if (state === 'pole') pose = 'jump';
-        drawStick(c, fx, fy, 58, { pose, phase: p.phase, facing: p.face });
+        if (!(p.inv > 0 && Math.floor(p.inv * 10) % 2)) drawStick(c, fx, fy, 58, { pose, phase: p.phase, facing: p.face });
       }
       c.restore();
 
@@ -458,7 +482,8 @@ window.Stage1 = (function () {
       };
       hud('ゆうしゃ', String(stomps * 100 + coins * 200).padStart(6, '0'), 60);
       hud('コイン', `×${String(coins).padStart(2, '0')}`, 290);
-      hud('ワールド', ' 1-1', 500);
+      hud('ワールド', ' 1-1', 470);
+      hud('ライフ', '♥'.repeat(Math.max(0, lives)) + '♡'.repeat(LIVES - Math.max(0, lives)), 620);
       hud('タイム', String(Math.max(0, 400 - Math.floor(time * 2.5))).padStart(3, ' '), 760);
       if (time < 4 && state === 'play' && !Pad.touch) {
         c.globalAlpha = Math.min(1, 4 - time);
