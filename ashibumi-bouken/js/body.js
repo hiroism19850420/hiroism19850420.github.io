@@ -1,5 +1,5 @@
-// あしぶみ ぼうけん：横スクロールを カメラの前で からだを動かして遊ぶ（「私の人生、診断してください。」のステージ1から作った）
-// その場で足踏み → 前へ歩く／左手を横に出して足踏み → 後ろへ歩く／その場でジャンプ → ジャンプ
+// あしぶみ ぼうけん：自動で歩く 横スクロールを、カメラの前で からだを動かして遊ぶ
+// ジャンプ → ジャンプ／右手を上げる → ワイヤー／両手を くっつける → 剣／うでを すばやく 出す → パンチ／しゃがむ → 止まる
 // 両手を上げて キープ → 画面のボタンを押す
 'use strict';
 
@@ -8,13 +8,12 @@ const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
 // ---------- 調整用の数値（長さの単位は「どうの長さ（肩〜腰）」） ----------
-const STEP_TH = 0.12;     // ひざが じっと立っている時より これだけ 上がったら「1歩」（腰からの 高さで 見る）
-const STEP_GAP = 1.0;     // 左右 交互の 2歩が この秒数の 間に 来たら 歩きはじめる
-const WALK_KEEP = 0.75;   // 最後の1歩から これだけ（秒）は 歩きつづける
-const AIR_KEEP = 1.2;     // ジャンプ中は 最後の1歩から これだけ 歩く向きを たもつ（穴を こえられるように）
 const JUMP_H = 0.18;      // からだが ふだんより これだけ 上がったら「ジャンプ」
 const JUMP_HOLD = 0.35;   // ジャンプボタンを おしている ことにする 長さ（高く とぶ）
-const ARM_OUT = 0.9;      // 手首が 肩から 肩はば × これ だけ 外に 出たら「手を 横に 出した」
+const SQUAT_H = 0.25;     // からだが ふだんより これだけ 下がったら「しゃがむ」→ 止まる
+const SWORD_GAP = 0.7;    // 両手首が 肩はば × これ より 近いと「くっつけた」→ 剣
+const PUNCH_SPEED = 3.5;  // 手首が 1びょうに 肩はば × これ より 速く 動いたら「パンチ」
+const PUNCH_CD = 0.35;    // パンチの あと これだけ（秒）は 次の パンチを 出さない
 const HANDS_HOLD = 1.5;   // 両手を上げて これだけ キープで ボタンを押す
 const LOST_PAUSE = 0.6;   // 全身が これだけ 見えないと 一時停止
 
@@ -22,8 +21,8 @@ const Body = {
   cam: false, pose: null, lastVT: -1,
   full: false, seen: false, lm: null,
   baseY: null, lift: 0, T: 1,
-  knee: [null, null], kbase: [null, null], kup: [false, false], lastLeg: -1, streak: 0,
-  lastStep: -9, steps: 0, back: false, handsUp: false,
+  handsUp: false, squat: false, wire: false, sword: false,
+  prevW: null, prevT: 0, punchCD: 0, punchFx: 0,
   air: false, jumpT: 0, held: new Set(),
   lostT: 0, okT: 0, autoPaused: false,
   handsT: 0, handsCD: 0, now: 0
@@ -44,7 +43,7 @@ function readPose(lm, dt) {
   Body.lm = lm;
   Body.seen = ls.v > 0.5 && rs.v > 0.5;
   Body.full = Body.seen && lh.v > 0.5 && rh.v > 0.5 && lk.v > 0.5 && rk.v > 0.5;
-  if (!Body.seen) { Body.handsUp = false; Body.back = false; return; }
+  if (!Body.seen) { Body.handsUp = false; Body.wire = false; Body.sword = false; return; }
   const unit = Math.max(20, Math.hypot(ls.x - rs.x, ls.y - rs.y));
   // 両手を 頭より上
   Body.handsUp = lw.v > 0.4 && rw.v > 0.4 && lw.y < nose.y && rw.y < nose.y;
@@ -57,29 +56,23 @@ function readPose(lm, dt) {
   if (Body.baseY == null) Body.baseY = y;
   Body.lift = (Body.baseY - y) / Body.T;
   Body.baseY += (y - Body.baseY) * Math.min(1, dt / (Math.abs(Body.lift) < 0.1 ? 0.8 : 8));
-  // 足踏み：ひざごとに「腰から どれだけ 上がったか」を、じっと立っている時の 高さと くらべる
-  // （からだの かたむきや ゆれ、ジャンプでは ふえない。ぶれは なめらかに する）
-  const lift = [];
-  [lk, rk].forEach((k, i) => {
-    const rel = (hy - k.y) / Body.T;
-    Body.knee[i] = Body.knee[i] == null ? rel : Body.knee[i] + (rel - Body.knee[i]) * 0.5;
-    if (Body.kbase[i] == null) Body.kbase[i] = Body.knee[i];
-    lift[i] = Body.knee[i] - Body.kbase[i];
-    // ふだんの 高さは、下がっている間は 早めに、上がっている間は ゆっくり 合わせなおす
-    Body.kbase[i] += (Body.knee[i] - Body.kbase[i]) * Math.min(1, dt / (lift[i] < STEP_TH * 0.4 ? 1.0 : 8));
-  });
-  for (let i = 0; i < 2; i++) {
-    const o = 1 - i;
-    if (!Body.kup[i] && lift[i] > STEP_TH && lift[o] < STEP_TH * 0.5 && Body.lift < JUMP_H) {
-      Body.kup[i] = true;
-      // 左右 交互に 来た 歩だけ つなげる（同じ足ばかり・間が あきすぎは 1歩目から やりなおし）
-      Body.streak = i !== Body.lastLeg && Body.now - Body.lastStep < STEP_GAP ? Body.streak + 1 : 1;
-      Body.lastLeg = i; Body.lastStep = Body.now; Body.steps++;
-    } else if (Body.kup[i] && lift[i] < STEP_TH * 0.4) Body.kup[i] = false;
+  // 右手だけ 頭より上 → ワイヤー
+  Body.wire = rw.v > 0.4 && rw.y < nose.y && !(lw.v > 0.4 && lw.y < ls.y);
+  // 両手を くっつける → 剣
+  const both = lw.v > 0.4 && rw.v > 0.4;
+  Body.sword = both && Math.hypot(lw.x - rw.x, lw.y - rw.y) < unit * SWORD_GAP;
+  // しゃがむ → 止まる
+  Body.squat = Body.lift < -SQUAT_H;
+  // パンチ：手首が すばやく 動いた（剣を もっている時と、両手を 上げている時は 出さない）
+  const pdt = Body.now - Body.prevT;
+  if (Body.prevW && pdt > 0 && pdt < 0.2) {
+    const sp = Math.max(Math.hypot(lw.x - Body.prevW[0].x, lw.y - Body.prevW[0].y), Math.hypot(rw.x - Body.prevW[1].x, rw.y - Body.prevW[1].y)) / pdt / unit;
+    if (sp > PUNCH_SPEED && both && !Body.sword && !Body.handsUp && Body.now > Body.punchCD) {
+      Body.punchCD = Body.now + PUNCH_CD; Body.punchFx = Body.now;
+      if (currentStageApi && Input.capture) Input.hit.add('KeyC');
+    }
   }
-  // 左手を 横に 出している（肩より 外へ、高さは 頭の上〜腰のあいだ）
-  const out = (lw.x - ls.x) * Math.sign(ls.x - rs.x);
-  Body.back = lw.v > 0.4 && out > unit * ARM_OUT && lw.y < hy && lw.y > nose.y - Body.T * 0.8;
+  Body.prevW = [lw, rw]; Body.prevT = Body.now;
   // ジャンプ
   if (!Body.air && Body.lift > JUMP_H) {
     Body.air = true; Body.jumpT = JUMP_HOLD;
@@ -97,13 +90,9 @@ function setKey(code, on) {
 function applyInput(dt) {
   const api = currentStageApi;
   const playing = api && Input.capture && !Loop.paused;
-  if (!playing) { setKey('ArrowLeft', false); setKey('ArrowRight', false); setKey('Space', false); return; }
-  const p = api.inst && api.inst._dbg && api.inst._dbg.p;
-  const since = Body.now - Body.lastStep;
-  const walking = Body.streak >= 2 && (since < WALK_KEEP || (p && !p.onGround && since < AIR_KEEP));
-  const dir = walking ? (Body.back ? -1 : 1) : 0;
-  setKey('ArrowRight', dir > 0);
-  setKey('ArrowLeft', dir < 0);
+  const keys = { ArrowDown: Body.squat, KeyX: Body.wire, KeyV: Body.sword };
+  for (const k in keys) setKey(k, playing && Body.full && keys[k]);
+  if (!playing) { setKey('Space', false); return; }
   Body.jumpT -= dt;
   setKey('Space', Body.jumpT > 0);
 }
@@ -131,7 +120,7 @@ function watchLost(dt) {
     Body.lostT = 0;
     if (Body.autoPaused && Loop.paused) {
       Body.okT += dt;
-      if (Body.okT > 0.5) { Body.autoPaused = false; Body.baseY = null; Body.kbase = [null, null]; Body.streak = 0; Loop.resume(); }
+      if (Body.okT > 0.5) { Body.autoPaused = false; Body.baseY = null; Loop.resume(); }
     }
   }
 }
@@ -173,8 +162,11 @@ function drawCam() {
   if (!Body.seen) s = 'からだが 見えません';
   else if (!Body.full) s = 'ひざまで うつして';
   else if (Body.air) s = '⤴ ジャンプ！';
-  else if (Body.streak >= 2 && Body.now - Body.lastStep < WALK_KEEP) s = Body.back ? '◀ うしろへ' : 'まえへ ▶';
-  else s = Body.back ? '（左手 → うしろ）' : 'あしぶみで すすむ';
+  else if (Body.wire) s = '🪝 ワイヤー';
+  else if (Body.sword) s = '⚔️ 剣';
+  else if (Body.now - Body.punchFx < 0.4) s = '👊 パンチ！';
+  else if (Body.squat) s = '■ とまる';
+  else s = 'じどうで あるく ▶';
   if (camState.textContent !== s) camState.textContent = s;
 }
 
@@ -222,14 +214,18 @@ async function startCamera(msg) {
   return true;
 }
 
-/* ---------- 画面（タイトル → 説明 → ステージ1 → 診断） ---------- */
+/* ---------- 画面（タイトル → 説明 → あそぶ → けっか） ---------- */
 const HOWTO = `
   <table class="body-howto">
-    <tr><th>その場で 足踏み</th><td>→ まえへ 歩く</td></tr>
-    <tr><th>左手を 横に出して 足踏み</th><td>→ うしろへ 歩く</td></tr>
+    <tr><th>（なにもしない）</th><td>→ 自動で 右へ 歩く</td></tr>
     <tr><th>その場で ジャンプ</th><td>→ ジャンプ</td></tr>
+    <tr><th>右手を 上げる</th><td>→ ワイヤー（下ろすと はなす）</td></tr>
+    <tr><th>両手を くっつける</th><td>→ 剣</td></tr>
+    <tr><th>うでを すばやく 出す</th><td>→ パンチ</td></tr>
+    <tr><th>しゃがむ</th><td>→ 止まる</td></tr>
     <tr><th>両手を上げて キープ</th><td>→ ボタンを押す</td></tr>
   </table>`;
+const KEYS_HELP = '自動で 歩きます　／　Space ジャンプ　／　X ワイヤー（おしている間）　／　V 剣（おしている間）　／　C パンチ　／　↓ 止まる';
 
 showTitle = function () {
   stopStage();
@@ -247,7 +243,6 @@ showTitle = function () {
     <div class="title-wrap">
       <p class="title-kicker">全身で あそぶ よこスクロール</p>
       <h1 class="title">あしぶみ ぼうけん</h1>
-      <p class="subtitle">ゴールに着いたら、あなたの人生を 診断します。</p>
     </div>
     ${HOWTO}
     <div class="body-buttons">
@@ -274,43 +269,39 @@ function bodyIntro() {
   State.resetProgress();
   gameState.currentStage = 1;
   Loop.run(() => {}, c => clearCanvas(c));
-  const info = STAGE_INFO[1];
   Screens.show(`
     <p class="stage-no">ワールド 1-1</p>
     <h2 class="stage-name">あしぶみ ぼうけん</h2>
-    <p class="stage-theme">${info.theme}</p>
     <div class="stage-help">
-      ${Body.cam ? HOWTO : '<p class="keys">← → 移動　／　Space ジャンプ</p>'}
-      <p class="note">${Body.cam ? 'ひざまで うつる ところに 立ってください。' : ''}ゴールを目指して 右へ進んでください。</p>
+      ${Body.cam ? HOWTO : `<p class="keys">${KEYS_HELP}</p>`}
+      <p class="note">${Body.cam ? 'ひざまで うつる ところに 立ってください。' : ''}ゴールの 旗を めざそう。ライフは 3つ。</p>
     </div>
     <button id="bGo" class="btn primary">はじめる</button>
   `, 'stage-intro');
   Screens.bind('bGo', () => {
-    Body.baseY = null; Body.lastStep = -9; Body.streak = 0; Body.kbase = [null, null]; Body.jumpT = 0;
+    Body.baseY = null; Body.jumpT = 0;
     startStage(1);
     if (Body.cam) Pad.hide();
   }, true);
 }
 
-// ステージの診断（次は ステージ2 では なく、もういちど か タイトルへ）
-showStageResult = function (r) {
+// おわった時：ゴール／ゲームオーバーと 数字だけ
+showStageResult = function () {
   stopStage();
   Music.play('result');
-  const info = STAGE_INFO[r.stageId];
   Sfx.play('tick');
   Loop.run(() => {}, c => clearCanvas(c));
-  const lines = String(r.diagnosisText).split('\n').map(s => `<p>${esc(s)}</p>`).join('');
+  const r = window.lastRun || {};
+  const row = (k, v) => `<tr><th>${k}</th><td>${esc(v)}</td></tr>`;
   Screens.show(`
-    <div class="result-card">
-      <div class="result-head">
-        <span class="stage-no">あしぶみ ぼうけん　診断結果</span>
-        <span class="badge ${r.cleared ? 'ok' : 'ng'}">${r.cleared ? 'クリア' : '失敗'}</span>
-      </div>
-      <p class="result-theme">${esc(info.theme)}</p>
-      <dl class="result-play"><dt>プレイ結果</dt><dd>${esc(r.playResult)}</dd></dl>
-      <div class="result-text${r.diagnosisText.length > 260 ? ' longest' : r.diagnosisText.length > 150 ? ' longer' : r.diagnosisText.length > 60 ? ' long' : ''}">${lines}</div>
-      <p class="result-tag">診断タグ：<b>${esc(r.diagnosisTag)}</b></p>
-    </div>
+    <h2 class="stage-name">${r.cleared ? 'ゴール！' : 'ゲームオーバー'}</h2>
+    <table class="body-howto">
+      ${row('タイム', `${r.time}びょう`)}
+      ${row('たおした 敵', `${r.kills}ひき`)}
+      ${row('コイン', `${r.coins}まい`)}
+      ${row('ワイヤー', `${r.wires}かい`)}
+      ${row('へった ライフ', `${r.misses}`)}
+    </table>
     <div class="body-buttons">
       <button id="bAgain" class="btn primary">もういちど あそぶ</button>
       <button id="bTop" class="btn">タイトルへ</button>

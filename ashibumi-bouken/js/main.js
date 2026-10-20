@@ -27,7 +27,7 @@ function canvasPoint(e) {
 }
 
 /* ---------- 入力 ---------- */
-const GAME_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'Enter', 'KeyZ', 'KeyX', 'KeyP']);
+const GAME_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'Enter', 'KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyP']);
 const Input = {
   down: new Set(),
   hit: new Set(),
@@ -660,7 +660,7 @@ function esc(s) {
 /* ---------- スマホ用の操作ボタン ---------- */
 // 指で画面に触ったら「タッチ操作」とみなし、ステージ中にボタンを出す
 const PAD_LAYOUT = {
-  1: { left: [['←', 'ArrowLeft'], ['→', 'ArrowRight']], right: [['ジャンプ', 'Space']] },
+  1: { left: [['止まる', 'ArrowDown'], ['ワイヤー', 'KeyX'], ['剣', 'KeyV']], right: [['ジャンプ', 'Space'], ['パンチ', 'KeyC']] },
   2: { dpad: true, right: [['ショット', 'Space']] },
   3: { left: [['←', 'ArrowLeft'], ['↓', 'ArrowDown'], ['→', 'ArrowRight']], right: [['落とす', 'Space'], ['回転', 'ArrowUp']] },
   4: { dpad: true, right: [['決定', 'Enter']] }

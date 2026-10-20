@@ -1,13 +1,23 @@
-// ステージ1：基本診断（横スクロールアクション）
+// あしぶみ ぼうけん：自動で 右へ歩く 横スクロール（ジャンプ・ワイヤー・剣・パンチ・止まる）
 'use strict';
 
 window.Stage1 = (function () {
   const T = 40;          // タイル
   const GY = 460;        // 地面の上面
-  const GRAV = 1900, RUN = 270, JUMP = 760;
+  const GRAV = 1900, RUN = 220, JUMP = 840;
+  // ワイヤー（「Cyber Hook Runner 2」より ゆっくり。おもりの ふりこ）
+  const WIRE_G = 300;      // ぶらさがっている間の 重力（小さいほど ゆっくり ゆれる）
+  const WIRE_BOOST = 120;  // 右へ おしだす 力
+  const WIRE_VMAX = 340;   // ぶらさがっている間の いちばん速い 速さ
+  const WIRE_PULL = 0.82;  // つかんだ時に ワイヤーを これだけに ちぢめる（地面に 足が すれないように）
+  const WIRE_REEL = 30;    // そのあとも 少しずつ まきとる（1秒に）
+  const WIRE_MIN = 90;     // いちばん 短い ワイヤー
+  const WIRE_REACH = 300;  // ワイヤーを 出した時、これだけ 先までの フックを さがす
+  // こうげき（当たり判定の 長さ。棒人間の 前に 出る）
+  const SWORD_LEN = 64, PUNCH_LEN = 36, PUNCH_TIME = 0.25;
 
   // 地面（タイル番号の範囲。すき間が穴）
-  const GROUND = [[0, 24], [27, 45], [49, 70], [73, 88], [92, 140]];
+  const GROUND = [[0, 24], [27, 45], [48, 88], [91, 140]];
   // 土管 [タイル, 高さ]
   const PIPES = [[17, 2], [37, 3], [58, 2], [66, 3], [100, 2], [107, 3]];
   // ブロック [タイル, 段, 種類]  b=レンガ q=？ブロック h=かたいブロック
@@ -15,48 +25,22 @@ window.Stage1 = (function () {
     [8, 4, 'q'], [11, 4, 'b'], [12, 4, 'q'], [13, 4, 'b'], [14, 4, 'q'], [15, 4, 'b'], [13, 8, 'q'],
     [29, 4, 'b'], [30, 4, 'q'], [31, 4, 'b'], [32, 4, 'q'],
     [52, 4, 'q'], [53, 4, 'b'], [54, 4, 'q'],
-    [89, 2, 'h'], [90, 2, 'h'], [91, 2, 'h'],
     [95, 4, 'b'], [96, 4, 'q'], [97, 4, 'b']
   ];
   // 階段（ゴール前）
   const STAIRS = [[112, 1], [113, 2], [114, 3], [115, 4], [116, 4]];
-  const ENEMIES = [12, 21, 33, 42, 55, 62, 80, 85, 98, 104, 119];
+  const ENEMIES = [21, 42, 62, 85, 104, 119];
+  // ワイヤーを ひっかける フック [タイル, 段]（穴の上と、土管の手前）
+  const HOOKS = [[15, 8], [26, 8], [36, 8], [47, 8], [57, 8], [65, 8], [90, 8], [99, 8], [106, 8]];
   const LIVES = 3;       // ライフ。0 になるまでは 失敗しても その場の少し先から つづける
   const POLE_X = 124 * T + T / 2;
   const CASTLE_X = 128 * T;
   const WORLD_W = 141 * T;
 
-  // どの終わり方でも、踏んだ敵とコインのことは必ず言う
-  const extras = i => [
-    i.stomps > 0
-      ? `あなたは敵を${i.stomps}匹、踏み潰しました。周りの人を犠牲にして成り立つ人生です。`
-      : 'あなたは敵を1匹も踏みませんでした。誰も犠牲にしなかったのではなく、誰とも関わらなかっただけです。',
-    i.coins > 0
-      ? `あなたはコインを${i.coins}枚取りました。落ちているものを自分の懐に入れる人生です。`
-      : 'あなたはコインを1枚も取りませんでした。目の前に落ちている幸運にすら手を伸ばせない人生です。'
-  ].concat(i.misses > 0
-    ? [`あなたは${i.misses}回失敗して、そのたびに何事もなかったような顔で、少し先からやり直しました。`]
-    : []);
-
-  const RESULTS = {
-    enemy: i => ({
-      cleared: false, resultType: 'enemy_collision', diagnosisTag: '衝突型',
-      diagnosisText: [`あなたはスタートから${i.m}m地点で、敵に正面からぶつかって終わりました。上から踏めば越えられる相手でした。あなたは壁にぶつかり玉砕するタイプです。そして、そこから何も学びません。`].concat(extras(i)).join('\n'),
-      playResult: `敵に接触（${i.m}m地点／踏み潰した敵 ${i.stomps}匹／コイン ${i.coins}枚）`
-    }),
-    pit: i => ({
-      cleared: false, resultType: 'pit_fall', diagnosisTag: '後悔型',
-      diagnosisText: [(i.jumps > 0
-        ? `あなたは${i.m}m地点で、穴に落ちました。ジャンプは${i.jumps}回もしていたのに、肝心なところで跳びませんでした。`
-        : `あなたは${i.m}m地点で、一度も跳ばずにそのまま穴に落ちました。`)
-        + '穴があったら入りたい人生を送ってきました。そして本当に入りました。'].concat(extras(i)).join('\n'),
-      playResult: `穴に転落（${i.m}m地点／踏み潰した敵 ${i.stomps}匹／コイン ${i.coins}枚）`
-    }),
-    goal: i => ({
-      cleared: true, resultType: 'goal', diagnosisTag: '成功至上型',
-      diagnosisText: [`あなたは${i.time}秒でゴールし、旗を一人で下ろしました。いろんなものを踏み台にして、一人勝ちしてきた人生です。`].concat(extras(i)).join('\n'),
-      playResult: `ゴール到達（タイム ${i.time}秒／踏み潰した敵 ${i.stomps}匹／コイン ${i.coins}枚）`
-    })
+  // おわった時の けっか（数字だけ。body.js が 画面に 出す）
+  const result = (cleared, kind, i) => {
+    window.lastRun = Object.assign({ cleared, kind }, i);
+    return { cleared, resultType: kind, diagnosisTag: '', diagnosisText: '', playResult: '' };
   };
 
   function create(api) {
@@ -70,6 +54,56 @@ window.Stage1 = (function () {
     const enemies = ENEMIES.map(tx => ({ x: tx * T, y: GY - 32, w: 32, h: 32, vx: -55, vy: 0, alive: true, flat: 0, awake: false, gone: false }));
     const p = { x: 80, y: GY - 54, w: 22, h: 54, vx: 0, vy: 0, onGround: false, face: 1, phase: 0, coyote: 0, buffer: 0, inv: 0 };
     let cam = 0, time = 0, state = 'play', st = 0, stomps = 0, coins = 0, jumps = 0, failInfo = null, lives = LIVES, misses = 0;
+    const hooks = HOOKS.map(([tx, r]) => ({ x: tx * T + T / 2, y: GY - r * T }));
+    let hook = null, wires = 0, punchT = 0, sword = false;
+    const handPos = () => ({ x: p.x + p.w / 2, y: p.y - 6 });
+    function findHook() {
+      const h = handPos();
+      let best = null, bd = 1e9;
+      for (const a of hooks) {
+        if (a.x < h.x - 30 || a.x > h.x + WIRE_REACH || a.y > h.y - 40) continue;
+        const d = Math.hypot(a.x - h.x, a.y - h.y);
+        if (d < bd) { bd = d; best = a; }
+      }
+      return best;
+    }
+    function catchHook() {
+      const a = findHook();
+      if (!a) return;
+      const h = handPos();
+      const d = Math.hypot(a.x - h.x, a.y - h.y);
+      hook = { a, len: d, target: Math.max(WIRE_MIN, d * WIRE_PULL) };
+      wires++;
+      Sfx.play('jump');
+    }
+    // たおした時の 演出：ふみつけ「ドカーン！」、パンチ「バンッ！」、剣「ズバッ！」
+    const slashes = [];
+    function killEnemy(e, how) {
+      e.alive = false; e.flat = 0; e.gone = true; stomps++;
+      const x = e.x + e.w / 2 - cam, y = e.y + e.h / 2;
+      if (how === 'sword') {
+        Fx.explode(x, y, 1.1, pick2(['ズバッ！', 'ズバァッ！', 'ザシュッ！']));
+        Fx.burst(x, y, 22, ['#ffffff', '#cfe8ff', '#8ab8ff'], 420, 0.45, 3, 0);
+        Fx.flash(0.25);
+        slashes.push({ x: e.x + e.w / 2, y: e.y + e.h / 2, t: 0 });
+        Sfx.play('stomp');
+      } else if (how === 'punch') {
+        Fx.explode(x, y, 1.2, pick2(['バンッ！', 'ドンッ！', 'バシッ！']));
+        Fx.shake(7, 0.2);
+        Sfx.play('hit');
+      } else {
+        Fx.explode(x, y, 1.3, pick2(['ドカーン！', 'ボカーン！', 'ズドーン！']));
+        Sfx.play('stomp');
+      }
+    }
+    const pick2 = a => a[stomps % a.length];
+    // 剣・パンチの 当たり判定（棒人間の 向いている方）
+    function attackBox() {
+      const len = sword ? SWORD_LEN : punchT > 0 ? PUNCH_LEN : 0;
+      if (!len) return null;
+      const x = p.face > 0 ? p.x + p.w - 4 : p.x - len + 4;
+      return sword ? { x, y: p.y - 10, w: len, h: p.h + 10 } : { x, y: p.y + 4, w: len, h: 30 };
+    }
     let flagY = 0, inCastle = false;
     const puffs = [], coinFx = [];
 
@@ -121,7 +155,7 @@ window.Stage1 = (function () {
 
     // ライフが のこっていれば、穴なら その穴の すこし右、敵なら その場で つづける
     function loseLife(kind) {
-      lives--; misses++;
+      lives--; misses++; hook = null;
       Sfx.play(kind === 'enemy' ? 'hit' : 'fail');
       Fx.shake(8, 0.3);
       if (kind === 'pit') {
@@ -140,11 +174,12 @@ window.Stage1 = (function () {
     function fail(kind) {
       if (state !== 'play') return;
       if (lives > 1) { loseLife(kind); return; }
-      lives = 0; misses++;
+      lives = 0; misses++; hook = null;
       state = kind;
       st = 0;
-      failInfo = { m: meters(), jumps, stomps, coins, misses };
-      Fx.taunt(kind === 'enemy' ? '上から踏めばよかったのに〜〜' : '穴があったら、本当に入っちゃいましたね〜〜');
+      failInfo = { m: meters(), time: time.toFixed(1), kills: stomps, coins, misses, wires };
+      Music.stop();
+      Fx.texts.push({ kind: 'big', text: 'ゲームオーバー', color: '#ffffff', t: 0, dur: 99 });
       Sfx.play(kind === 'enemy' ? 'hit' : 'fail');
       if (kind === 'enemy') { p.vy = -560; p.vx = 0; }
     }
@@ -155,25 +190,59 @@ window.Stage1 = (function () {
       if (state === 'play') {
         time += dt;
         if (p.inv > 0) p.inv -= dt;
-        const dir = (Input.isDown('ArrowRight') ? 1 : 0) - (Input.isDown('ArrowLeft') ? 1 : 0);
-        const acc = p.onGround ? 2200 : 1300;
-        const target = dir * RUN;
-        if (p.vx < target) p.vx = Math.min(target, p.vx + acc * dt);
-        else if (p.vx > target) p.vx = Math.max(target, p.vx - acc * dt);
-        if (dir) p.face = dir;
-
-        if (Input.pressed('Space', 'ArrowUp', 'KeyZ')) p.buffer = 0.12;
-        p.buffer -= dt;
-        p.coyote = p.onGround ? 0.09 : p.coyote - dt;
-        if (p.buffer > 0 && p.coyote > 0) {
-          p.vy = -JUMP; p.buffer = 0; p.coyote = 0; jumps++;
-          Sfx.play('jump');
-        }
-        if (!Input.isDown('Space', 'ArrowUp', 'KeyZ') && p.vy < -300) p.vy = -300; // 短く押すと低く跳ぶ
-        p.vy = Math.min(950, p.vy + GRAV * dt);
-
+        for (const sl of slashes) sl.t += dt;
+        while (slashes.length && slashes[0].t > 0.35) slashes.shift();
+        // 剣：V（全身では 両手を くっつける）を おしている間 もつ。パンチ：C（全身では うでを すばやく 出す）
+        sword = Input.isDown('KeyV');
+        punchT -= dt;
+        if (!sword && Input.pressed('KeyC') && punchT < -0.1) { punchT = PUNCH_TIME; Sfx.play('bump'); }
+        // ワイヤー：X（全身では 右手を上げる）を おしている間 ぶらさがる。はなすと とぶ
+        const wireKey = Input.isDown('KeyX');
+        if (!hook && wireKey) catchHook();
+        else if (hook && !wireKey) hook = null;
         const prevBottom = p.y + p.h;
-        moveBody(p, dt, hitBlock);
+        if (hook) {
+          const a = hook.a;
+          p.vy += WIRE_G * dt;
+          let h = handPos(), nx = h.x - a.x, ny = h.y - a.y, d = Math.hypot(nx, ny) || 0.001;
+          let tx = -ny / d, ty = nx / d;
+          if (tx < 0) { tx = -tx; ty = -ty; }
+          p.vx += tx * WIRE_BOOST * dt; p.vy += ty * WIRE_BOOST * dt;
+          const sp = Math.hypot(p.vx, p.vy);
+          if (sp > WIRE_VMAX) { p.vx *= WIRE_VMAX / sp; p.vy *= WIRE_VMAX / sp; }
+          hook.target = Math.max(WIRE_MIN, hook.target - WIRE_REEL * dt);
+          hook.len += (hook.target - hook.len) * Math.min(1, dt * 5);
+          moveBody(p, dt, hitBlock);
+          h = handPos(); nx = h.x - a.x; ny = h.y - a.y; d = Math.hypot(nx, ny) || 0.001;
+          if (d > hook.len) {
+            const ux = nx / d, uy = ny / d;
+            p.x = a.x + ux * hook.len - p.w / 2;
+            p.y = a.y + uy * hook.len + 6;
+            const vn = p.vx * ux + p.vy * uy;
+            if (vn > 0) { p.vx -= vn * ux; p.vy -= vn * uy; }
+          }
+          p.face = 1;
+        } else {
+          // 自動で 右へ歩く（↓ で 止まる。はじめの 1びょうは まつ）
+          const dir = time < 1 || Input.isDown('ArrowDown') ? 0 : Input.isDown('ArrowLeft') ? -1 : 1;
+          const acc = p.onGround ? 2200 : 1300;
+          const target = dir * RUN;
+          if (!p.onGround && dir > 0 && p.vx > target) p.vx = Math.max(target, p.vx - 120 * dt);   // ワイヤーで とんだ いきおいは のこす
+          else if (p.vx < target) p.vx = Math.min(target, p.vx + acc * dt);
+          else if (p.vx > target) p.vx = Math.max(target, p.vx - acc * dt);
+          if (dir) p.face = dir;
+
+          if (Input.pressed('Space', 'ArrowUp', 'KeyZ')) p.buffer = 0.12;
+          p.buffer -= dt;
+          p.coyote = p.onGround ? 0.09 : p.coyote - dt;
+          if (p.buffer > 0 && p.coyote > 0) {
+            p.vy = -JUMP; p.buffer = 0; p.coyote = 0; jumps++;
+            Sfx.play('jump');
+          }
+          if (!Input.isDown('Space', 'ArrowUp', 'KeyZ') && p.vy < -300) p.vy = -300; // 短く押すと低く跳ぶ
+          p.vy = Math.min(950, p.vy + GRAV * dt);
+          moveBody(p, dt, hitBlock);
+        }
         if (p.x < cam) { p.x = cam; p.vx = Math.max(0, p.vx); } // 戻れない
         p.phase += Math.abs(p.vx) * dt * 0.045;
 
@@ -185,19 +254,19 @@ window.Stage1 = (function () {
           e.vy = Math.min(950, e.vy + GRAV * dt);
           if (moveBody(e, dt)) e.vx = -e.vx;
           if (e.y > H + 100) { e.gone = true; continue; }
+          const box = attackBox();
+          if (box && overlap(box, e)) { killEnemy(e, sword ? 'sword' : 'punch'); continue; }
           if (overlap(p, e)) {
             if (p.vy > 0 && prevBottom <= e.y + 14) {
-              e.alive = false; e.flat = 0; e.gone = true; stomps++;
+              killEnemy(e);
               p.vy = Input.isDown('Space', 'ArrowUp', 'KeyZ') ? -620 : -430;
-              Fx.explode(e.x + e.w / 2 - cam, e.y + e.h / 2, 1.3, ['ドカーン！', 'ボカーン！', 'ズドーン！'][stomps % 3]);
-              Sfx.play('stomp');
             } else if (p.inv <= 0) fail('enemy');
           }
         }
 
         if (p.y > H + 20) fail('pit');
         if (state === 'play' && p.x + p.w >= POLE_X - 4) {
-          state = 'pole'; st = 0;
+          state = 'pole'; st = 0; hook = null; sword = false;
           Fx.fireworks(5);
           Fx.big('ゴール！！！');
           p.x = POLE_X - p.w + 2; p.vx = 0; p.vy = 0;
@@ -207,9 +276,9 @@ window.Stage1 = (function () {
       } else if (state === 'enemy') {
         p.vy += GRAV * 0.8 * dt;
         p.y += p.vy * dt;
-        if (st > 3.4) api.end(RESULTS.enemy(failInfo));
+        if (st > 3.4) api.end(result(false, 'enemy', failInfo));
       } else if (state === 'pit') {
-        if (st > 3.4) api.end(RESULTS.pit(failInfo));
+        if (st > 3.4) api.end(result(false, 'pit', failInfo));
       } else if (state === 'pole') {
         // 旗竿をすべり降りる
         const bottom = GY - T - p.h;
@@ -222,7 +291,7 @@ window.Stage1 = (function () {
         moveBody(p, dt);
         p.phase += p.vx * dt * 0.045;
         if (p.x > CASTLE_X + 2.5 * T - p.w / 2) inCastle = true;
-        if (st > 3.4) api.end(RESULTS.goal({ time: time.toFixed(1), stomps, coins, misses }));
+        if (st > 3.4) api.end(result(true, 'goal', { time: time.toFixed(1), kills: stomps, coins, misses, wires }));
       }
 
       const want = p.x - W * 0.38;
@@ -461,13 +530,47 @@ window.Stage1 = (function () {
         }
         c.stroke();
       }
+      // フック（天井から つりさがった 金の わっか）と ワイヤー
+      const lock = state === 'play' && !hook ? findHook() : null;
+      for (const a of hooks) {
+        if (a.x < cam - 40 || a.x > cam + W + 40) continue;
+        c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 2;
+        c.beginPath(); c.moveTo(a.x, 0); c.lineTo(a.x, a.y - 10); c.stroke();
+        c.strokeStyle = '#000'; c.lineWidth = 7;
+        c.beginPath(); c.arc(a.x, a.y, 10, 0, Math.PI * 2); c.stroke();
+        c.strokeStyle = '#ffd23a'; c.lineWidth = 4;
+        c.beginPath(); c.arc(a.x, a.y, 10, 0, Math.PI * 2); c.stroke();
+        if (a === lock) {
+          c.strokeStyle = `rgba(255,255,255,${0.6 + Math.sin(time * 8) * 0.3})`; c.lineWidth = 3;
+          c.beginPath(); c.arc(a.x, a.y, 18 + Math.sin(time * 8) * 3, 0, Math.PI * 2); c.stroke();
+        }
+      }
+      for (const sl of slashes) {
+        const k = sl.t / 0.35;
+        c.strokeStyle = `rgba(255,255,255,${1 - k})`; c.lineWidth = 6 * (1 - k) + 1;
+        c.beginPath(); c.moveTo(sl.x - 34, sl.y - 30); c.lineTo(sl.x + 34, sl.y + 30); c.stroke();
+      }
+      if (hook) {
+        const h = handPos();
+        c.strokeStyle = '#222'; c.lineWidth = 3.5;
+        c.beginPath(); c.moveTo(hook.a.x, hook.a.y); c.lineTo(h.x, h.y); c.stroke();
+        c.strokeStyle = 'rgba(255,255,255,0.8)'; c.lineWidth = 1.2;
+        c.beginPath(); c.moveTo(hook.a.x, hook.a.y); c.lineTo(h.x, h.y); c.stroke();
+      }
       if (!inCastle) {
         const fx = p.x + p.w / 2, fy = p.y + p.h;
         let pose = 'stand';
         if (state === 'enemy' || !p.onGround) pose = 'jump';
         else if (Math.abs(p.vx) > 20) pose = 'walk';
-        if (state === 'pole') pose = 'jump';
-        if (!(p.inv > 0 && Math.floor(p.inv * 10) % 2)) drawStick(c, fx, fy, 58, { pose, phase: p.phase, facing: p.face });
+        if (state === 'pole' || hook) pose = 'jump';
+        if (state === 'play' && !hook && (sword || punchT > 0)) pose = 'sword';   // 剣・パンチは うでを 前へ
+        if (!(p.inv > 0 && Math.floor(p.inv * 10) % 2)) drawStick(c, fx, fy, 58, { pose, phase: p.phase, facing: p.face, sword: sword && state === 'play' });
+        if (punchT > 0 && !sword && state === 'play') {
+          // パンチの 風
+          c.strokeStyle = 'rgba(255,255,255,0.9)'; c.lineWidth = 3;
+          const bx = fx + p.face * (24 + (1 - punchT / PUNCH_TIME) * 14), by = fy - 36;
+          c.beginPath(); c.arc(bx, by, 9, -1.2, 1.2); c.stroke();
+        }
       }
       c.restore();
 
@@ -485,21 +588,21 @@ window.Stage1 = (function () {
       hud('ワールド', ' 1-1', 470);
       hud('ライフ', '♥'.repeat(Math.max(0, lives)) + '♡'.repeat(LIVES - Math.max(0, lives)), 620);
       hud('タイム', String(Math.max(0, 400 - Math.floor(time * 2.5))).padStart(3, ' '), 760);
-      if (time < 4 && state === 'play' && !Pad.touch) {
-        c.globalAlpha = Math.min(1, 4 - time);
+      if (time < 6 && state === 'play' && !Pad.touch) {
+        c.globalAlpha = Math.min(1, 6 - time);
         c.textAlign = 'center';
         c.font = `bold 16px ${FONT}`;
         c.fillStyle = '#fff';
-        c.fillText('← → 移動　　Space ジャンプ', W / 2, H - 32);
+        c.fillText('自動で 歩きます　Space ジャンプ　X ワイヤー（おしている間）　V 剣　C パンチ　↓ 止まる', W / 2, H - 32);
         c.globalAlpha = 1;
       }
     }
 
-    return { update, draw, _dbg: { p, enemies, solids, get state() { return state; } } };
+    return { update, draw, _dbg: { p, enemies, solids, hooks, get hook() { return hook; }, get lives() { return lives; }, get state() { return state; } } };
   }
 
   return {
     create,
-    debugResult(ok) { return ok ? RESULTS.goal({ time: '42.0', stomps: 5, coins: 3 }) : RESULTS.enemy({ m: 30, jumps: 8, stomps: 3, coins: 2 }); }
+    debugResult(ok) { return result(ok, ok ? 'goal' : 'enemy', { time: '42.0', kills: 5, coins: 3, misses: 1, wires: 2 }); }
   };
 })();
