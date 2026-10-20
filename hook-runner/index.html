@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Cyber Hook Runner 2 -NEON VELOCITY-</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<style>
+  html,body{margin:0;padding:0;background:#000;height:100%;display:flex;justify-content:center;align-items:center;}
+  canvas{image-rendering:auto;}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<script>
+// ============================================================
+// Cyber Hook Runner 2 -NEON VELOCITY- 単一ファイル実装
+// Phaser 3.60 + Web Audio API / 外部アセット不要
+// ============================================================
+
+const W = 960, H = 600;
+const LAVA_Y = 565;
+const GRAVITY = 980;
+const BOOST = 420;
+const PERFECT_BOOST = 630;
+const REEL = 45;
+const MIN_LEN = 65;
+const DAMP = 0.9985;
+const VMAX = 1250;
+const DASH_VX = 620;
+const DASH_CD = 2.5;
+const PLAYER_R = 14;
+const GAME_SPEED = 0.6;   // 全体の速さ（1で元の速さ。小さいほどゆっくり判断できる）
+const STICK_H = 46;       // 棒人間の身長
+
+// ------------------------------------------------------------
+// サウンドシンセサイザ（全てリアルタイム波形合成）
+// ------------------------------------------------------------
+class Synth {
+  constructor(){ this.ctx=null; this.master=null; this.bgmOn=false; this.voices=0; }
+  init(){
+    if(this.ctx) return;
+    this.ctx = new (window.AudioContext||window.webkitAudioContext)();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = 0.35;
+    this.master.connect(this.ctx.destination);
+    this.startBGM();
+  }
+  env(dur,vol=0.5){
+    const g=this.ctx.createGain();
+    g.gain.setValueAtTime(vol,this.ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+dur);
+    g.connect(this.master); return g;
+  }
+  sweep(type,f0,f1,dur,vol=0.5){
+    if(!this.ctx||this.voices>8) return;
+    this.voices++;
+    const o=this.ctx.createOscillator(), g=this.env(dur,vol);
+    o.type=type;
+    o.frequency.setValueAtTime(f0,this.ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(Math.max(f1,1),this.ctx.currentTime+dur);
+    o.connect(g); o.start(); o.stop(this.ctx.currentTime+dur);
+    o.onended=()=>this.voices--;
+  }
+  noise(dur,vol=0.4,hp=0){
+    if(!this.ctx) return;
+    const n=this.ctx.sampleRate*dur, buf=this.ctx.createBuffer(1,n,this.ctx.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
+    const s=this.ctx.createBufferSource(); s.buffer=buf;
+    const g=this.env(dur,vol);
+    if(hp){ const f=this.ctx.createBiquadFilter(); f.type='highpass'; f.frequency.value=hp; s.connect(f); f.connect(g); }
+    else s.connect(g);
+    s.start();
+  }
+  playHook(){ this.sweep('sawtooth',220,880,0.09,0.4); }
+  playRelease(){ this.sweep('sine',520,180,0.12,0.4); }
+  playCoin(combo){
+    const base=Math.min(440+combo*60,1200);
+    this.sweep('triangle',base,base,0.08,0.35);
+    setTimeout(()=>this.sweep('triangle',base*1.5,base*1.5,0.1,0.3),60);
+  }
+  playCrash(){ this.sweep('sawtooth',140,35,0.4,0.6); this.noise(0.3,0.35); }
+  playDash(){ this.sweep('sawtooth',880,1760,0.07,0.35); }
+  playNear(){ this.sweep('sine',1200,1200,0.05,0.3); }
+  playShield(){ this.sweep('square',330,660,0.15,0.3); }
+  playWarn(){ this.sweep('square',1560,1560,0.05,0.2); }
+  playPerfect(){
+    [660,990,1320].forEach((f,i)=>setTimeout(()=>this.sweep('triangle',f,f,0.06,0.35),i*60));
+  }
+  // プロシージャルBGM: BPM132 の簡易シーケンサ
+  startBGM(){
+    if(this.bgmOn) return; this.bgmOn=true;
+    const bpm=132, spb=60/bpm/4; // 16分音符
+    let step=0, root=55; // A1
+    const bass=[0,0,7,0,3,0,5,5, 0,0,7,0,10,7,5,3];
+    const tick=()=>{
+      if(!this.ctx) return;
+      const t=this.ctx.currentTime;
+      const s=bass[step%16];
+      if(s>0 || step%4===0){
+        const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+        o.type='sawtooth';
+        o.frequency.value=root*Math.pow(2,s/12);
+        g.gain.setValueAtTime(0.12,t);
+        g.gain.exponentialRampToValueAtTime(0.001,t+spb*0.9);
+        o.connect(g); g.connect(this.master); o.start(t); o.stop(t+spb);
+      }
+      if(step%2===0) this.noise(0.03,0.05,6000); // ハイハット
+      step++;
+      setTimeout(tick,spb*1000);
+    };
+    tick();
+  }
+}
+const synth = new Synth();
+
+// ------------------------------------------------------------
+// メインシーン
+// ------------------------------------------------------------
+class GameScene extends Phaser.Scene {
+  constructor(){ super('game'); }
+
+  create(){
+    // --- 状態初期化 ---
+    this.px=150; this.py=300; this.vx=380; this.vy=-150;
+    this.anchor=null; this.wireLen=0; this.connectTime=0;
+    this.camX=0; this.zoomV=1;
+    this.genX=260;   // 最初のアンカーを近くに置き、1回目のタップが空振りしないようにする
+    this.anchors=[]; this.coins=[]; this.lasers=[]; this.items=[]; this.missiles=[];
+    this.particles=[]; this.trail=[];
+    this.combo=0; this.coinCount=0; this.score=0; this.bonus=0;
+    this.nearCount=0; this.trickCount=0; this.perfectCount=0;
+    this.rotAcc=0; this.lastAngle=0;
+    this.timeScale=1; this.slowTimer=0;
+    this.dashCD=0; this.dashTimer=0;
+    this.magnetT=0; this.shield=false; this.multiT=0;
+    this.missileTimer=20;
+    this.warnT=0;
+    this.dead=false; this.started=false;
+    this.biome=0; this.biomeMix=0;
+    this.bgColor=Phaser.Display.Color.ValueToColor(0x0b0c10);
+    this.targetColor=Phaser.Display.Color.ValueToColor(0x0b0c10);
+    this.lastTap=0;
+    this.cause='';
+    this.grav=GRAVITY;
+    this.t=0;              // ゲーム内時計（GAME_SPEED に合わせて進む）
+    this.bodyRot=0; this.legPh=0;
+
+    // ハイスコア・統計
+    this.high = parseInt(localStorage.getItem('cyberHookHighScore2')||'0');
+
+    // ミッション抽選（3つ）
+    const pool=[
+      {id:'coin30', text:'コイン30枚獲得', chk:s=>s.coinCount>=30},
+      {id:'near5',  text:'ニアミス5回',   chk:s=>s.nearCount>=5},
+      {id:'combo8', text:'コンボ8達成',   chk:s=>s.maxCombo>=8},
+      {id:'trick3', text:'トリック3回成功',chk:s=>s.trickCount>=3},
+      {id:'zone3',  text:'第3区画へ到達', chk:s=>s.biome>=2},
+    ];
+    this.maxCombo=0;
+    this.missions=Phaser.Utils.Array.Shuffle(pool.slice()).slice(0,3);
+    this.missions.forEach(m=>m.done=false);
+
+    // --- 描画オブジェクト ---
+    this.gBg=this.add.graphics().setDepth(-10);
+    this.gFx=this.add.graphics().setDepth(-5);
+    this.g=this.add.graphics();
+    this.gUi=this.add.graphics().setDepth(50);
+
+    this.txtScore=this.add.text(16,12,'', {fontSize:'28px',fontFamily:'monospace',color:'#00f0ff'}).setDepth(100).setScrollFactor(0);
+    this.txtCombo=this.add.text(W/2,60,'', {fontSize:'34px',fontFamily:'monospace',color:'#ffbe0b'}).setOrigin(0.5).setDepth(100).setScrollFactor(0);
+    this.txtZone=this.add.text(W/2,H/2-80,'', {fontSize:'44px',fontFamily:'monospace',color:'#ffffff'}).setOrigin(0.5).setDepth(100).setScrollFactor(0).setAlpha(0);
+    this.txtGuide=this.add.text(W/2,H/2+60,'TAP / SPACE TO HOOK\nSHIFT: DASH', {fontSize:'22px',fontFamily:'monospace',color:'#8b949e',align:'center'}).setOrigin(0.5).setDepth(100).setScrollFactor(0);
+    this.txtMission=this.add.text(16,50,'', {fontSize:'14px',fontFamily:'monospace',color:'#8b949e'}).setDepth(100).setScrollFactor(0);
+    this.txtMission.setText('MISSION:\n'+this.missions.map(m=>'・'+m.text).join('\n'));
+    this.txtStamp=this.add.text(W/2,H/2,'', {fontSize:'40px',fontFamily:'monospace',color:'#ffffff'}).setOrigin(0.5).setDepth(100).setScrollFactor(0).setAlpha(0);
+
+    // --- 入力 ---
+    this.input.on('pointerdown',pt=>{
+      synth.init();
+      if(this.dead){ this.scene.restart(); return; }
+      if(!this.started){ this.started=true; this.txtGuide.setVisible(false); }
+      if(pt.rightButtonDown()){ this.doDash(); return; }
+      // ダブルタップ判定
+      const now=this.time.now;
+      if(now-this.lastTap<280){ this.doDash(); this.lastTap=0; return; }
+      this.lastTap=now;
+      this.castHook();
+    });
+    this.input.on('pointerup',()=>this.releaseHook());
+    this.keySpace=this.input.keyboard.addKey('SPACE');
+    this.keyShift=this.input.keyboard.addKey('SHIFT');
+    this.input.mouse.disableContextMenu();
+
+    // 初期アンカー配置
+    for(let i=0;i<8;i++) this.spawnChunk();
+
+    // 確認用：URL に ?dbg をつけると window.scene で中を見られる
+    if(location.search.includes('dbg')) window.scene=this;
+  }
+
+  // ----------------------------------------------------------
+  // チャンク生成
+  // ----------------------------------------------------------
+  difficulty(){
+    return Phaser.Math.Clamp(this.score/8000,0,1);
+  }
+  spawnChunk(){
+    const k=this.difficulty();
+    for(let i=0;i<6;i++){
+      const gap=Phaser.Math.Between(190, 190+Math.floor(180*k));
+      this.genX+=gap;
+      const y=Phaser.Math.Between(65,220);
+      const r=Math.random();
+      let type='normal';
+      if(r<0.15) type='move'; else if(r<0.27) type='brittle'; else if(r<0.32) type='gold';
+      this.anchors.push({
+        x:this.genX, y:y, baseY:y, type:type,
+        phase:Math.random()*6.28, life:1.2, used:false
+      });
+      // コイン3連（円弧下部）
+      if(Math.random()<0.85-0.2*k){
+        const rad=Phaser.Math.Between(130,210);
+        for(let c=0;c<3;c++){
+          const a=Math.PI*(0.35+0.15*c);
+          this.coins.push({
+            x:this.genX-80+Math.cos(a)*rad+80*c,
+            y:y+Math.sin(a)*rad, got:false
+          });
+        }
+      }
+      // 特殊アイテム
+      const ir=Math.random();
+      if(ir<0.04) this.items.push({x:this.genX+60,y:y+180,type:'magnet',got:false});
+      else if(ir<0.07) this.items.push({x:this.genX+60,y:y+180,type:'shield',got:false});
+      else if(ir<0.09) this.items.push({x:this.genX+60,y:y+180,type:'slow',got:false});
+      else if(ir<0.11) this.items.push({x:this.genX+60,y:y+180,type:'multi',got:false});
+      // レーザー
+      if(this.genX>900 && Math.random()<0.35+0.30*k){
+        this.lasers.push({
+          x:this.genX+Phaser.Math.Between(60,140),
+          y:Phaser.Math.Between(280,470),
+          len:Phaser.Math.Between(70,120),
+          ang:Math.random()*6.28,
+          spd:Phaser.Math.FloatBetween(-2.2,2.2),
+          nearDone:false, alive:true
+        });
+      }
+    }
+  }
+
+  // ----------------------------------------------------------
+  // フック操作
+  // ----------------------------------------------------------
+  findAnchor(){
+    let best=null, bd=480;
+    for(const a of this.anchors){
+      if(a.dead) continue;
+      if(a.x<this.px-70||a.x>this.px+450) continue;
+      const d=Math.hypot(this.px-a.x,this.py-a.y);
+      if(d<bd){ bd=d; best=a; }
+    }
+    return best;
+  }
+  castHook(){
+    if(this.dead||this.anchor) return;
+    const a=this.findAnchor();
+    if(!a){ this.camFlash(0xff3355); return; } // 空振りフィードバック
+    this.anchor=a; this.connectTime=0;
+    this.wireLen=Math.max(Math.hypot(this.px-a.x,this.py-a.y),MIN_LEN);
+    this.combo++; this.maxCombo=Math.max(this.maxCombo,this.combo);
+    this.rotAcc=0;
+    if(a.type==='gold'){ // ゴールデンアンカー: コイン排出
+      for(let i=0;i<3;i++) this.coins.push({x:a.x+40*(i-1),y:a.y+120,got:false});
+    }
+    this.spawnParticles(this.px,this.py,10,0x00f0ff);
+    synth.playHook();
+    this.popCombo();
+  }
+  releaseHook(){
+    if(!this.anchor) return;
+    const a=this.anchor; this.anchor=null;
+    // ローポイントリリース判定: アンカー直下 ±20度
+    const ang=Math.atan2(this.py-a.y,this.px-a.x); // 下=+PI/2
+    const low=Math.abs(ang-Math.PI/2)<0.35;
+    let hm=1.12;
+    if(low){ hm=1.25; this.bonus+=50; this.stamp('LOW POINT!'); }
+    this.vx*=hm;
+    if(this.vy<0) this.vy*=1.15; else this.vy-=120;
+    synth.playRelease();
+  }
+  doDash(){
+    if(this.dead||this.dashCD>0) return;
+    this.vx=Math.min(this.vx+DASH_VX,VMAX);
+    this.dashCD=DASH_CD; this.dashTimer=0.25;
+    synth.playDash();
+    for(let i=0;i<8;i++)
+      this.particles.push({x:this.px-i*14,y:this.py,vx:0,vy:0,life:0.3,max:0.3,c:0xffbe0b,line:true});
+  }
+
+  // ----------------------------------------------------------
+  // 演出ユーティリティ
+  // ----------------------------------------------------------
+  spawnParticles(x,y,n,color){
+    for(let i=0;i<n;i++){
+      if(this.particles.length>200) break;
+      const a=Math.random()*6.28, s=80+Math.random()*220;
+      this.particles.push({x:x,y:y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-60,
+        life:0.5+Math.random()*0.3,max:0.8,c:color,line:false});
+    }
+  }
+  stamp(text){
+    this.txtStamp.setText(text);
+    this.txtStamp.setAlpha(1).setScale(0.5);
+    this.tweens.add({targets:this.txtStamp,scale:1,alpha:0,duration:800,ease:'Back.easeOut'});
+  }
+  popCombo(){
+    this.txtCombo.setText(this.combo+'x COMBO');
+    this.txtCombo.setScale(0.3).setAlpha(1);
+    this.tweens.add({targets:this.txtCombo,scale:1,duration:250,ease:'Back.easeOut'});
+  }
+  camFlash(color){
+    this.gUi.fillStyle(color,0.25).fillRect(0,0,W,H);
+    this.tweens.addCounter({from:0.25,to:0,duration:150,onUpdate:t=>{
+      this.gUi.clear(); this.gUi.fillStyle(color,t.getValue()).fillRect(0,0,W,H);
+    },onComplete:()=>this.gUi.clear()});
+  }
+  slowmo(scale,dur){ this.timeScale=scale; this.slowTimer=dur; }
+
+  // ----------------------------------------------------------
+  // メインループ
+  // ----------------------------------------------------------
+  update(time,delta){
+    let dt=Math.min(delta/1000,0.033);
+    // スローモーション復帰
+    if(this.slowTimer>0){ this.slowTimer-=dt; if(this.slowTimer<=0) this.timeScale=1; }
+    const sdt=dt*this.timeScale*GAME_SPEED;
+    this.t+=sdt;
+
+    // キー入力
+    if(!this.dead){
+      if(Phaser.Input.Keyboard.JustDown(this.keySpace)){
+        synth.init();
+        if(!this.started){ this.started=true; this.txtGuide.setVisible(false); }
+        if(this.anchor) this.releaseHook(); else this.castHook();
+      }
+      if(Phaser.Input.Keyboard.JustDown(this.keyShift)){ synth.init(); this.doDash(); }
+    } else {
+      if(Phaser.Input.Keyboard.JustDown(this.keySpace)) this.scene.restart();
+    }
+
+    if(this.started&&!this.dead) this.physics(sdt,dt);
+    this.updateWorld(sdt,dt);
+    this.render(dt);
+  }
+
+  // ----------------------------------------------------------
+  // 物理演算
+  // ----------------------------------------------------------
+  physics(sdt,dt){
+    // 重力（第4区画で増加）
+    const g=this.biome>=3?1060:GRAVITY;
+    this.vy+=g*sdt;
+
+    // 風ゾーン（第2区画）
+    if(this.biome===1) this.vx+=80*Math.sin(this.t)*sdt;
+
+    // 接続中の振り子拘束
+    if(this.anchor){
+      const a=this.anchor;
+      this.connectTime+=sdt;
+      // ムービングアンカー
+      if(a.type==='move') a.y=a.baseY+Math.sin(this.t*3+a.phase)*40;
+      // ブリトル崩壊
+      if(a.type==='brittle'){
+        a.life-=sdt;
+        if(a.life<=0){ a.dead=true; this.releaseHook(); this.spawnParticles(a.x,a.y,8,0xff3355); }
+      }
+      // ブースト（パーフェクト判定）
+      const nx=this.px-a.x, ny=this.py-a.y;
+      const d=Math.hypot(nx,ny)||0.001;
+      let tx=-ny/d, ty=nx/d; // 接線
+      if(tx<0){ tx=-tx; ty=-ty; } // 右向きへ
+      const pw=(this.connectTime<0.15)?PERFECT_BOOST:BOOST;
+      if(this.connectTime<sdt*1.5&&this.connectTime>0&&pw===PERFECT_BOOST){
+        if(!a.perfectDone){ a.perfectDone=true; this.bonus+=30; this.perfectCount++; this.stamp('PERFECT!'); synth.playPerfect(); }
+      }
+      this.vx+=tx*pw*sdt; this.vy+=ty*pw*sdt;
+      // 巻き上げ
+      this.wireLen=Math.max(this.wireLen-REEL*sdt,MIN_LEN);
+      // 拘束補正
+      if(d>this.wireLen){
+        this.px=a.x+nx/d*this.wireLen;
+        this.py=a.y+ny/d*this.wireLen;
+        const ux=nx/d, uy=ny/d;
+        const vn=this.vx*ux+this.vy*uy;
+        this.vx-=vn*ux; this.vy-=vn*uy;
+      }
+    } else {
+      // 空気抵抗（非接続時のみ）
+      if(this.dashTimer<=0){ const k=Math.pow(DAMP,sdt*60); this.vx*=k; this.vy*=k; }
+      // トリック回転量の積算
+      const ang=Math.atan2(this.vy,this.vx);
+      let dA=ang-this.lastAngle;
+      if(dA>Math.PI)dA-=2*Math.PI; if(dA<-Math.PI)dA+=2*Math.PI;
+      this.rotAcc+=dA; this.lastAngle=ang;
+      if(Math.abs(this.rotAcc)>=Math.PI*2){
+        this.trickCount++;
+        const pts=this.trickCount%3===0?1000:(this.trickCount%2===0?400:150);
+        this.bonus+=pts;
+        this.stamp('AIR TRICK +'+pts);
+        this.rotAcc=0;
+      }
+    }
+
+    // ダッシュタイマー・クールダウン
+    if(this.dashTimer>0) this.dashTimer-=sdt;
+    if(this.dashCD>0) this.dashCD-=sdt;
+
+    // 速度クランプ
+    const sp=Math.hypot(this.vx,this.vy);
+    if(sp>VMAX){ this.vx*=VMAX/sp; this.vy*=VMAX/sp; }
+
+    // 位置更新
+    this.px+=this.vx*sdt; this.py+=this.vy*sdt;
+    if(this.py<20){ this.py=20; this.vy=Math.abs(this.vy)*0.5; }
+
+    // トレイル記録
+    this.trail.push({x:this.px,y:this.py});
+    if(this.trail.length>16) this.trail.shift();
+
+    // スコア
+    this.score=Math.max(this.score,(this.px-150)/10)+this.bonus;
+    this.bonus=0;
+
+    // バイオーム更新
+    const b=Math.min(3,Math.floor(this.px/1500));
+    if(b!==this.biome){
+      this.biome=b;
+      const names=['NEON BOOT SECTOR','CYBER SANDSTORM','CRIMSON CIRCUIT','SECTOR ZERO'];
+      const cols=[0x0b0c10,0x141020,0x180c12,0x050508];
+      this.targetColor=Phaser.Display.Color.ValueToColor(cols[b]);
+      this.txtZone.setText(names[b]);
+      this.txtZone.setAlpha(1);
+      this.tweens.add({targets:this.txtZone,alpha:0,duration:1200});
+      synth.playShield();
+    }
+    // 背景色遷移
+    const cur=this.bgColor, tgt=this.targetColor;
+    cur.red+=(tgt.red-cur.red)*dt*1.2;
+    cur.green+=(tgt.green-cur.green)*dt*1.2;
+    cur.blue+=(tgt.blue-cur.blue)*dt*1.2;
+    this.cameras.main.setBackgroundColor(cur.color);
+
+    // アイテムタイマー
+    if(this.magnetT>0)this.magnetT-=sdt;
+    if(this.multiT>0)this.multiT-=sdt;
+
+    // 衝突判定
+    this.collisions(sdt);
+
+    // 棒人間の姿勢（つかまっている間はワイヤーの方へ体を向け、空中では少し前のめり）
+    let rt;
+    if(this.anchor) rt=Math.atan2(this.anchor.x-this.px, -(this.anchor.y-this.py));
+    else rt=Phaser.Math.Clamp(this.vx/700,0,1.2)*0.35+Phaser.Math.Clamp(this.vy/900,-0.3,0.3)*0.4;
+    let dr=rt-this.bodyRot;
+    while(dr>Math.PI) dr-=2*Math.PI; while(dr<-Math.PI) dr+=2*Math.PI;
+    this.bodyRot+=dr*Math.min(1,(this.anchor?14:4)*sdt);
+    this.legPh+=sdt*(this.anchor?5:12);
+
+    // 落下死
+    if(this.py>LAVA_Y-PLAYER_R) this.die('落下：プラズマ床へ墜落');
+  }
+
+  // ----------------------------------------------------------
+  // 衝突・アイテム・障害物
+  // ----------------------------------------------------------
+  collisions(sdt){
+    // コイン
+    for(const c of this.coins){
+      if(c.got) continue;
+      let d=Math.hypot(this.px-c.x,this.py-c.y);
+      if(this.magnetT>0&&d<120){ // 磁石吸着
+        c.x+=(this.px-c.x)*0.2; c.y+=(this.py-c.y)*0.2;
+        d=Math.hypot(this.px-c.x,this.py-c.y);
+      }
+      if(d<PLAYER_R+8){
+        c.got=true; this.coinCount++;
+        const mult=(this.multiT>0)?2:1;
+        this.bonus+=50*Math.max(1,this.combo)*mult;
+        this.vx=Math.min(this.vx+140,VMAX);
+        this.spawnParticles(c.x,c.y,8,0xffd700);
+        synth.playCoin(this.combo);
+      }
+    }
+    // アイテム
+    for(const it of this.items){
+      if(it.got) continue;
+      if(Math.hypot(this.px-it.x,this.py-it.y)<PLAYER_R+12){
+        it.got=true;
+        if(it.type==='magnet'){ this.magnetT=8; this.stamp('MAGNET!'); }
+        if(it.type==='shield'){ this.shield=true; this.stamp('SHIELD!'); synth.playShield(); }
+        if(it.type==='slow'){ this.slowmo(0.25,3); this.stamp('BULLET TIME!'); }
+        if(it.type==='multi'){ this.multiT=20; this.stamp('SCORE x2!'); }
+      }
+    }
+    // レーザー（線分-円判定 + ニアミス）
+    for(const l of this.lasers){
+      if(!l.alive) continue;
+      const dx=Math.cos(l.ang)*l.len/2, dy=Math.sin(l.ang)*l.len/2;
+      const x1=l.x-dx,y1=l.y-dy,x2=l.x+dx,y2=l.y+dy;
+      const dist=this.segDist(this.px,this.py,x1,y1,x2,y2);
+      if(dist<PLAYER_R){
+        if(this.shield){
+          l.alive=false; this.shield=false;
+          this.spawnParticles(l.x,l.y,20,0xff3355);
+          this.cameras.main.shake(120,0.008);
+          synth.playCrash();
+          this.stamp('SHIELD BREAK!');
+        } else { this.die('レーザー接触'); return; }
+      } else if(dist<PLAYER_R+28&&!l.nearDone){
+        l.nearDone=true; this.nearCount++;
+        this.bonus+=80; this.stamp('CLOSE! +80');
+        this.slowmo(0.35,0.25);
+        this.spawnParticles(this.px,this.py,6,0xffffff);
+        synth.playNear();
+      }
+    }
+    // ミサイル
+    for(const m of this.missiles){
+      if(!m.alive) continue;
+      const d=Math.hypot(this.px-m.x,this.py-m.y);
+      // 追尾
+      const ax=(this.px-m.x)/d*260, ay=(this.py-m.y)/d*260;
+      m.vx+=ax*sdt; m.vy+=ay*sdt;
+      const ms=Math.hypot(m.vx,m.vy);
+      if(ms>480){ m.vx*=480/ms; m.vy*=480/ms; }
+      m.x+=m.vx*sdt; m.y+=m.vy*sdt;
+      m.life-=sdt;
+      if(m.life<=0){ m.alive=false; this.spawnParticles(m.x,m.y,12,0xff8833); }
+      if(d<200){ this.warnT-=sdt; if(this.warnT<=0){ synth.playWarn(); this.warnT=0.3; } }
+      if(d<PLAYER_R+8){ this.die('ミサイル直撃'); return; }
+      if(d<PLAYER_R+28&&!m.nearDone){
+        m.nearDone=true; this.nearCount++; this.bonus+=80;
+        this.stamp('CLOSE! +80'); this.slowmo(0.35,0.25); synth.playNear();
+      }
+    }
+  }
+  segDist(px,py,x1,y1,x2,y2){
+    const dx=x2-x1, dy=y2-y1;
+    const t=Phaser.Math.Clamp(((px-x1)*dx+(py-y1)*dy)/(dx*dx+dy*dy||1),0,1);
+    return Math.hypot(px-(x1+dx*t),py-(y1+dy*t));
+  }
+
+  // ----------------------------------------------------------
+  // 世界更新（生成・削除・カメラ）
+  // ----------------------------------------------------------
+  updateWorld(sdt,dt){
+    // チャンク生成
+    if(this.genX < this.camX+W+700) this.spawnChunk();
+    // ガベージコレクション
+    const lim=this.camX-400;
+    this.anchors=this.anchors.filter(a=>a.x>lim&&!a.dead);
+    this.coins=this.coins.filter(c=>c.x>lim&&!c.got);
+    this.lasers=this.lasers.filter(l=>l.x>lim&&l.alive);
+    this.items=this.items.filter(i=>i.x>lim&&!i.got);
+    // レーザー回転
+    for(const l of this.lasers) l.ang+=l.spd*sdt;
+    // ミサイル発射（第3区画以降、難易度で間隔短縮）
+    if(this.px>2500&&!this.dead){
+      this.missileTimer-=sdt;
+      if(this.missileTimer<=0){
+        const k=this.difficulty();
+        this.missileTimer=30-12*k;
+        this.missiles.push({x:this.camX-80,y:this.py-100,vx:200,vy:0,life:6,alive:true,nearDone:false});
+      }
+    }
+    this.missiles=this.missiles.filter(m=>m.alive);
+    // パーティクル
+    for(const p of this.particles){
+      p.life-=dt;
+      if(!p.line){ p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=400*dt; }
+    }
+    this.particles=this.particles.filter(p=>p.life>0);
+    // カメラ追従 + 速度先行
+    let target=this.px-260;
+    if(this.vx>800) target+=40;
+    this.camX+=(target-this.camX)*0.12;
+    this.camX=Math.max(0,this.camX);
+    // ズーム演出
+    const zt=this.dashTimer>0?0.90:(Math.hypot(this.vx,this.vy)>900?0.94:1.0);
+    this.zoomV+=(zt-this.zoomV)*dt*4;
+    this.cameras.main.setZoom(this.zoomV);
+    this.cameras.main.scrollX=this.camX;
+  }
+
+  // ----------------------------------------------------------
+  // 死亡処理
+  // ----------------------------------------------------------
+  die(cause){
+    if(this.dead) return;
+    this.dead=true; this.cause=cause;
+    this.timeScale=0.2; this.slowTimer=0.5;
+    this.spawnParticles(this.px,this.py,45,0xff3355);
+    this.cameras.main.shake(300,0.02);
+    this.camFlash(0xffffff);
+    synth.playCrash();
+    this.time.delayedCall(700,()=>this.showResult());
+  }
+  showResult(){
+    const total=Math.floor(this.score);
+    const isNew=total>this.high;
+    if(isNew){ this.high=total; localStorage.setItem('cyberHookHighScore2',String(total)); }
+    // ミッション判定
+    let mBonus=0, mLines=[];
+    for(const m of this.missions){
+      if(m.chk(this)){ m.done=true; mBonus+=500; mLines.push('[達成] '+m.text+' +500'); }
+      else mLines.push('[----] '+m.text);
+    }
+    if(this.missions.every(m=>m.done)) mBonus+=2000;
+    const final=total+mBonus;
+    if(isNew&&final>this.high){ localStorage.setItem('cyberHookHighScore2',String(final)); }
+    const g=this.add.graphics().setDepth(200).setScrollFactor(0);
+    g.fillStyle(0x000000,0.85).fillRect(0,0,W,H);
+    const lines=[
+      '=== GAME OVER ===','',
+      '死因: '+this.cause,'',
+      '距離スコア: '+Math.floor((this.px-150)/10),
+      'コイン: '+this.coinCount+'枚',
+      'ニアミス: '+this.nearCount+'回',
+      'トリック: '+this.trickCount+'回',
+      '最大コンボ: '+this.maxCombo+'x','',
+      ...mLines,'',
+      'ミッションボーナス: +'+mBonus,
+      'TOTAL: '+final,
+      'HIGH: '+Math.max(final,this.high)+(isNew?'  NEW RECORD!':''),
+      '','SPACE / TAP でリトライ'
+    ];
+    this.add.text(W/2,H/2,lines.join('\n'),{
+      fontSize:'20px',fontFamily:'monospace',color:'#00f0ff',align:'center',lineSpacing:6
+    }).setOrigin(0.5).setDepth(201).setScrollFactor(0);
+    this.input.once('pointerdown',()=>this.scene.restart());
+  }
+
+  // ----------------------------------------------------------
+  // 描画（全てGraphicsプロシージャル）
+  // ----------------------------------------------------------
+  render(dt){
+    const g=this.g, fx=this.gFx, bg=this.gBg;
+    g.clear(); fx.clear(); bg.clear();
+    const cx=this.camX;
+
+    // 背景パララックスグリッド
+    bg.lineStyle(1,0x1a2b3c,0.5);
+    for(let x=Math.floor(cx*0.2/80)*80; x<cx*0.2+W+80; x+=80){
+      bg.lineBetween(x-cx*0.2+cx*0, 0, x-cx*0.2, H); // 遠景縦線
+    }
+    bg.lineStyle(1,0x223344,0.6);
+    for(let x=Math.floor(cx*0.5/120)*120; x<cx*0.5+W+120; x+=120){
+      const sx=x-cx*0.5;
+      bg.lineBetween(sx,0,sx,H);
+    }
+    bg.setScrollFactor(0);
+    // プラズマ床（うねり）
+    const acc=[0x00f0ff,0xffbe0b,0xff3355,0xffffff][this.biome];
+    fx.fillStyle(0xff2266,0.85);
+    fx.beginPath();
+    fx.moveTo(cx,LAVA_Y);
+    for(let x=0;x<=W;x+=20){
+      fx.lineTo(cx+x,LAVA_Y+Math.sin(timeNow()*0.004+x*0.05)*6);
+    }
+    fx.lineTo(cx+W,H); fx.lineTo(cx,H); fx.closePath(); fx.fillPath();
+
+    // ロックオン対象
+    const lock=this.dead?null:this.findAnchor();
+
+    // アンカー
+    for(const a of this.anchors){
+      let col=0x00f0ff;
+      if(a.type==='brittle') col=(a.life<0.4&&Math.floor(timeNow()/100)%2)?0xff3355:0xcc8899;
+      if(a.type==='gold') col=0xffd700;
+      if(a.type==='move') col=0x88ffcc;
+      g.fillStyle(col,1).fillCircle(a.x,a.y,7);
+      g.lineStyle(2,col,0.6).strokeCircle(a.x,a.y,11);
+      if(a===lock){
+        const pulse=12+Math.sin(timeNow()*0.008)*4;
+        g.lineStyle(2,0xffbe0b,0.9).strokeCircle(a.x,a.y,pulse);
+      }
+      // 天井への接続ライン
+      g.lineStyle(1,col,0.2).lineBetween(a.x,0,a.x,a.y);
+    }
+
+    // コイン
+    for(const c of this.coins){
+      const p=1+Math.sin(timeNow()*0.006+c.x)*0.2;
+      g.fillStyle(0xffd700,1).fillCircle(c.x,c.y,6*p);
+      g.lineStyle(1,0xffd700,0.5).strokeCircle(c.x,c.y,9*p);
+    }
+    // アイテム
+    for(const it of this.items){
+      const cols={magnet:0xff88ff,shield:0x66aaff,slow:0xffffff,multi:0xffbe0b};
+      g.fillStyle(cols[it.type],1).fillCircle(it.x,it.y,9);
+      g.lineStyle(2,cols[it.type],0.6).strokeCircle(it.x,it.y,13+Math.sin(timeNow()*0.005)*3);
+    }
+    // レーザー
+    for(const l of this.lasers){
+      const dx=Math.cos(l.ang)*l.len/2, dy=Math.sin(l.ang)*l.len/2;
+      g.lineStyle(3,0xff3355,1).lineBetween(l.x-dx,l.y-dy,l.x+dx,l.y+dy);
+      g.lineStyle(7,0xff3355,0.25).lineBetween(l.x-dx,l.y-dy,l.x+dx,l.y+dy);
+      g.fillStyle(0xff3355,1).fillCircle(l.x,l.y,5);
+    }
+    // ミサイル
+    for(const m of this.missiles){
+      g.fillStyle(0xff8833,1).fillCircle(m.x,m.y,8);
+      g.fillStyle(0xffcc00,0.7).fillCircle(m.x-m.vx*0.03,m.y-m.vy*0.03,4);
+    }
+    // トレイル（うすい残像）
+    for(let i=0;i<this.trail.length;i++){
+      const t=this.trail[i], f=i/this.trail.length;
+      const col=this.dashTimer>0?0xffbe0b:0x00f0ff;
+      g.fillStyle(col,f*0.18).fillCircle(t.x,t.y,PLAYER_R*f*0.8);
+    }
+    // プレイヤー（棒人間）とワイヤー
+    if(!this.dead){
+      let pose='fall';
+      if(this.anchor) pose='hang';
+      else if(this.started&&this.vy<-60) pose='jump';
+      const col=this.dashTimer>0?0xffbe0b:0xffffff;
+      const hand=drawStickG(g,this.px,this.py,STICK_H,{pose,phase:this.legPh,rot:this.bodyRot,color:col});
+      if(this.anchor){
+        g.lineStyle(2,0x00f0ff,0.9).lineBetween(this.anchor.x,this.anchor.y,hand.x,hand.y);
+        g.lineStyle(1,0xffffff,0.5).lineBetween(this.anchor.x,this.anchor.y,hand.x,hand.y);
+      }
+      // シールド表示
+      if(this.shield){
+        g.lineStyle(2,0x66aaff,0.8);
+        g.strokeCircle(this.px,this.py,PLAYER_R+10);
+      }
+      // 磁石リング
+      if(this.magnetT>0){
+        g.lineStyle(1,0xff88ff,0.4).strokeCircle(this.px,this.py,120);
+      }
+      // ダッシュ冷却リング
+      if(this.dashCD>0){
+        const r=1-this.dashCD/DASH_CD;
+        g.lineStyle(2,0xffbe0b,0.6);
+        g.beginPath(); g.arc(this.px,this.py,PLAYER_R+16,-Math.PI/2,-Math.PI/2+r*Math.PI*2); g.strokePath();
+      }
+    }
+    // パーティクル
+    for(const p of this.particles){
+      const a=p.life/p.max;
+      if(p.line){ g.lineStyle(2,p.c,a).lineBetween(p.x,p.y,p.x-24,p.y); }
+      else g.fillStyle(p.c,a).fillCircle(p.x,p.y,3*a+1);
+    }
+
+    // UI
+    const total=Math.floor(this.score);
+    this.txtScore.setText('SCORE '+String(total).padStart(7,'0')+'  HI '+String(Math.max(this.high,total)).padStart(7,'0'));
+    let status='';
+    if(this.magnetT>0) status+='MAGNET '+this.magnetT.toFixed(0)+'s ';
+    if(this.multiT>0) status+='x2 '+this.multiT.toFixed(0)+'s ';
+    if(this.dashCD<=0) status+='DASH READY';
+    this.txtMission.setText('MISSION:\n'+this.missions.map(m=>(m.done?'✔':'・')+m.text).join('\n')+(status?'\n'+status:''));
+  }
+}
+
+function timeNow(){ return performance.now(); }
+
+// ------------------------------------------------------------
+// 棒人間（「私の人生、診断してください。」の drawStick を Phaser 用に移植）
+// (cx,cy) が体の中心（当たり判定の位置）。rot で中心まわりに回す。
+// つかんでいる手の位置を返す（ワイヤーをそこへつなぐ）
+// ------------------------------------------------------------
+function drawStickG(g, cx, cy, h, o = {}) {
+  const lw = o.lw || Math.max(2.5, h * 0.07);
+  const color = o.color === undefined ? 0xffffff : o.color;
+  const ph = o.phase || 0;
+  const pose = o.pose || 'stand';
+  const headR = h * 0.13;
+  const hipY = -h * 0.47, shY = -h * 0.74, neckY = -h * 0.79;
+  const thigh = h * 0.24, shin = h * 0.24, upper = h * 0.17, lower = h * 0.16;
+  const pivY = -h * 0.55; // 足もとから見た体の中心
+
+  let L1 = [0.17, 0.15], L2 = [-0.17, -0.15], A1 = [0.3, 0.14], A2 = [-0.3, -0.14];
+  const s = Math.sin(ph);
+  if (pose === 'hang') {          // 両手でワイヤーをにぎり、足をぶらぶら
+    A1 = [Math.PI - 0.1, Math.PI - 0.02]; A2 = [Math.PI + 0.16, Math.PI + 0.06];
+    L1 = [0.12 + s * 0.32, 0.12 + s * 0.32 - 0.4];
+    L2 = [0.12 - s * 0.32, 0.12 - s * 0.32 - 0.4];
+  } else if (pose === 'jump') {   // 飛び出し：片手を前へ、足をたたむ
+    L1 = [0.9, -0.3]; L2 = [-0.2, 0.35];
+    A1 = [2.3, 2.6]; A2 = [-0.9, -0.4];
+  } else if (pose === 'fall') {   // 落ちていく：腕をひろげ、足で空をこぐ
+    A1 = [2.0 + s * 0.25, 2.5 + s * 0.3]; A2 = [-2.0 + s * 0.25, -2.4 + s * 0.3];
+    L1 = [0.2 + s * 0.45, 0.2 + s * 0.45 - Math.max(0, -s) * 0.6];
+    L2 = [-0.2 - s * 0.45, -0.2 - s * 0.45 - Math.max(0, s) * 0.6];
+  }
+
+  const cr = Math.cos(o.rot || 0), sr = Math.sin(o.rot || 0);
+  const P = (x, y) => { const ly = y - pivY; return { x: cx + x * cr - ly * sr, y: cy + x * sr + ly * cr }; };
+  const limb = (y0, a1, l1, a2, l2) => {
+    const x1 = Math.sin(a1) * l1, y1 = y0 + Math.cos(a1) * l1;
+    const x2 = x1 + Math.sin(a2) * l2, y2 = y1 + Math.cos(a2) * l2;
+    return [P(0, y0), P(x1, y1), P(x2, y2)];
+  };
+  const parts = [
+    [P(0, neckY), P(0, hipY)],
+    limb(hipY, L1[0], thigh, L1[1], shin),
+    limb(hipY, L2[0], thigh, L2[1], shin),
+    limb(shY, A1[0], upper, A1[1], lower),
+    limb(shY, A2[0], upper, A2[1], lower),
+  ];
+  const head = P(0, neckY - headR * 1.15);
+
+  // うしろに光のにじみ → 本体の順に描く。関節に丸を置いて角をなめらかにする
+  for (const [w, a, c] of [[lw * 3.2, 0.18, 0x00f0ff], [lw, 1, color]]) {
+    g.lineStyle(w, c, a);
+    for (const pts of parts) {
+      g.beginPath(); g.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+      g.strokePath();
+    }
+    g.fillStyle(c, a);
+    for (const pts of parts) for (const p of pts) g.fillCircle(p.x, p.y, w / 2);
+    g.fillCircle(head.x, head.y, headR + (w - lw) / 2);
+  }
+  return parts[3][2];
+}
+
+// ------------------------------------------------------------
+// 起動
+// ------------------------------------------------------------
+new Phaser.Game({
+  type: Phaser.AUTO,
+  width: W, height: H,
+  backgroundColor: '#0b0c10',
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scene: GameScene
+});
+</script>
+</body>
+</html>
