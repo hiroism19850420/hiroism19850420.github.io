@@ -42,8 +42,8 @@
   .bcard.next{border:3px solid #ffe35a;box-shadow:0 0 12px #ffe35a}
   .bookGrid.koto .bcard{min-height:84px}
   .bookPg{display:flex;align-items:center;gap:14px;font-size:clamp(14px,3.4vw,18px)}
-  #cardPop{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);z-index:20;display:none;min-width:220px;background:linear-gradient(#fff8d8,#ffe08a);border:5px solid #c8901a;border-radius:18px;padding:14px 22px;text-align:center;color:#3a2410;box-shadow:0 10px 30px rgba(0,0,0,.5)}
-  #cardPop .i{font-size:64px;line-height:1.15}#cardPop .n{font-size:24px;font-weight:700}#cardPop .t{font-size:15px;color:#b3282d;font-weight:700}
+  #cardPop{position:absolute;right:10px;top:100px;z-index:20;display:none;white-space:nowrap;background:linear-gradient(#fff8d8,#ffe08a);border:3px solid #c8901a;border-radius:12px;padding:5px 10px;text-align:left;color:#3a2410;box-shadow:0 4px 12px rgba(0,0,0,.4);pointer-events:none;opacity:.95}
+  #cardPop .i{font-size:28px;line-height:1;display:inline-block;vertical-align:middle;margin-right:8px}#cardPop .w{display:inline-block;vertical-align:middle}#cardPop .n{font-size:14px;font-weight:700}#cardPop .t{font-size:11px;color:#b3282d;font-weight:700}
   #bBook{position:absolute;right:10px;top:64px;z-index:5;display:none;font-size:15px;padding:8px 14px;background:#fff;box-shadow:0 4px 0 #8a93b8}
   #bBook.show{display:block}
   .goods .coins{font-size:.8em;letter-spacing:-.1em;line-height:1.1}
@@ -81,7 +81,7 @@
   <div class="how">
     <div>👊 <b>うでを つきだす</b> … パンチ。てきを たおすと レベルが 上がる</div>
     <div>⚔️ <b>りょう手を くっつけて ふる</b> … 剣（レベル2で 手に入る）</div>
-    <div>✨ <b>りょう手を 上げる</b> → すぐ じゅもん（名前を さけびながら 上げると えらべる）… レベルが 上がると おぼえる</div>
+    <div>✨ <b>りょう手を 上げて 2〜3びょう</b> → じゅもん（その間に 名前を さけぶと えらべる）… レベルが 上がると おぼえる</div>
     <div>📜 ことわざでも 魔法が 出るよ</div>
     <div>🍡 なかまが いっしょに たたかう。ハンバーグを たべると 大きく つよくなる</div>
     <div>⚠️ 声が 聞こえたら <b>よける</b>：やり→よこへ／てんじょう→しゃがむ／レーザー→ジャンプ</div>
@@ -131,6 +131,7 @@
 
 <script src="monsters.js"></script>
 <script src="regions.js"></script>
+<script src="voice/list.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="../phonecam.js"></script>
@@ -156,7 +157,8 @@ const SWORD_LEN   = 1.6;   // 剣の長さ（肩はば単位）
 const GRIP_IN     = 0.6;   // りょう手首が これより近づいたら 剣を にぎったことにする
 const GRIP_OUT    = 0.9;   // これより はなれたら 剣を しまう
 const GRIP_VIS    = 0.15;  // にぎると 手首が かくれやすいので、剣は 見え方が あいまいでも みとめる
-const CHARGE_TIME = 0.2;   // まほうの構えが完成するまでの秒数（そろったら すぐ となえる）
+const CHARGE_TIME = 2.5;   // りょう手を 上げてから となえるまでの秒数（この間に 名前や ことわざを さけぶ）
+const CHARGE_MORE = 1.5;   // まだ しゃべっている時は、これだけ 長く 待つ（秒）
 const SHOUT_MIN   = 0.06;  // 声の大きさの最低ライン（0〜1）
 const MAGIC_CD    = 2.5;   // じゅもんを となえてから 次を ためられるまで（秒）
 const SHOT_HIT    = 0.6;   // 赤い玉の当たりはんい（肩はば単位）
@@ -254,8 +256,8 @@ const SPELLS = {
   meteor:  { name: 'メテオストライクアタック',       icon: '☄️', col: '#ffb0f0', lv: 13, mp: 10, big: true, low: 'fire',    al: ['メテオ', 'ストライク', 'meteor'] }
 };
 const ORDER = ['thunder', 'fire', 'ice', 'heal', 'dragon', 'bolt', 'meteor'];
-// 聞きとった ことばを そろえる（ひらがな→カタカナ、のばし棒・空白・記号を とる）
-const norm = s => s.toLowerCase().replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60)).replace(/[ー\s・！!。、]/g, '');
+// 聞きとった ことばを そろえる（数字→漢数字、ひらがな→カタカナ、のばし棒・空白・記号を とる）
+const norm = s => s.toLowerCase().replace(/[0-9０-９]/g, c => '〇一二三四五六七八九'[(c.charCodeAt(0) - 48) % 0xfee0]).replace(/[ぁ-ゖ]/g, c => String.fromCharCode(c.charCodeAt(0) + 0x60)).replace(/[ー\s・！!。、]/g, '');
 
 // ことわざの じゅもん（レベル3から、どれでも つかえる）。fx：出る わざ、al：聞きとりの 合言葉（「|」区切り。どれか1つ 聞こえたら それ。少しの 言いまちがいも 通るように 前半・後半を べつべつに 入れる）
 const KOTO_MP = 4;
@@ -336,7 +338,230 @@ const KOTO = Object.fromEntries([
   ['かわいい子には 旅を させよ', '🧳', 'heal', '旅をさせ|たびをさせ|かわいい子|可愛い子'],
   ['しらぬが ほとけ', '😇', 'heal', '知らぬが|しらぬが'],
   ['あとの まつり', '🎆', 'fire', '後の祭|あとのまつ|あとの祭'],
-  ['一を 聞いて 十を 知る', '🔟', 'thunder', '一を聞|いちをき|十を知|じゅうをし']
+  ['一を 聞いて 十を 知る', '🔟', 'thunder', '一を聞|いちをき|十を知|じゅうをし'],
+  ['あしたは あしたの 風が ふく', '🌬️', 'heal', '明日は明日|あしたはあした|風が吹く|かぜがふく'],
+  ['あぶはち とらず', '🐝', 'thunder', '虻蜂|あぶはち|蜂取らず|はちとらず'],
+  ['雨だれ 石を うがつ', '💧', 'ice', '雨垂れ|あまだれ|石を穿|いしをうが'],
+  ['あんずるより うむが やすし', '🍼', 'heal', '案ずるより|あんずるより|産むが易|うむがやす'],
+  ['石橋を たたいて わたる', '🌉', 'ice', '石橋を叩|いしばしをたた|石橋をたた|叩いて渡|たたいてわた'],
+  ['いしゃの ふようじょう', '🩺', 'heal', '医者の不養生|いしゃのふようじょう|不養生|ふようじょう'],
+  ['いわしの 頭も しんじんから', '🐟', 'thunder', '鰯の頭|いわしのあたま|信心から|しんじんから'],
+  ['うおごころ あれば みずごころ', '🐠', 'ice', '魚心|うおごころ|水心|みずごころ'],
+  ['うそから 出た まこと', '🎭', 'thunder', '嘘から出|うそからで|出た誠|でたまこと|出たまこと'],
+  ['うそも ほうべん', '🤥', 'thunder', '嘘も方便|うそもほうべん|方便|ほうべん'],
+  ['うまい 話には うらが ある', '🍬', 'thunder', '美味い話|うまい話|うまいはなし|裏がある|うらがある'],
+  ['えんは いなもの あじなもの', '💞', 'heal', '縁は異な|えんはいな|味なもの|あじなもの'],
+  ['おぼれる 者は わらをも つかむ', '🌾', 'ice', '溺れる者|おぼれるもの|藁をも|わらをも'],
+  ['思い立ったが きちじつ', '📅', 'fire', '思い立った|おもいたった|吉日|きちじつ'],
+  ['親の 心 子 しらず', '👪', 'heal', '親の心|おやのこころ|子知らず|こしらず'],
+  ['おびに みじかし たすきに 長し', '🎀', 'thunder', '帯に短|おびにみじか|たすきに長|たすきになが|襷に長'],
+  ['おわり よければ すべて よし', '🎬', 'heal', '終わり良|終わりよけ|おわりよけ|全て良し|すべてよし'],
+  ['かべに 耳あり しょうじに 目あり', '👂', 'thunder', '壁に耳|かべにみみ|障子に目|しょうじにめ'],
+  ['かれ木も 山の にぎわい', '🌳', 'heal', '枯れ木も|かれきも|山の賑|やまのにぎ'],
+  ['かわいさ あまって にくさ 百ばい', '💢', 'fire', '可愛さ余|かわいさあま|憎さ百倍|にくさひゃく'],
+  ['聞くは 一時の はじ', '❓', 'thunder', '聞くは一時|きくはいっとき|一時の恥|いっときのはじ|一生の恥|いっしょうのはじ'],
+  ['きじも 鳴かずば うたれまい', '🐓', 'thunder', '雉も鳴|きじもな|鳴かずば|なかずば'],
+  ['木を 見て 森を 見ず', '🌲', 'ice', '木を見て|きをみて|森を見ず|もりをみず'],
+  ['くさいものに ふた', '🫙', 'ice', '臭いものに|臭い物に|くさいものに|くさい物に'],
+  ['けがの こうみょう', '🩹', 'heal', '怪我の功名|けがのこうみょう|功名|こうみょう'],
+  ['こうかい 先に 立たず', '😞', 'ice', '後悔先|こうかいさき|先に立たず|さきにたたず'],
+  ['ごうに 入っては ごうに したがえ', '🏘️', 'heal', '郷に入|ごうにい|郷に従|ごうにしたが'],
+  ['ころんでも ただでは おきない', '🤸', 'fire', '転んでも|ころんでも|ただでは起|ただではお'],
+  ['さわらぬ 神に たたりなし', '⛩️', 'ice', '触らぬ神|さわらぬかみ|祟りなし|たたりなし'],
+  ['去る者は 日々に うとし', '👋', 'ice', '去る者は|さるものは|日々に疎|ひびにうと'],
+  ['しゃかに せっぽう', '📿', 'thunder', '釈迦に説法|しゃかにせっぽう|説法|せっぽう'],
+  ['正直者が ばかを 見る', '😑', 'ice', '正直者が|しょうじきものが|馬鹿を見る|ばかをみる'],
+  ['小さく うんで 大きく そだてる', '🌱', 'heal', '小さく産|小さく生|ちいさくう|大きく育|おおきくそだ'],
+  ['すずめ 百まで おどり わすれず', '💃', 'fire', '雀百|すずめひゃく|踊り忘|おどりわす'],
+  ['せいては 事を しそんじる', '🐌', 'ice', '急いては|せいては|事を仕損|ことをしそん'],
+  ['せんどう 多くして 船 山に のぼる', '⛵', 'thunder', '船頭多|せんどうおお|船山に|ふねやまに'],
+  ['前門の とら 後門の おおかみ', '🐺', 'fire', '前門の虎|ぜんもんのとら|後門の狼|こうもんのおおかみ'],
+  ['たで食う 虫も すきずき', '🌿', 'heal', '蓼食う|たでくう|好き好き|すきずき'],
+  ['ただより 高い ものは ない', '🆓', 'thunder', 'ただより高|ただよりたか|只より高|タダより高'],
+  ['旅は 道づれ 世は なさけ', '🚶', 'heal', '旅は道連|たびはみちづ|世は情|よはなさけ'],
+  ['玉に きず', '💎', 'ice', '玉に瑕|玉に傷|たまにきず|玉にきず'],
+  ['ちょうちんに つりがね', '🔔', 'thunder', '提灯に釣鐘|ちょうちんにつりがね|釣鐘|つりがね'],
+  ['月夜に ちょうちん', '🏮', 'ice', '月夜に提灯|つきよにちょうちん|月夜に|つきよに'],
+  ['天は 二物を あたえず', '🎁', 'heal', '天は二物|てんはにぶつ|二物を与|にぶつをあた'],
+  ['天は みずから たすくる 者を たすく', '☀️', 'heal', '天は自ら|てんはみずから|助くる者|たすくるもの'],
+  ['遠くの しんるいより 近くの 他人', '🏡', 'heal', '遠くの親類|とおくのしんるい|近くの他人|ちかくのたにん'],
+  ['どくを くらわば さらまで', '🍽️', 'fire', '毒を食らわば|どくをくらわば|皿まで|さらまで'],
+  ['年寄りの ひやみず', '🧓', 'ice', '年寄りの冷|としよりのひや|冷や水|ひやみず'],
+  ['となりの 花は 赤い', '🌺', 'fire', '隣の花|となりのはな|花は赤|はなはあか'],
+  ['となりの しばふは 青い', '🍃', 'heal', '隣の芝|となりのしば|芝生は青|しばふはあお'],
+  ['飛ぶ鳥を 落とす いきおい', '🦜', 'fire', '飛ぶ鳥を|とぶとりを|落とす勢|おとすいきお'],
+  ['とらぬ たぬきの かわざんよう', '🦝', 'thunder', '捕らぬ狸|取らぬ狸|とらぬたぬき|皮算用|かわざんよう'],
+  ['どろぼうを 見て なわを なう', '🪢', 'ice', '泥棒を見|どろぼうをみ|縄を綯|なわをな'],
+  ['ない そでは ふれない', '👘', 'ice', '無い袖|ないそで|袖は振れ|そではふれ'],
+  ['長いものには まかれろ', '🐍', 'thunder', '長いものには|長い物には|ながいものには|巻かれろ|まかれろ'],
+  ['なくて 七くせ', '7️⃣', 'thunder', '無くて七癖|なくてななくせ|七癖|ななくせ'],
+  ['なせば なる', '💪', 'fire', '為せば成る|なせばなる|なせば成る'],
+  ['二度 あることは 三度 ある', '🔁', 'thunder', '二度ある|にどある|三度ある|さんどある'],
+  ['にがした 魚は 大きい', '🎣', 'ice', '逃がした魚|にがしたさかな|逃した魚|魚は大き|さかなはおおき'],
+  ['ぬれ手で あわ', '🫧', 'heal', '濡れ手で粟|ぬれてであわ|濡れ手で|ぬれてで'],
+  ['ねる子は 育つ', '🛌', 'heal', '寝る子は|ねるこは|子は育つ|こはそだつ'],
+  ['のど元 すぎれば あつさを わすれる', '🍵', 'fire', '喉元過|のどもとす|熱さを忘|あつさをわす'],
+  ['はらが へっては いくさが できぬ', '🍚', 'fire', '腹が減って|はらがへって|戦ができぬ|いくさができぬ|戦は出来ぬ'],
+  ['はりの あなから 天を のぞく', '🪡', 'thunder', '針の穴|はりのあな|天を覗|てんをのぞ'],
+  ['人を 見たら どろぼうと 思え', '🕵️', 'thunder', '人を見たら|ひとをみたら|泥棒と思|どろぼうとおも'],
+  ['火に あぶらを そそぐ', '🛢️', 'fire', '火に油|ひにあぶら|油を注|あぶらをそそ'],
+  ['ひょうたんから こま', '🎐', 'thunder', '瓢箪から|ひょうたんから|から駒|からこま'],
+  ['ふえ ふけども おどらず', '🪈', 'ice', '笛吹けど|ふえふけど|笛ふけど|踊らず|おどらず'],
+  ['ふくすい ぼんに かえらず', '🫗', 'ice', '覆水|ふくすい|盆に返|ぼんにかえ'],
+  ['へたの よこずき', '🖍️', 'heal', '下手の横好|へたのよこず|横好き|よこずき'],
+  ['へたな てっぽうも 数うちゃ 当たる', '🔫', 'fire', '下手な鉄砲|へたなてっぽう|数撃ちゃ|かずうちゃ|数打ちゃ'],
+  ['まてば かいろの ひよりあり', '🚢', 'heal', '待てば海路|まてばかいろ|日和あり|ひよりあり'],
+  ['まかぬ たねは 生えぬ', '🌱', 'heal', '蒔かぬ種|まかぬたね|種は生え|たねははえ'],
+  ['ミイラ取りが ミイラに なる', '🏺', 'ice', 'ミイラ取り|みいらとり|ミイラになる|みいらになる'],
+  ['三日 ぼうず', '🧑‍🦲', 'thunder', '三日坊主|みっかぼうず'],
+  ['目は 口ほどに ものを いう', '😉', 'thunder', '目は口ほど|めはくちほど|物を言う|ものをいう'],
+  ['目から うろこ', '🐡', 'ice', '目から鱗|めからうろこ|目からうろこ'],
+  ['もちは もちや', '🍘', 'heal', '餅は餅屋|もちはもちや|餅屋|もちや'],
+  ['ものも いいようで かどが 立つ', '🗣️', 'thunder', '物も言いよう|ものもいいよう|角が立つ|かどがたつ'],
+  ['もも くり 三年 かき 八年', '🍊', 'heal', '桃栗三年|ももくりさんねん|柿八年|かきはちねん'],
+  ['やぶを つついて へびを 出す', '🪱', 'fire', '藪をつつ|やぶをつつ|藪蛇|やぶへび|蛇を出|へびをだ'],
+  ['よわり目に たたり目', '😩', 'ice', '弱り目|よわりめ|祟り目|たたりめ'],
+  ['りちぎ者の 子だくさん', '👨‍👩‍👧‍👦', 'heal', '律儀者|りちぎもの|子沢山|こだくさん'],
+  ['るいは 友を よぶ', '👫', 'heal', '類は友|るいはとも|友を呼|ともをよ'],
+  ['ローマは 一日にして ならず', '🏛️', 'fire', 'ローマは|ろーまは|一日にして|いちにちにして'],
+  ['若い時の くろうは 買ってでも せよ', '💼', 'fire', '若い時の苦労|わかいときのくろう|買ってでも|かってでも'],
+  ['わざわい 転じて ふくと なす', '🍀', 'heal', '禍転じて|災い転じて|わざわいてんじて|福となす|ふくとなす'],
+  ['わたる せけんに おには なし', '🌏', 'heal', '渡る世間|わたるせけん|鬼はなし|おにはなし'],
+  ['あくじ 千里を 走る', '💨', 'thunder', '悪事千里|あくじせんり|千里を走|せんりをはし'],
+  ['青菜に しお', '🥬', 'ice', '青菜に塩|あおなにしお|青菜に|あおなに'],
+  ['朝めし前', '🍳', 'fire', '朝飯前|あさめしまえ|朝めし前'],
+  ['足もとから 鳥が 立つ', '🦆', 'thunder', '足元から鳥|あしもとからとり|足下から鳥|鳥が立つ|とりがたつ'],
+  ['あとは 野となれ 山となれ', '🏞️', 'fire', '後は野となれ|あとはのとなれ|野となれ|のとなれ'],
+  ['うごの たけのこ', '🎋', 'heal', '雨後の筍|うごのたけのこ|雨後の|うごの'],
+  ['一難 去って また 一難', '🌊', 'thunder', '一難去って|いちなんさって|また一難|またいちなん'],
+  ['一ふじ 二たか 三なすび', '🗻', 'heal', '一富士|いちふじ|二鷹|にたか|三茄子|さんなすび'],
+  ['いわぬが 花', '🌸', 'heal', '言わぬが花|いわぬがはな|言わぬが|いわぬが'],
+  ['うどの たいぼく', '🪵', 'ice', '独活の大木|うどのたいぼく|うどの大木|大木|たいぼく'],
+  ['馬には 乗ってみよ 人には そうてみよ', '🐎', 'heal', '馬には乗|うまにはの|人には添|ひとにはそ'],
+  ['おにの いぬ間に せんたく', '🧺', 'heal', '鬼の居ぬ間|おにのいぬま|鬼のいぬ間|洗濯|せんたく'],
+  ['おんを あだで かえす', '😠', 'fire', '恩を仇|おんをあだ|仇で返|あだでかえ'],
+  ['かえるの つらに 水', '🪷', 'ice', '蛙の面に水|かえるのつらにみず|蛙の面|かえるのつら|カエルの面'],
+  ['かじと けんかは えどの 花', '🚒', 'fire', '火事と喧嘩|かじとけんか|江戸の花|えどのはな'],
+  ['かねは 天下の まわりもの', '💰', 'thunder', '金は天下|かねはてんか|回り物|まわりもの|回りもの'],
+  ['風が ふけば おけやが もうかる', '🪣', 'thunder', '風が吹けば|かぜがふけば|桶屋が|おけやが'],
+  ['かって かぶとの おを しめよ', '🪖', 'fire', '勝って兜|かってかぶと|緒を締|おをしめ'],
+  ['かれ木に 花', '🌼', 'heal', '枯れ木に花|かれきにはな'],
+  ['かんにんぶくろの おが きれる', '💥', 'fire', '堪忍袋|かんにんぶくろ|緒が切れ|おがきれ'],
+  ['木に 竹を つぐ', '🎍', 'ice', '木に竹|きにたけ|竹を接|たけをつ'],
+  ['きのうの 友は きょうの てき', '🤺', 'thunder', '昨日の友|きのうのとも|今日の敵|きょうのてき'],
+  ['九死に 一生を える', '🙌', 'heal', '九死に一生|きゅうしにいっしょう|九死に|きゅうしに'],
+  ['きゅうそ ねこを かむ', '🐭', 'fire', '窮鼠|きゅうそ|猫を噛む|ねこをかむ'],
+  ['ぎょふの り', '🦪', 'thunder', '漁夫の利|ぎょふのり|漁夫|ぎょふ'],
+  ['くるしい 時の 神だのみ', '🛐', 'heal', '苦しい時の神|くるしいときのかみ|神頼み|かみだのみ'],
+  ['くんし あやうきに 近よらず', '🎩', 'ice', '君子危|くんしあやう|近寄らず|ちかよらず'],
+  ['けんか りょうせいばい', '⚖️', 'thunder', '喧嘩両成敗|けんかりょうせいばい|両成敗|りょうせいばい'],
+  ['こうぼうは 筆を えらばず', '🖋️', 'thunder', '筆を選|ふでをえら'],
+  ['こけつに 入らずんば こじを えず', '🐯', 'fire', '虎穴|こけつ|虎子を得|こじをえ'],
+  ['子は かすがい', '🔗', 'heal', '子は鎹|こはかすがい|かすがい'],
+  ['五十歩 百歩', '🦶', 'thunder', '五十歩百歩|ごじっぽひゃっぽ|五十歩|ごじっぽ'],
+  ['ころがる 石に こけ むさず', '🗿', 'ice', '転石苔|てんせきこけ|苔むさず|こけむさず|転がる石|ころがるいし'],
+  ['さんしょうは こつぶでも ぴりりと からい', '🌶️', 'fire', '山椒は小粒|さんしょうはこつぶ|ぴりりと|ピリリと'],
+  ['三十六計 にげるに しかず', '🏃', 'ice', '三十六計|さんじゅうろっけい|逃げるに|にげるに'],
+  ['じしん かみなり かじ おやじ', '🌋', 'thunder', '地震雷|じしんかみなり|火事親父|かじおやじ'],
+  ['しゅに まじわれば 赤くなる', '🟥', 'fire', '朱に交|しゅにまじ|赤くなる|あかくなる'],
+  ['しょしん わするべからず', '🔰', 'heal', '初心忘|しょしんわす|べからず'],
+  ['しらはの 矢が 立つ', '🪶', 'thunder', '白羽の矢|しらはのや'],
+  ['じんじを つくして てんめいを まつ', '🌠', 'heal', '人事を尽|じんじをつ|天命を待|てんめいをま'],
+  ['すぎたるは なお およばざるが ごとし', '🥄', 'ice', '過ぎたるは|すぎたるは|及ばざる|およばざる'],
+  ['せに はらは かえられぬ', '🎒', 'fire', '背に腹|せにはら|変えられぬ|かえられぬ|替えられぬ'],
+  ['先んずれば 人を せいす', '🥇', 'fire', '先んずれば|さきんずれば|人を制|ひとをせい'],
+  ['ぜんは いそげ', '🏃‍♀️', 'fire', '善は急|ぜんはいそ'],
+  ['そんして とく とれ', '🪙', 'thunder', '損して得|そんしてとく|得取れ|とくとれ'],
+  ['大は 小を かねる', '📦', 'heal', '大は小|だいはしょう|小を兼|しょうをか'],
+  ['たからの もちぐされ', '🧰', 'ice', '宝の持ち腐|たからのもちぐさ|持ち腐れ|もちぐされ'],
+  ['ちくばの 友', '🎠', 'heal', '竹馬の友|ちくばのとも|竹馬の|ちくばの'],
+  ['たざんの 石', '🧱', 'thunder', '他山の石|たざんのいし'],
+  ['立て板に 水', '🚿', 'ice', '立て板に水|たていたにみず|立て板に|たていたに'],
+  ['旅の はじは かきすて', '🗺️', 'thunder', '旅の恥|たびのはじ|掻き捨て|かきすて'],
+  ['たんきは そんき', '😤', 'fire', '短気は損気|たんきはそんき|損気|そんき'],
+  ['つめに 火を ともす', '🕯️', 'fire', '爪に火|つめにひ|火を灯|ひをとも'],
+  ['てつは あついうちに うて', '⚒️', 'fire', '鉄は熱い|てつはあつい|熱いうちに|あついうちに'],
+  ['天高く 馬 こゆる 秋', '🍂', 'heal', '天高く|てんたかく|馬肥ゆる|うまこゆる'],
+  ['ところ かわれば しな かわる', '🌐', 'thunder', '所変われば|ところかわれば|品変わる|しなかわる'],
+  ['とびが たかを うむ', '🪁', 'heal', '鳶が鷹|とびがたか|とんびがたか|鷹を生|たかをう'],
+  ['なく子と じとうには かてぬ', '😭', 'thunder', '泣く子と地頭|なくことじとう|地頭|じとう'],
+  ['ならうより なれよ', '🎹', 'heal', '習うより|ならうより|慣れよ|なれよ'],
+  ['にくまれっ子 世に はばかる', '😈', 'thunder', '憎まれっ子|にくまれっこ|世に憚|よにはばか'],
+  ['ねんには ねんを 入れよ', '✅', 'ice', '念には念|ねんにはねん|念を入れ|ねんをいれ'],
+  ['のこりものには ふくが ある', '🍰', 'heal', '残り物には|のこりものには|福がある|ふくがある'],
+  ['はに きぬ きせぬ', '🦷', 'thunder', '歯に衣|はにきぬ|衣着せぬ|きぬきせぬ'],
+  ['はら 八分目に いしゃ いらず', '🥗', 'heal', '腹八分|はらはちぶ|医者いらず|いしゃいらず'],
+  ['人の 口に 戸は 立てられない', '🚪', 'thunder', '人の口に戸|ひとのくちにと|戸は立てられ|とはたてられ'],
+  ['人の うわさも 七十五日', '📰', 'ice', '人の噂|ひとのうわさ|七十五日|しちじゅうごにち'],
+  ['百里を 行く者は 九十を なかばとす', '💯', 'fire', '百里を行|ひゃくりをい|九十を半|きゅうじゅうをなか'],
+  ['ふらぬ 先の かさ', '☂️', 'heal', '降らぬ先|ふらぬさき|先の傘|さきのかさ'],
+  ['ぼうず にくけりゃ けさまで にくい', '🧘', 'fire', '坊主憎|ぼうずにく|袈裟まで|けさまで'],
+  ['ほとけ つくって たましい 入れず', '🪆', 'ice', '仏作って|ほとけつくって|魂入れず|たましいいれず'],
+  ['まないたの 上の こい', '🎏', 'ice', '俎板の上|まないたのうえ|まな板の|上の鯉|うえのこい'],
+  ['身から 出た さび', '🔧', 'thunder', '身から出た|みからでた|出た錆|でたさび'],
+  ['みのるほど 頭を たれる いなほかな', '🌾', 'heal', '実るほど|みのるほど|稲穂|いなほ|頭を垂れ|こうべをたれ|あたまをたれ'],
+  ['むかし とった きねづか', '🏋️', 'fire', '昔取った|むかしとった|杵柄|きねづか'],
+  ['むりが 通れば どうり ひっこむ', '🚧', 'thunder', '無理が通|むりがとお|道理引っ込|どうりひっこ'],
+  ['目の 上の たんこぶ', '🫠', 'thunder', '目の上の|めのうえの|たんこぶ'],
+  ['もとの もくあみ', '🔄', 'ice', '元の木阿弥|もとのもくあみ|木阿弥|もくあみ'],
+  ['もんぜんの こぞう ならわぬ きょうを よむ', '🛕', 'heal', '門前の小僧|もんぜんのこぞう|習わぬ経|ならわぬきょう'],
+  ['やすもの 買いの ぜに うしない', '🏷️', 'thunder', '安物買い|やすものがい|銭失い|ぜにうしない'],
+  ['やなぎに ゆきおれ なし', '🌨️', 'ice', '柳に雪折|やなぎにゆきお|雪折れなし|ゆきおれなし'],
+  ['やなぎの 下に いつも どじょうは いない', '🐊', 'ice', '柳の下|やなぎのした|泥鰌|どじょう'],
+  ['ゆうべんは ぎん ちんもくは きん', '🤐', 'thunder', '雄弁は銀|ゆうべんはぎん|沈黙は金|ちんもくはきん'],
+  ['ゆだん たいてき', '⚠️', 'fire', '油断大敵|ゆだんたいてき|油断|ゆだん'],
+  ['よく 学び よく 遊べ', '🏫', 'heal', 'よく学び|よくまなび|よく遊べ|よくあそべ'],
+  ['よらば たいじゅの かげ', '🌴', 'heal', '寄らば大樹|よらばたいじゅ|大樹の陰|たいじゅのかげ'],
+  ['りょう手に 花', '💐', 'heal', '両手に花|りょうてにはな'],
+  ['わが身を つねって 人の いたさを 知れ', '🤏', 'heal', '我が身を抓|わがみをつね|わが身をつね|人の痛さ|ひとのいたさ'],
+  ['わを もって とうとしと なす', '☮️', 'heal', '和を以て|わをもって|貴しと|とうとしと'],
+  ['わたりに 船', '⛴️', 'heal', '渡りに船|わたりにふね'],
+  ['一期一会', '🫖', 'heal', '一期一会|いちごいちえ'],
+  ['十人十色', '🌈', 'heal', '十人十色|じゅうにんといろ'],
+  ['起死回生', '💫', 'fire', '起死回生|きしかいせい'],
+  ['七転八倒', '😵', 'ice', '七転八倒|しちてんばっとう'],
+  ['自業自得', '🪃', 'thunder', '自業自得|じごうじとく'],
+  ['弱肉強食', '🦁', 'fire', '弱肉強食|じゃくにくきょうしょく'],
+  ['以心伝心', '📡', 'thunder', '以心伝心|いしんでんしん'],
+  ['試行錯誤', '🔬', 'fire', '試行錯誤|しこうさくご'],
+  ['晴耕雨読', '📕', 'heal', '晴耕雨読|せいこううどく'],
+  ['温故知新', '🗞️', 'heal', '温故知新|おんこちしん'],
+  ['大器晩成', '🏆', 'fire', '大器晩成|たいきばんせい'],
+  ['有言実行', '📣', 'fire', '有言実行|ゆうげんじっこう'],
+  ['一心同体', '👯', 'heal', '一心同体|いっしんどうたい'],
+  ['単刀直入', '🗡️', 'thunder', '単刀直入|たんとうちょくにゅう'],
+  ['電光石火', '⚡', 'thunder', '電光石火|でんこうせっか'],
+  ['天真爛漫', '😊', 'heal', '天真爛漫|てんしんらんまん'],
+  ['東奔西走', '🧭', 'fire', '東奔西走|とうほんせいそう'],
+  ['前代未聞', '😲', 'thunder', '前代未聞|ぜんだいみもん'],
+  ['絶体絶命', '🆘', 'fire', '絶体絶命|ぜったいぜつめい|絶対絶命'],
+  ['一長一短', '📐', 'ice', '一長一短|いっちょういったん'],
+  ['一進一退', '↔️', 'ice', '一進一退|いっしんいったい'],
+  ['四苦八苦', '😖', 'ice', '四苦八苦|しくはっく'],
+  ['八方美人', '💄', 'heal', '八方美人|はっぽうびじん'],
+  ['半信半疑', '🤔', 'thunder', '半信半疑|はんしんはんぎ'],
+  ['一日千秋', '⌛', 'ice', '一日千秋|いちじつせんしゅう|いちにちせんしゅう'],
+  ['花鳥風月', '🎑', 'heal', '花鳥風月|かちょうふうげつ'],
+  ['風林火山', '🌋', 'fire', '風林火山|ふうりんかざん'],
+  ['臨機応変', '🔀', 'thunder', '臨機応変|りんきおうへん'],
+  ['心機一転', '🔆', 'fire', '心機一転|しんきいってん'],
+  ['意気投合', '🥂', 'heal', '意気投合|いきとうごう'],
+  ['異口同音', '🎤', 'thunder', '異口同音|いくどうおん'],
+  ['自画自賛', '🖼️', 'heal', '自画自賛|じがじさん'],
+  ['針小棒大', '📢', 'thunder', '針小棒大|しんしょうぼうだい'],
+  ['竜頭蛇尾', '🐲', 'fire', '竜頭蛇尾|りゅうとうだび'],
+  ['森羅万象', '🌌', 'thunder', '森羅万象|しんらばんしょう'],
+  ['一網打尽', '🕸️', 'thunder', '一網打尽|いちもうだじん'],
+  ['千差万別', '🧩', 'ice', '千差万別|せんさばんべつ'],
+  ['無我夢中', '🔥', 'fire', '無我夢中|むがむちゅう'],
+  ['公明正大', '🌞', 'heal', '公明正大|こうめいせいだい'],
+  ['才色兼備', '👑', 'heal', '才色兼備|さいしょくけんび'],
+  ['一攫千金', '🤑', 'thunder', '一攫千金|いっかくせんきん|一獲千金'],
+  ['適材適所', '🧑‍🔧', 'heal', '適材適所|てきざいてきしょ'],
+  ['用意周到', '📋', 'ice', '用意周到|よういしゅうとう'],
+  ['疑心暗鬼', '👻', 'ice', '疑心暗鬼|ぎしんあんき'],
+  ['因果応報', '♻️', 'thunder', '因果応報|いんがおうほう'],
+  ['誠心誠意', '💗', 'heal', '誠心誠意|せいしんせいい']
 ].map(([name, icon, fx, al], i) => ['k' + i, { name, icon, fx, col: { thunder: '#ffe35a', fire: '#ff9a3c', ice: '#8ff0ff', heal: '#b6ffb0' }[fx], al: al.split('|').map(norm) }]));
 // まちの おみせ（しょうと しょうの 間）。かった ぶんだけ BUF が ふえて、ずっと きく。al：聞きとりの 合言葉
 const GOODS = [
@@ -479,18 +704,56 @@ const sfx = {
 };
 
 // ---------- こえの あんない ----------
-const VOICE = { on: true, until: 0, pri: 0, text: '' };
-const speechTime = text => 0.4 + text.length * 0.13;
+// 声は 四国めたん（VOICEVOX で 前もって 作った voice/*.mp3）。ない せりふは 文ごとに わけて さがし、それでも なければ 端末の 読み上げ
+const VOICE = { on: true, until: 0, pri: 0, text: '', src: null, buf: {}, miss: [] };
+const VLIB = window.VOICE_LIB || {};
+const vHash = t => { let h = 0x811c9dc5; for (let i = 0; i < t.length; i++){ h ^= t.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); };
+const vParts = t => (t.match(/[^！。？]+[！。？]*/g) || []).map(x => x.trim()).filter(Boolean);
+// せりふ → 再生する ファイルの ならび（なければ null）
+function vClips(text){
+  const h = vHash(text); if (VLIB[h]) return [h];
+  const ps = vParts(text).map(vHash);
+  return ps.length > 1 && ps.every(x => VLIB[x]) ? ps : null;
+}
+const VGAP = 0.08;   // 文と 文の あいだ（秒）
+const speechTime = text => { const c = vClips(text); return c ? c.reduce((a, h) => a + VLIB[h] + VGAP, 0.15) : 0.4 + text.length * 0.13; };
+function vLoad(h){
+  if (!VOICE.buf[h]) VOICE.buf[h] = fetch(`voice/${h}.mp3`).then(r => r.arrayBuffer()).then(b => new Promise((ok, ng) => ac.decodeAudioData(b, ok, ng))).catch(() => { delete VOICE.buf[h]; return null; });
+  return VOICE.buf[h];
+}
+// よける・ポーズなど 時間が 大事な 声だけ 先に 読みこむ（ほかは 言う ときに 読む）
+function vPreload(){
+  if (!ac || vPreload.done) return; vPreload.done = true;
+  const t = Object.values(HAZ).map(h => h.say).concat(Object.values(POSES).map(p => `この ポーズを とれ！ ${p.name}！`), ['じょうず！', 'ナイス ポーズ！', 'ゆうしゃの ターン！ こうげきだ！', 'カード ゲット！', 'さん', 'に', 'いち']);
+  const all = [...new Set(t.flatMap(x => vClips(x) || []))]; let i = 0;
+  const next = () => { if (i < all.length) vLoad(all[i++]).then(next); };
+  for (let k = 0; k < 3; k++) next();
+}
+function vStop(){
+  if (VOICE.src){ VOICE.src.forEach(x => { try { x.stop(); } catch (e) {} }); VOICE.src = null; }
+  if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) {}
+}
+async function vPlay(clips, id){
+  const bufs = await Promise.all(clips.map(vLoad));
+  if (VOICE.id !== id || !ac || bufs.some(b => !b)) return;
+  let t = ac.currentTime + 0.02; VOICE.src = [];
+  for (const b of bufs){ const s = ac.createBufferSource(); s.buffer = b; s.connect(ac.destination); s.start(t); t += b.duration + VGAP; VOICE.src.push(s); }
+}
 function say(text, pri = 1, pitch = 1.2, rate = 1.1){
   S.said.push(text); if (S.said.length > 40) S.said.shift();
-  if (!VOICE.on || !window.speechSynthesis) return true;
+  if (!VOICE.on) return true;
   if (S.now < VOICE.until && pri < VOICE.pri) return false;   // 話している とちゅうは、同じか もっと 大事な ことだけ わりこむ
-  try {
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'ja-JP'; u.rate = rate; u.pitch = pitch;
-    speechSynthesis.speak(u);
-  } catch (e) {}
+  vStop();
+  const clips = ac && vClips(text), id = (VOICE.id || 0) + 1; VOICE.id = id;
+  if (clips){ vPreload(); vPlay(clips, id); }
+  else {
+    if (Object.keys(VLIB).length && VOICE.miss.length < 50) VOICE.miss.push(text);
+    if (window.speechSynthesis) try {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ja-JP'; u.rate = rate; u.pitch = pitch;
+      speechSynthesis.speak(u);
+    } catch (e) {}
+  }
   VOICE.pri = pri; VOICE.until = S.now + speechTime(text); VOICE.text = text;
   return true;
 }
@@ -510,7 +773,9 @@ function hear(str){
   const mine = S.now < VOICE.until + 0.3 ? norm(VOICE.text) : '';
   let id = null, at = -1;
   // ことわざは 長くて まちがえにくいので いちばん先に 見る
-  for (const k in KOTO) for (const a of KOTO[k].al){ const i = n.lastIndexOf(a); if (i > at && !mine.includes(a)){ at = i; id = k; } }
+  // 300こ あるので、おわりの 位置が いちばん うしろの ものを えらぶ（同じなら 長い 合言葉の ほう）
+  for (const k in KOTO) for (const a of KOTO[k].al){ const i = n.lastIndexOf(a); if (i < 0 || mine.includes(a)) continue; const e = i + a.length + a.length / 100; if (e > at){ at = e; id = k; } }
+  if (id) at = n.length;
   for (const big of [true, false]){
     if (id) break;
     for (const k of ORDER){
@@ -520,7 +785,14 @@ function hear(str){
     if (id) break;
   }
   if (id) S.heard = { id, t: S.now };
+  if (id && KOTO[id]) S.kotoShow = { id, t: S.now };
   return id;
+}
+// 聞こえた ことばを 画面に 出す（あんないの声を ひろったものは のぞく）
+function micShow(str){
+  str = (str || '').trim(); if (!str) return;
+  if (S.now < VOICE.until + 0.3 && norm(VOICE.text).includes(norm(str))) return;
+  S.mic = { str: str.slice(-22), t: S.now };
 }
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const ANDROID = /Android/i.test(navigator.userAgent);
@@ -531,7 +803,7 @@ function phoneData(d){
   if ('ready' in d){ phoneSR.ready = !!d.ready; phoneSR.want = false; }
   if ('listening' in d) recOn = !!d.listening;
   if (d.dead){ phoneSR.ready = false; recOn = false; }
-  if (d.text) hear(d.text);
+  if (d.text){ micShow(d.text); hear(d.text); }
 }
 // 聞きとりは まほうの構えの間だけ 動かす
 function listen(on){
@@ -548,6 +820,7 @@ function listen(on){
     rec.onresult = ev => {
       let t = '';
       for (let i = ev.resultIndex; i < ev.results.length; i++) for (let j = 0; j < ev.results[i].length; j++) t += ev.results[i][j].transcript + ' ';
+      micShow(ev.results[ev.results.length - 1][0].transcript);
       hear(t);
     };
     rec.onend = () => { recOn = false; };
@@ -1172,9 +1445,9 @@ function checkCards(dt){
   if (cardShow > 0){ cardShow -= dt; if (cardShow <= 0) $('cardPop').style.display = 'none'; }
   else if (cardQ.length && !S.book){
     const c = cardQ.shift();
-    $('cardPop').innerHTML = `<div class="t">🃏 カード ゲット！</div><div class="i">${c.icon}</div><div class="n">${c.name}</div><div style="font-size:13px">${S.cards.length} / ${CARDS.length} まい</div>`;
+    $('cardPop').innerHTML = `<div class="i">${c.icon}</div><div class="w"><div class="t">🃏 カード ゲット！ ${S.cards.length}/${CARDS.length}</div><div class="n">${c.name}</div></div>`;
     $('cardPop').style.display = 'block'; cardShow = 2.6; sfx.level();
-    say(`カード ゲット！ ${c.name}！`, 1);
+    say('カード ゲット！', 1);
   }
 }
 
@@ -1459,7 +1732,7 @@ function updateTower(dt){
       if (TW.phase === 'clear' && !done){ TW.stage++; twStage(); }
       else if (done || TW.lives <= 0){
         TW.phase = 'over'; buildPad(); saveGame();
-        say(done ? `てっぺんまで のぼれたね！ じゅうえんだま ${TW.coins}まい ゲット！` : `${twMeter()}メートル まで のぼれたね。じゅうえんだま ${TW.coins}まい ゲット！`, 3);
+        say(done ? `てっぺんまで のぼれたね！ じゅうえんだま ${TW.coins}まい ゲット！` : `${Math.round(twMeter() / 10) * 10}メートル まで のぼれたね。じゅうえんだま ${TW.coins}まい ゲット！`, 3);
       } else twStage();
     }
   } else if (TW.phase === 'over'){
@@ -1747,9 +2020,9 @@ const NO   = shopWords(['やめ', '止め', 'いいえ', 'いらない', '要ら
 const THANKS = shopWords(['ありがとう', 'ありがと', '有難う', 'サンキュー']);
 const BYE  = shopWords(['いじょう', '以上', 'おわり', '終わり', 'さようなら', 'バイバイ', '出ます', 'でます', 'いってきます', '行ってきます', 'ごちそうさま', 'もういい']);
 GOODS.forEach(g => { g.n = g.al.map(norm); });
-function clerk(str, pri = 3){
+function clerk(str, pri = 3, voice = str){
   $('bubble').textContent = str;
-  say(str, pri, 0.95, 1.0);
+  say(voice, pri, 0.95, 1.0);
 }
 function shopRender(){
   $('wallet').innerHTML = `さいふ：10円玉 <b>${S.coin}</b>まい<br><span style="font-size:.8em">${coinRow(S.coin) || 'からっぽ'}</span>`;
@@ -1786,7 +2059,8 @@ function shopBuy(){
   S.hp = maxHp(S.lv); S.mp = maxMp(S.lv);
   sfx.heal(); S.fx.push({ kind: 'flash', col: '255,240,170', t: 0, life: 0.3 });
   shopRender();
-  clerk(`${g.price}まい もらうね。のこりは ${S.coin}まい。まいど ありがとう！` + (g.id === 'hamb' ? `${palName()}が もぐもぐ たべたよ！` : ''));
+  const thx = `${g.price}まい もらうね。のこりは ${S.coin}まい。まいど ありがとう！`;
+  clerk(thx + (g.id === 'hamb' ? `${palName()}が もぐもぐ たべたよ！` : ''), 3, thx + (g.id === 'hamb' ? 'なかまが もぐもぐ たべたよ！' : ''));
 }
 function shopCancel(){ SHOP.pending = null; shopRender(); clerk('はいはい。ほかに なにか いる？'); }
 function shopLeave(){
@@ -1922,6 +2196,8 @@ function update(dt){
     let q = 0; for (let i = 0; i < volBuf.length; i++) q += volBuf[i] * volBuf[i];
     S.vol = Math.sqrt(q / volBuf.length);
     if (S.vol < S.noise * 2) S.noise += (S.vol - S.noise) * 0.02;
+    // しゃべっている（あんないの声ではない）→ じゅもんを 少し 待つ
+    if (S.vol > Math.max(SHOUT_MIN, S.noise * 4) && S.now > VOICE.until + 0.3) S.shoutUntil = S.now + 0.5;
   }
   sword.trail = sword.trail.filter(t => S.now - t.t < 0.25);
   S.hurt = Math.max(0, S.hurt - dt);
@@ -1956,9 +2232,13 @@ function update(dt){
   listen(S.now < S.listenUntil);
   if (S.mode === 'nocam'){ if (S.heard && S.now - S.heard.t < 0.3 && S.magicCD <= 0 && canMagic()) cast(S.heard.id); }
   else if (S.charge >= 1){
-    if (!S.ready){ S.ready = true; sfx.ready(); }
-    // りょう手が 上がったら すぐ となえる。少し前に 名前が 聞こえていたら その じゅもん、なければ「おまかせ」
-    cast(S.heard && S.now - S.heard.t < 2.0 ? S.heard.id : nextSpell());
+    if (!S.ready){ S.ready = true; S.hold = 0; sfx.ready(); }
+    // りょう手を 上げて CHARGE_TIME たったら となえる。上げる前から ここまでに 名前が 聞こえていたら その じゅもん。
+    // まだ しゃべっていたら（ことわざの とちゅう）CHARGE_MORE まで 待つ。なにも 聞こえなければ「おまかせ」
+    S.hold += dt;
+    const heard = S.heard && S.now - S.heard.t < CHARGE_TIME + S.hold + 1.5;
+    if (heard) cast(S.heard.id);
+    else if (S.now > S.shoutUntil || S.hold >= CHARGE_MORE) cast(nextSpell());
   } else { S.hold = 0; S.shoutT = 0; S.ready = false; }
 
   if (S.state === 'card'){ S.card.t -= dt; if (S.card.t <= 0){ const f = S.card.next; S.card = null; f(); } }
@@ -2336,8 +2616,9 @@ function draw(){
     if (B.phase === 'player'){
       ctx.fillStyle = '#333'; ctx.fillRect(bx + 14, by - 16, bw - 28, 10);
       ctx.fillStyle = B.t < 2 ? '#ff8a5a' : '#7dff8a'; ctx.fillRect(bx + 14, by - 16, (bw - 28) * B.t / TURN_TIME, 10);
-      ctx.textAlign = 'center'; outText(cam && S.charge >= 1 ? 'いまだ！ じゅもんを さけべ！' : `こうげき チャンス！ あと ${Math.ceil(B.t)}びょう`, W / 2, by - 40, 24, '#ffe35a');
+      ctx.textAlign = 'center'; outText(cam && S.charge > 0.05 ? 'いまだ！ じゅもんか ことわざを さけべ！' : `こうげき チャンス！ あと ${Math.ceil(B.t)}びょう`, W / 2, by - 40, 24, '#ffe35a');
     }
+    drawHeard(by - 76);
     return;
   }
   if (S.bookHint > S.now && !S.book){ ctx.textAlign = 'center'; outText('📖「ブック」と いってね', W / 2, 140, 26, '#ffe35a'); }
@@ -2346,10 +2627,19 @@ function draw(){
     ? ['うでを つきだす → パンチ', S.lv >= SWORD_LV ? 'りょう手を くっつけて ふる → 剣' : 'レベル2で 剣が 手に入る', S.lv >= 3 ? 'りょう手を 上げる → じゅもん' : 'レベル3で じゅもんを おぼえる', 'むねの前で うでを クロス → ガード']
     : ['タップ → パンチ', 'なぞる → 剣', '下の ボタンで よける・じゅもん'];
   let hint = S.now < S.tipUntil ? S.tip : tips[Math.floor(S.now / 3.5) % tips.length], bigT = S.now < S.tipUntil;
-  if (cam && S.charge >= 1){ hint = S.noMic ? 'そのまま キープ！' : 'いまだ！ じゅもんの 名前を さけべ！  ' + ORDER.filter(learned).map(k => SPELLS[k].icon + (SPELLS[k].big ? SPELLS[k].al[0] : SPELLS[k].name)).join(' / '); bigT = true; }
+  if (cam && S.charge > 0.05){ hint = S.noMic ? 'そのまま キープ！' : 'いまだ！ じゅもんか ことわざを さけべ！  ' + ORDER.filter(learned).map(k => SPELLS[k].icon + (SPELLS[k].big ? SPELLS[k].al[0] : SPELLS[k].name)).join(' / '); bigT = true; }
   else if (S.shots.length){ hint = cam ? '赤い玉だ！ 頭を よこに よけろ！' : '赤い玉だ！ ← → で よけろ！'; bigT = true; }
   ctx.textAlign = 'center';
   outText(hint, W / 2, H - 24 - padH, bigT ? 22 : 17, bigT ? '#ffe35a' : '#fff');
+  drawHeard(H - 60 - padH);
+}
+// 聞きとった ことば。ことわざだと わかったら その ことわざを 大きく 出す
+function drawHeard(y){
+  if (S.mode !== 'cam' || S.lv < 3) return;
+  ctx.textAlign = 'center';
+  const kt = S.kotoShow && KOTO[S.kotoShow.id];
+  if (kt && S.now - S.kotoShow.t < 3.5) outText(`📜 ${kt.icon} ${kt.name}`, W / 2, y - 34, 28, '#ffe35a');
+  if (S.mic && S.now - S.mic.t < 2.5) outText(`🎤「${S.mic.str}」`, W / 2, y, 18, '#cfe8ff');
 }
 
 function frame(ts){
@@ -2365,7 +2655,32 @@ function frame(ts){
   update(dt); draw();
 }
 // テスト用：手動で1コマ進める／関節データを直接わたす
-window.__game = { TW, startTower, twReach, twJump, endTower, DG, startDaruma, dgHit, endDaruma, S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, KOTO, BUF, GOODS, openShop, shopHear, PAL, openMap, mapHear, pickPin, PINS, openBook, bookHear, CARDS, regionStart, bossDown, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
+// 声の 一覧（tools/make_voice.py が これを 読んで 四国めたんの 声を 作る）。fix：まるごと、dyn：文ごとに わけて 作る
+function voiceLines(){
+  const fix = [], dyn = [], R = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+  Object.values(HAZ).forEach(h => fix.push(h.say));
+  fix.push('じょうず！', 'ゆうしゃの ターン！ こうげきだ！', 'カード ゲット！', 'ミニゲーム、スカイツリーのぼりが あそべるように なったよ！ ちずの とうきょうの そばを えらんでね。',
+    'ミニゲーム、だるまおとしが あそべるように なったよ！ ちずの まとを えらんでね。', 'ぜんぶの ちほうを クリアした！ まおうの しまへ いこう！', 'どこへ いく？ いきたい ところを いってね。',
+    'はじまりの むらは もう へいわだよ。ほかの ところへ いこう！', 'スカイツリーのぼり！ ひかる ほうの てを うえに のばそう！', 'てっぺん とうちゃく！ ろっぴゃく さんじゅう よん メートル！',
+    'さん', 'に', 'いち', 'じかんぎれ！ いのちづなで セーフ！ もういちど！', 'じかんぎれ！ いのちづなで セーフ！', 'だるまおとし！ したの いろを たたこう！', 'せいこう！ じゅうえんだま ゲット！',
+    'じかんぎれ！ もういちど！', 'じかんぎれ！', 'はいはい。ほかに なにか いる？', 'また おいで！ いってらっしゃい！', 'どういたしまして！ いい子だねえ。', 'プルリンが きた！ パンチで たおせ！',
+    'ナイス ポーズ！', 'ゆうしゃは たおれた。でも だいじょうぶ、つづきから やりなおせるよ。', 'せかいに えがおが もどった！ おつかれさま！ よく がんばったね！');
+  R(2, 40).forEach(n => dyn.push(`レベル${n}！ けんを てにいれた！ りょうてを あわせて ふろう！`, `だんかい ${n}！`));
+  ORDER.forEach(k => dyn.push(`レベル2！ ${SPELLS[k].name} を おぼえた！`));
+  Object.values(BOSSES).forEach(b => { fix.push(`${b.name}が あらわれた！`, `やった！ ${b.name}を たおした！`); (b.change || []).forEach(m => m && fix.push(m)); });
+  R(1, REGION_IDX.length).forEach(n => fix.push(`まおうの しまは まだ いけないよ。ちほうを あと ${n}つ クリアしてね。`));
+  PINS.forEach(p => fix.push(`${p.name}へ しゅっぱつ！`));
+  TW_STAGES.forEach(t => { fix.push(`つぎは ${t.to}メートルの ${t.name}まで！`, `${t.to}メートル！ ${t.name}に とうちゃく！`); });
+  R(0, 63).forEach(m => dyn.push(`${m * 10}メートル まで のぼれたね。`));
+  R(0, 80).forEach(n => dyn.push(`てっぺんまで のぼれたね！ じゅうえんだま ${n}まい ゲット！`, `おしまい！ ${n}だんかい まで いけたね。`, `いらっしゃい！ 10えんだまが ${n}まい あるね。なにに する？`, `のこりは ${n}まい。まいど ありがとう！なかまが もぐもぐ たべたよ！`));
+  GOODS.forEach(g => { fix.push(`${g.name}だね。10えんだま ${g.price}まい です。`); dyn.push(`${g.name}は 10えんだま ${g.price}まい。`, `${g.price}まい もらうね。`); });
+  R(1, 6).forEach(n => dyn.push(`あと ${n}まい たりないねえ。`));
+  CH.forEach(c => fix.push(`${c.region ? c.pref : c.tag}。${c.name}。${c.story}`));
+  Object.values(POSES).forEach(p => fix.push(`この ポーズを とれ！ ${p.name}！`));
+  const out = new Set(fix); dyn.forEach(t => vParts(t).forEach(x => out.add(x)));
+  return [...out].map(text => ({ h: vHash(text), text }));
+}
+window.__game = { voiceLines, say, TW, startTower, twReach, twJump, endTower, DG, startDaruma, dgHit, endDaruma, S, B, P, J, sim, hands, anchor, head, sword, CH, BOSSES, SPELLS, KOTO, BUF, GOODS, openShop, shopHear, PAL, openMap, mapHear, pickPin, PINS, openBook, bookHear, CARDS, regionStart, bossDown, POSES, VOICE, tick: frame, onPose, punch, spawn, cast, hear, sfx, gainExp, startBoss, startChapter, startEvent, startPose, begin };
 const loop = ts => { frame(ts); requestAnimationFrame(loop); };
 requestAnimationFrame(loop);
 
@@ -2380,6 +2695,7 @@ function ensureAudio(){
     } catch (e) { ac = null; }
   }
   if (ac && ac.state === 'suspended') ac.resume();
+  if (ac) vPreload();
 }
 async function startCam(){
   ensureAudio();
@@ -2506,7 +2822,7 @@ function setDiff(k){
 function setVoice(v){
   VOICE.on = v;
   $('bVoice').classList.toggle('on', v); $('bVoice').textContent = v ? '🔊 こえの あんない：あり' : '🔇 こえの あんない：なし';
-  if (!v && window.speechSynthesis) speechSynthesis.cancel();
+  if (!v) vStop();
   try { localStorage.setItem('zenshinQuestVoice', v ? '1' : '0'); } catch (e) {}
 }
 $('bVoice').onclick = () => setVoice(!VOICE.on);
