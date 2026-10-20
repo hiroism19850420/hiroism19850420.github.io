@@ -30,6 +30,8 @@ const DASH_CD = 2.5;
 const PLAYER_R = 14;
 const GAME_SPEED = 0.6;   // 全体の速さ（1で元の速さ。小さいほどゆっくり判断できる）
 const STICK_H = 46;       // 棒人間の身長
+const MAX_LIVES = 3;      // ライフ（レーザー・ミサイル・床に当たると1つ減る）
+const INV_TIME = 2.0;     // 当たったあとの無敵時間（秒）
 
 // ------------------------------------------------------------
 // サウンドシンセサイザ（全てリアルタイム波形合成）
@@ -143,6 +145,7 @@ class GameScene extends Phaser.Scene {
     this.cause='';
     this.grav=GRAVITY;
     this.t=0;              // ゲーム内時計（GAME_SPEED に合わせて進む）
+    this.lives=MAX_LIVES; this.invT=0;   // ライフと、当たった直後の無敵時間
     this.bodyRot=0; this.legPh=0;
 
     // ハイスコア・統計
@@ -172,6 +175,7 @@ class GameScene extends Phaser.Scene {
     this.txtGuide=this.add.text(W/2,H/2+60,'TAP / SPACE TO HOOK\nSHIFT: DASH', {fontSize:'22px',fontFamily:'monospace',color:'#8b949e',align:'center'}).setOrigin(0.5).setDepth(100).setScrollFactor(0);
     this.txtMission=this.add.text(16,50,'', {fontSize:'14px',fontFamily:'monospace',color:'#8b949e'}).setDepth(100).setScrollFactor(0);
     this.txtMission.setText('MISSION:\n'+this.missions.map(m=>'・'+m.text).join('\n'));
+    this.txtLife=this.add.text(W-16,12,'', {fontSize:'28px',fontFamily:'monospace',color:'#ff3355'}).setOrigin(1,0).setDepth(100).setScrollFactor(0);
     this.txtStamp=this.add.text(W/2,H/2,'', {fontSize:'40px',fontFamily:'monospace',color:'#ffffff'}).setOrigin(0.5).setDepth(100).setScrollFactor(0).setAlpha(0);
 
     // --- 入力 ---
@@ -468,7 +472,15 @@ class GameScene extends Phaser.Scene {
     this.legPh+=sdt*(this.anchor?5:12);
 
     // 落下死
-    if(this.py>LAVA_Y-PLAYER_R) this.die('落下：プラズマ床へ墜落');
+    // 落下（ライフが残っていれば、床にはね返されて上へ戻る）
+    if(this.py>LAVA_Y-PLAYER_R){
+      if(this.invT>0||!this.hurt('落下：プラズマ床へ墜落')){
+        this.anchor=null;
+        this.py=LAVA_Y-PLAYER_R-1;
+        this.vy=-900; this.vx=Math.max(this.vx,300);
+      }
+    }
+    if(this.invT>0) this.invT-=sdt;
   }
 
   // ----------------------------------------------------------
@@ -516,7 +528,7 @@ class GameScene extends Phaser.Scene {
           this.cameras.main.shake(120,0.008);
           synth.playCrash();
           this.stamp('SHIELD BREAK!');
-        } else { this.die('レーザー接触'); return; }
+        } else if(this.hurt('レーザー接触')) return;
       } else if(dist<PLAYER_R+28&&!l.nearDone){
         l.nearDone=true; this.nearCount++;
         this.bonus+=80; this.stamp('CLOSE! +80');
@@ -538,7 +550,11 @@ class GameScene extends Phaser.Scene {
       m.life-=sdt;
       if(m.life<=0){ m.alive=false; this.spawnParticles(m.x,m.y,12,0xff8833); }
       if(d<200){ this.warnT-=sdt; if(this.warnT<=0){ synth.playWarn(); this.warnT=0.3; } }
-      if(d<PLAYER_R+8){ this.die('ミサイル直撃'); return; }
+      if(d<PLAYER_R+8&&this.invT<=0){
+        m.alive=false; this.spawnParticles(m.x,m.y,12,0xff8833);
+        if(this.hurt('ミサイル直撃')) return;
+        continue;
+      }
       if(d<PLAYER_R+28&&!m.nearDone){
         m.nearDone=true; this.nearCount++; this.bonus+=80;
         this.stamp('CLOSE! +80'); this.slowmo(0.35,0.25); synth.playNear();
@@ -596,6 +612,22 @@ class GameScene extends Phaser.Scene {
   // ----------------------------------------------------------
   // 死亡処理
   // ----------------------------------------------------------
+  // 当たったときの処理。ライフが尽きたら true（ゲームオーバー）
+  hurt(cause){
+    if(this.dead) return true;
+    if(this.invT>0) return false;
+    this.lives--;
+    if(this.lives<=0){ this.die(cause); return true; }
+    this.invT=INV_TIME;
+    this.combo=0;
+    this.spawnParticles(this.px,this.py,20,0xff3355);
+    this.cameras.main.shake(200,0.012);
+    this.camFlash(0xff3355);
+    synth.playCrash();
+    this.stamp('のこり '+'♥'.repeat(this.lives));
+    this.slowmo(0.4,0.4);
+    return false;
+  }
   die(cause){
     if(this.dead) return;
     this.dead=true; this.cause=cause;
@@ -720,7 +752,9 @@ class GameScene extends Phaser.Scene {
       g.fillStyle(col,f*0.18).fillCircle(t.x,t.y,PLAYER_R*f*0.8);
     }
     // プレイヤー（棒人間）とワイヤー
-    if(!this.dead){
+    // 当たった直後は点滅（無敵中）
+    const blinkOff=this.invT>0&&Math.floor(timeNow()/90)%2===0;
+    if(!this.dead&&!blinkOff){
       let pose='fall';
       if(this.anchor) pose='hang';
       else if(this.started&&this.vy<-60) pose='jump';
@@ -756,6 +790,7 @@ class GameScene extends Phaser.Scene {
     // UI
     const total=Math.floor(this.score);
     this.txtScore.setText('SCORE '+String(total).padStart(7,'0')+'  HI '+String(Math.max(this.high,total)).padStart(7,'0'));
+    this.txtLife.setText('♥'.repeat(Math.max(0,this.lives))+'♡'.repeat(MAX_LIVES-Math.max(0,this.lives)));
     let status='';
     if(this.magnetT>0) status+='MAGNET '+this.magnetT.toFixed(0)+'s ';
     if(this.multiT>0) status+='x2 '+this.multiT.toFixed(0)+'s ';
