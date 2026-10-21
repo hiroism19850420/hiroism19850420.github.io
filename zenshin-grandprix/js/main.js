@@ -44,6 +44,10 @@ try { await document.fonts.load('800 40px "M PLUS Rounded 1c"'); } catch (e) {}
 progress(0.4);
 World.init($('gl'));
 const S0 = Save.data.settings;
+// スマホ・タブレット（指で さわる 画面）。はじめは 軽い 画質から（はやければ 自動で 上がる）
+const TOUCH = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 1 && !matchMedia('(pointer: fine)').matches;
+document.body.classList.toggle('touch', TOUCH);
+if (TOUCH && !S0._touchQ) { S0._autoLevel = 'low'; S0._touchQ = true; Save.save(); }
 const qPick = () => Q.get('q') || (S0.quality === 'auto' ? (S0._autoLevel || 'mid') : S0.quality);
 World.setQuality(qPick());
 Cam.init(World.camera);
@@ -197,9 +201,34 @@ function onSetting(k, v) {
 }
 
 // ---------- 入口 ----------
-$('gateCam').onclick = () => startCam();
-$('gatePhone').onclick = () => startPhone();
-$('gateNoCam').onclick = () => { Audio.init(); Audio.unlock(); afterAudio(); App.camKind = null; Body.mode = 'nocam'; Screens.camMode = false; $('nocamBadge').classList.add('on'); $('touch').dataset.can = matchMedia('(pointer: coarse)').matches ? '1' : ''; go('title'); };
+// スマホでは 全画面に して よこ向きに 固定する（できる 機種だけ。iPhone は できない）
+function goFull() {
+  if (!TOUCH || document.fullscreenElement || document.webkitFullscreenElement) return;
+  const el = document.documentElement, rf = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (!rf) return;
+  try {
+    const p = rf.call(el, { navigationUI: 'hide' });
+    const lock = () => { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); };
+    if (p && p.then) p.then(lock).catch(() => {}); else lock();
+  } catch (e) {}
+}
+// 体で あそぶ 間は 画面を さわらないので、スマホが ねむらないように する
+let wakeLock = null;
+async function keepAwake() {
+  App.awake = true;
+  try { if ('wakeLock' in navigator && document.visibilityState === 'visible' && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && App.awake) keepAwake(); });
+if (TOUCH) {
+  // 指の ボタンは 絵＋みじかい 名前
+  for (const [id, pic, label] of [['tPedal', 'run', 'こぐ'], ['tJump', 'jump', 'ジャンプ'], ['tSquat', 'squat', 'しゃがむ'], ['tTurbo', 'star', 'ターボ']]) $(id).innerHTML = picSVG(pic) + '<span>' + label + '</span>';
+  $('gateNoCam').textContent = '👆 タッチで あそぶ';
+  $('gateNoCam').classList.remove('small');
+  $('gateNotes').innerHTML = 'スマホを よこにして 立てかけ、ぜんしんが うつる所まで はなれてね（2〜3m）。<br>まわりに ぶつかる ものが ないか みてね。';
+}
+$('gateCam').onclick = () => { goFull(); keepAwake(); startCam(); };
+$('gatePhone').onclick = () => { keepAwake(); startPhone(); };
+$('gateNoCam').onclick = () => { goFull(); keepAwake(); Audio.init(); Audio.unlock(); afterAudio(); App.camKind = null; Body.mode = 'nocam'; Screens.camMode = false; $('nocamBadge').classList.add('on'); $('touch').dataset.can = TOUCH ? '1' : ''; go('title'); };
 const gateMsg = t => { $('gateMsg').textContent = t; if (window.PhoneCam && App.camKind === 'phone' && PhoneCam.say) PhoneCam.say(t); };
 const CAM_OPT = { video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } } };
 async function startCam() {
@@ -567,13 +596,13 @@ async function startPodium() {
 function pause(kind) {
   const race = App.race; if (!race || App.paused) return;
   if (!['grid', 'race'].includes(App.state)) return;
-  App.paused = true; App.pauseKind = kind; race.paused = true;
+  App.paused = true; App.pauseKind = kind; race.paused = true; document.body.classList.add('paused');
   Audio.musicVolume(0.35); Audio.silenceLoops();
   if (kind === 'lost') Screens.pauseLost(() => quitRace());
   else Screens.pauseMenu(!!App.gp, () => resume(), () => { unpause(); go('intro', { course: App.course3d.id, retry: true }); }, () => quitRace());
   sayV(kind === 'lost' ? 'p1' : 'pause');
 }
-function unpause() { App.paused = false; if (App.race) App.race.paused = false; Screens.hideAll(); Audio.musicVolume(1); HUD.count(0); }
+function unpause() { document.body.classList.remove('paused'); App.paused = false; if (App.race) App.race.paused = false; Screens.hideAll(); Audio.musicVolume(1); HUD.count(0); }
 function resume() {
   Screens.hideAll(); App.pauseKind = 'count';
   const steps = [['2', 'n2'], ['1', 'n1']];
@@ -612,11 +641,20 @@ function updateMirror() {
 
 // ---------- 画面の 大きさ ----------
 function fit() {
-  const k = Math.min(innerWidth / 1280, innerHeight / 720, 2);
-  document.documentElement.style.setProperty('--k', String(k));
+  // 1280×720 を 基準に 縮めて、横長・縦長の 画面では 箱を 画面の 形に のばす（すみの 表示が 画面の すみに 来る）
+  const W = innerWidth, H = innerHeight, k = Math.min(W / 1280, H / 720, 2);
+  const st = document.documentElement.style;
+  st.setProperty('--k', String(k));
+  st.setProperty('--uw', Math.max(1280, Math.round(W / k)) + 'px');
+  st.setProperty('--uh', Math.max(720, Math.round(H / k)) + 'px');
   $('portraitTip').classList.toggle('can', true);
+  // スマホを たてにしたら レースを 止める（よこに もどしたら 「つづける」で 再開）
+  if (TOUCH && H > W && ['grid', 'race'].includes(App.state) && !App.paused) pause('menu');
 }
 addEventListener('resize', fit); fit();
+if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', () => setTimeout(fit, 120));
+// iPhone の ピンチで 画面が 大きくならないように
+document.addEventListener('gesturestart', e => e.preventDefault());
 
 // ---------- 1コマ ----------
 let last = performance.now(), loopPaused = false, dbgSpeed = 1;
@@ -768,7 +806,7 @@ function dbgInfo(dt) {
     + (p ? `s ${p.s.toFixed(1)} d ${p.d.toFixed(2)} v ${p.v.toFixed(1)} psi ${p.psi.toFixed(2)} lap ${p.lap} pos ${race.playerPos}\nthr ${p.input.throttle.toFixed(2)} steer ${p.input.steer.toFixed(2)} src ${Body.steerSrc} stars ${p.stars} state ${App.state}` : `state ${App.state}`);
 }
 if (DBG) {
-  window.dbg = {
+  const dbgApi = {
     get ready() { return App.state !== 'boot' && !App.busy; }, App, World, Cam, Body, Input, Audio, FX, HUD, Save, THREE, CFG, Stages, Screens,
     get race() { return App.race; },
     state() { const r = App.race, p = r && r.player; return { app: App.state, phase: r && r.phase, time: r && +r.time.toFixed(2), lap: p && p.lap, s: p && +p.s.toFixed(1), d: p && +p.d.toFixed(2), v: p && +p.v.toFixed(2), pos: r && r.playerPos, stars: p && p.stars, order: r && r.order.map(k => k.id), fin: r && r.finishOrder.map(k => [k.id, +k.finishTime.toFixed(2)]) }; },
@@ -795,5 +833,7 @@ if (DBG) {
     speed(k) { dbgSpeed = k; },
     checkSongs, shot() { World.render(); return World.renderer.domElement.toDataURL('image/png'); }
   };
+  // MediaPipe の 中で「dbg」という 名前の 関数を よぶ 所が あるので、よべる 形に しておく（ただの 物だと カメラが 動かない）
+  window.dbg = Object.defineProperties((...a) => console.debug(...a), Object.getOwnPropertyDescriptors(dbgApi));
   window.dbg.info(true);
 }

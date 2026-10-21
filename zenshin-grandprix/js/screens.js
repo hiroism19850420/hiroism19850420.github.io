@@ -40,6 +40,7 @@ export const Screens = {
     if (!on) return;
     el.innerHTML = this.camMode
       ? `<span>${picSVG('wheel')}ハンドルで えらぶ</span><span>${picSVG('banzai')}バンザイで けってい</span><span>${picSVG('squat')}しゃがんで もどる</span>`
+      : document.body.classList.contains('touch') ? `<span>ボタンを さわって えらぶ</span>`
       : `<span>← → で えらぶ</span><span>エンターで けってい</span><span>エスケープで もどる</span>`;
   },
   hideAll() { document.querySelectorAll('.screen').forEach(s => s.classList.remove('on')); this.help(false); $('backHold').classList.remove('on'); this.cur = null; this.items = []; },
