@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#3d8fe0">
+<title>はしれ！とべ！ぜんしんダッシュ！</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800;900&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+} }
+</script>
+<style>
+:root{
+  --navy:#1d2b53; --navy-deep:#0b1630; --white:#fff; --orange:#ff7a2f; --orange-dark:#c8541a;
+  --yellow:#ffd54a; --sky:#3fa9f5; --sky-dark:#2378b8; --green:#56d364; --red:#ff4d4d;
+  --panel:#ffffffeb; --veil:#0b1630b3; --gray-btn:#b8c4d8; --p1:#ff7a2f; --p2:#3fa9f5;
+  --k:1; --uw:1280px; --uh:720px;
+  --font:'M PLUS Rounded 1c','Hiragino Maru Gothic ProN','Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif;
+  --gfont:'Dela Gothic One','M PLUS Rounded 1c',sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#8fd3ff;font-family:var(--font);color:var(--navy);
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#gl{position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;display:block;touch-action:none}
+#speedLines{position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;pointer-events:none;z-index:2}
+#vignette{position:fixed;inset:0;pointer-events:none;z-index:3;background:radial-gradient(ellipse at center,transparent 62%,rgba(10,20,50,.28) 100%)}
+#vignette.final{animation:finalPulse .5s ease-in-out infinite alternate}
+@keyframes finalPulse{from{box-shadow:inset 0 0 60px 10px #ff2a2a33}to{box-shadow:inset 0 0 130px 34px #ff2a2a66}}
+#vignette.gold{box-shadow:inset 0 0 120px 30px #ffd54a99;transition:box-shadow .1s}
+#flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:46}
+#bigLines{position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;pointer-events:none;z-index:39;opacity:0}
+#bigLines.on{animation:bigLinesIn .32s ease-out forwards}
+@keyframes bigLinesIn{0%{opacity:.95;transform:scale(1.08)}100%{opacity:0;transform:scale(1)}}
+#divider{position:fixed;left:50%;top:0;bottom:0;width:6px;margin-left:-3px;background:#fff;z-index:4;display:none;box-shadow:0 0 12px #0006}
+body.two.racing #divider{display:block}
+
+/* 基準の 箱（横 1280×720、縦 720×1280 を のばす） */
+#ui{position:fixed;left:50%;top:50%;width:var(--uw);height:var(--uh);transform:translate(-50%,-50%) scale(var(--k));z-index:10;pointer-events:none;word-break:keep-all;overflow-wrap:anywhere}
+#ui .hit{pointer-events:auto}
+#corners{position:fixed;top:env(safe-area-inset-top,0px);right:env(safe-area-inset-right,0px);bottom:env(safe-area-inset-bottom,0px);left:env(safe-area-inset-left,0px);z-index:30;pointer-events:none}
+#fade{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:80;transition:opacity .3s}
+#fade.on{opacity:1;pointer-events:auto}
+#fadeRunner{position:absolute;left:50%;top:50%;width:90px;transform:translate(-50%,-50%);opacity:0;transition:opacity .2s;color:var(--orange)}
+#fade.busy #fadeRunner{opacity:1;animation:runBob .3s ease-in-out infinite alternate}
+@keyframes runBob{to{transform:translate(-50%,-58%)}}
+#dbgInfo{position:fixed;right:6px;bottom:6px;z-index:90;font:11px/1.35 ui-monospace,Consolas,monospace;color:#fff;background:#000a;padding:4px 6px;border-radius:6px;white-space:pre;pointer-events:none;display:none}
+#camVideo{position:fixed;width:2px;height:2px;opacity:0;pointer-events:none;left:-10px;top:-10px}
+.hide{display:none!important}
+
+.ol{text-shadow:0 3px 0 var(--navy),3px 0 0 var(--navy),0 -3px 0 var(--navy),-3px 0 0 var(--navy),2px 2px 0 var(--navy),-2px 2px 0 var(--navy),2px -2px 0 var(--navy),-2px -2px 0 var(--navy),0 6px 8px #0005}
+.ol6{text-shadow:0 6px 0 var(--navy),6px 0 0 var(--navy),0 -6px 0 var(--navy),-6px 0 0 var(--navy),4px 4px 0 var(--navy),-4px 4px 0 var(--navy),4px -4px 0 var(--navy),-4px -4px 0 var(--navy),5px 2px 0 var(--navy),-5px 2px 0 var(--navy),5px -2px 0 var(--navy),-5px -2px 0 var(--navy),2px 5px 0 var(--navy),-2px 5px 0 var(--navy),2px -5px 0 var(--navy),-2px -5px 0 var(--navy),0 10px 14px #0006}
+
+/* ボタン */
+.btn{pointer-events:auto;font-family:var(--font);font-weight:800;font-size:30px;height:76px;padding:0 36px;border:0;border-radius:999px;cursor:pointer;color:#fff;
+  background:var(--sky);box-shadow:0 6px 0 var(--sky-dark),0 10px 18px #0003;position:relative;transition:transform .08s,box-shadow .08s,outline-color .2s;
+  outline:6px solid transparent;outline-offset:4px;white-space:nowrap}
+.btn:active{transform:translateY(4px);box-shadow:0 2px 0 var(--sky-dark),0 4px 8px #0003}
+.btn.main{background:var(--orange);box-shadow:0 6px 0 var(--orange-dark),0 10px 18px #0003}
+.btn.main:active{box-shadow:0 2px 0 var(--orange-dark)}
+.btn.sub{background:#fff;color:var(--navy);box-shadow:0 6px 0 var(--gray-btn),0 10px 18px #0002}
+.btn.small{font-size:22px;height:58px;padding:0 26px}
+.btn.off,.card.off{filter:grayscale(1);opacity:.55}
+.btn.focus{outline-color:var(--yellow);animation:focusPulse 1s ease-in-out infinite}
+body.cam .btn.focus::before,body.cam .card.focus::before{content:'';position:absolute;left:-58px;top:50%;width:44px;height:44px;margin-top:-22px;background:var(--handIcon) center/contain no-repeat;filter:drop-shadow(0 2px 0 #1d2b53)}
+body.cam .card.focus::before{left:50%;top:-58px;margin:0 0 0 -22px}
+@keyframes focusPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+.holdRing{position:absolute;right:-62px;top:50%;width:52px;height:52px;margin-top:-26px;pointer-events:none;opacity:0;transition:opacity .15s}
+.card .holdRing{right:50%;margin-right:-26px;top:auto;bottom:-66px}
+.holdRing.on{opacity:1}
+.holdRing svg{width:100%;height:100%}
+.holdRing .bg{stroke:#fff6;fill:#0b163099}.holdRing .fg{stroke:var(--yellow);stroke-linecap:round}
+.holdRing .pic{position:absolute;inset:12px;color:#fff}
+.panel{background:var(--panel);border-radius:28px;box-shadow:0 10px 30px #0004;padding:28px}
+.screen{position:absolute;inset:0;display:none;pointer-events:none}.screen.on{display:block}
+.center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
+.kicker{font-size:18px;color:var(--orange);font-weight:800;letter-spacing:.1em}
+h1,h2{margin:0;font-weight:800}
+h2.ol{position:absolute;left:0;right:0;top:34px;text-align:center;font-size:56px;color:#fff}
+h2.ol.p1{color:var(--p1)} h2.ol.p2{color:var(--p2)}
+
+#helpBar{position:absolute;left:0;right:0;bottom:0;height:64px;background:var(--veil);color:#fff;font-size:22px;font-weight:800;display:none;align-items:center;justify-content:center;gap:42px}
+#helpBar.on{display:flex}#helpBar span{display:flex;align-items:center;gap:8px}#helpBar svg{width:34px;height:34px;color:#fff}
+#backHold{position:absolute;left:26px;bottom:84px;display:none;pointer-events:auto}#backHold.on{display:block}
+#backHold .holdRing{right:auto;left:calc(100% + 10px)}#backHold .holdRing .fg{stroke:var(--sky)}
+body.portrait #helpBar{height:96px;flex-direction:column;gap:4px;font-size:22px}
+body.portrait #backHold{bottom:116px}
+
+/* よみこみ */
+#scrLoad{background:linear-gradient(#8fd3ff,#e8f7ff);pointer-events:auto}
+#loadLogo{font-size:64px;text-align:center;color:#fff;line-height:1.15;font-weight:800}
+#loadLogo .l1{color:var(--orange);font-size:40px}
+#loadTrack{position:relative;width:560px;height:16px;border-radius:9px;background:#fff8;margin:56px auto 0;box-shadow:inset 0 2px 4px #0002}
+#loadBar{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:9px;background:linear-gradient(90deg,var(--yellow),var(--orange));transition:width .2s}
+#loadRunner{position:absolute;top:-54px;left:0;width:56px;transform:translateX(-50%);transition:left .2s;color:var(--navy);animation:runBob .25s infinite alternate}
+#loadMsg{text-align:center;margin-top:20px;font-size:22px;min-height:1.5em;font-weight:800}
+
+/* 入口 */
+#scrGate{pointer-events:auto;background:#0b163044;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+#gatePanel{width:660px;max-height:690px;overflow:auto;text-align:center}
+#gatePanel h1{font-size:36px;margin:4px 0 12px;line-height:1.2;white-space:nowrap}
+#gateList{text-align:left;background:#eef6ff;border-radius:18px;padding:8px 18px;font-size:22px;font-weight:800;line-height:1.6}
+#gateList div{display:flex;align-items:center;gap:12px}#gateList svg{width:38px;height:38px;flex:none}
+#gateNotes{font-size:17px;margin:10px 0 4px;line-height:1.55;color:#40507a}
+#gatePanel .btn{display:block;width:100%;margin-top:12px}
+#gateMsg{min-height:1.4em;margin-top:10px;color:#c8541a;font-size:18px;font-weight:800}
+#gatePrivacy{font-size:14px;color:#7a88a8;margin-top:4px}
+body.portrait #gatePanel{width:640px;max-height:1100px}
+
+/* れんしゅう */
+#scrPrep{pointer-events:auto}
+#prepMirrorSlot{position:absolute;left:40px;top:30px;width:520px;height:390px;border-radius:22px;overflow:hidden;background:#0b1630;box-shadow:0 8px 24px #0005;border:4px solid #fff}
+#prepMirrorSlot canvas{width:100%;height:100%;display:block;object-fit:cover}
+#prepBottom{position:absolute;left:40px;right:40px;bottom:76px;height:186px}
+#prepSteps{display:flex;gap:10px;margin-bottom:10px}
+.prepDot{width:42px;height:42px;border-radius:50%;background:#fff8;color:var(--navy);font-weight:800;font-size:22px;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.prepDot.now{background:var(--yellow);transform:scale(1.2)}.prepDot.done{background:var(--green);color:#fff}
+#prepMain{display:flex;align-items:center;gap:22px;background:var(--panel);border-radius:24px;padding:12px 24px;box-shadow:0 8px 24px #0004}
+#prepPic{width:118px;height:118px;color:var(--navy);flex:none}
+#prepText{font-size:44px;font-weight:800;flex:1}#prepText.ok{color:#2a9a3a}
+#prepBarWrap{height:14px;border-radius:8px;background:#0b163022;margin-top:10px;overflow:hidden}
+#prepBar{height:100%;width:0;background:linear-gradient(90deg,var(--green),var(--yellow));transition:width .1s}
+#prepBtns{position:absolute;right:40px;top:40px;display:flex;flex-direction:column;gap:20px;align-items:flex-end}
+#prepSkip.glow{animation:focusPulse .8s infinite;background:var(--orange);color:#fff;box-shadow:0 6px 0 var(--orange-dark)}
+#prepNote{position:absolute;left:40px;top:430px;width:520px;font-size:22px;font-weight:800;color:#fff;text-align:center}
+body.portrait #prepMirrorSlot{left:40px;top:30px;width:640px;height:480px}
+body.portrait #prepNote{top:520px;width:640px}
+body.portrait #prepBottom{bottom:116px}
+body.portrait #prepBtns{top:560px}
+body.portrait #prepSteps{flex-wrap:wrap}
+
+/* タイトル */
+#titleLogo{position:absolute;left:0;right:0;top:46px;text-align:center;font-weight:800;pointer-events:none}
+#titleLogo .l1{font-size:72px;color:var(--orange);line-height:1.1}
+#titleLogo .l2{font-size:120px;color:#fff;line-height:1.05}
+#titleLogo .ch{display:inline-block}
+#titleLogo.in .l1{animation:logoDrop .6s cubic-bezier(.3,1.6,.5,1) both}
+#titleLogo.in .l2{animation:logoGrow .5s .2s cubic-bezier(.3,1.5,.5,1) both}
+@keyframes logoDrop{0%{transform:translateY(-160px)}60%{transform:translateY(10px)}80%{transform:translateY(-6px)}100%{transform:none}}
+@keyframes logoGrow{0%{transform:scale(1.3);opacity:0}100%{transform:none;opacity:1}}
+#titleLogo .ch.wave{animation:chWave .5s ease-in-out}
+@keyframes chWave{50%{transform:translateY(-14px) rotate(-4deg)}}
+#titleMenu{position:absolute;left:50%;top:296px;transform:translateX(-50%);display:flex;flex-direction:column;gap:13px;align-items:center}
+#titleMenu .btn{width:440px;height:68px}
+#titleMenu .row{display:flex;gap:12px}#titleMenu .row .btn{width:214px;font-size:26px;padding:0 16px}#titleMenu .row .btn.hide+.btn,#titleMenu .row .btn:only-child{width:440px}
+#titleMenu .btn[data-note]::after{content:attr(data-note);position:absolute;left:100%;margin-left:22px;top:50%;transform:translateY(-50%);font-size:19px;line-height:1.35;white-space:normal;width:250px;text-align:left;color:#fff;text-shadow:0 2px 0 var(--navy),2px 0 0 var(--navy),0 -2px 0 var(--navy),-2px 0 0 var(--navy);filter:none}
+body.portrait #titleMenu .btn[data-note]::after{left:0;right:0;width:auto;margin:0;top:auto;bottom:-34px;transform:none;text-align:center}
+#titleMenu .btn.off{filter:none;opacity:1;background:#a3abbb;box-shadow:0 6px 0 #747d8f}
+#titleTwoNote{position:absolute;left:0;right:0;top:664px;text-align:center;font-size:20px;color:#fff;font-weight:800}
+#titleBest{position:absolute;left:30px;bottom:84px;font-size:18px;color:#fff;font-weight:800}
+#titleCredit{position:absolute;right:28px;bottom:84px;font-size:13px;color:#fffd}
+#titleLogo .pbr{display:none}body.portrait #titleLogo .pbr{display:inline}body.portrait #titleLogo .sp{display:none}
+body.portrait #titleLogo{top:110px}body.portrait #titleLogo .l1{font-size:64px}body.portrait #titleLogo .l2{font-size:124px;line-height:1.0}
+body.portrait #titleMenu{top:560px;gap:24px}body.portrait #titleMenu .btn{width:560px;height:90px;font-size:34px}body.portrait #titleMenu .row .btn{width:274px;font-size:30px}body.portrait #titleMenu .row .btn.hide+.btn,body.portrait #titleMenu .row .btn:only-child{width:560px}body.portrait #titleMenu [data-act=two]{margin-bottom:22px}
+body.portrait #titleTwoNote{top:1110px}
+body.portrait #titleBest{bottom:116px}body.portrait #titleCredit{bottom:150px}
+
+/* ふたりの じゅんび */
+#twoPanel{width:960px;text-align:center}
+#twoPanel h2{font-size:44px;margin-bottom:10px}
+#twoMirrorSlot{position:relative;width:900px;height:506px;margin:0 auto;border-radius:20px;overflow:hidden;background:#0b1630;border:4px solid #fff}
+#twoMirrorSlot canvas{width:100%;height:100%;object-fit:cover}
+#twoMirrorSlot .half{position:absolute;top:0;bottom:0;width:50%;display:flex;align-items:flex-start;justify-content:center;font:800 40px var(--font);color:#fff;padding-top:12px}
+#twoMirrorSlot .half.ok{background:#56d36433}
+#twoMirrorSlot .h1{left:0;border-right:3px dashed #fff8;color:var(--p1)}#twoMirrorSlot .h2{right:0;color:var(--p2)}
+#twoText{font-size:26px;font-weight:800;margin-top:12px;min-height:2.4em}
+
+/* キャラえらび */
+#charHead{top:30px}
+.arrow{position:absolute;top:262px;width:76px;height:76px;border-radius:50%;border:0;background:#fff;box-shadow:0 6px 0 var(--gray-btn);font-size:34px;color:var(--navy);pointer-events:auto;cursor:pointer}
+#charPrev{left:calc(50% - 300px)}#charNext{left:calc(50% + 224px)}
+#charName{position:absolute;left:0;right:0;top:396px;text-align:center;font-size:80px;color:#fff;font-weight:800}
+#charSay{position:absolute;left:0;right:0;top:494px;text-align:center;font-size:30px;color:#fff;font-weight:800}
+#charNote{position:absolute;left:0;right:0;top:538px;text-align:center;font-size:20px;color:#fff;font-weight:800}
+#charOk{position:absolute;left:50%;top:572px;transform:translateX(-50%)}
+#charOk.focus{transform:translateX(-50%)}
+body.portrait #charName{top:760px}body.portrait #charSay{top:880px}body.portrait #charNote{top:934px}body.portrait #charOk{top:990px}body.portrait .arrow{top:770px}
+
+/* カード（コース・長さ・むずかしさ） */
+.cards{position:absolute;left:50%;top:138px;transform:translateX(-50%);display:flex;gap:24px}
+.card{pointer-events:auto;cursor:pointer;width:280px;height:420px;border-radius:30px;border:0;color:#fff;font-family:var(--font);font-weight:800;position:relative;
+  background:linear-gradient(var(--c1,#ffb36b),var(--c2,#ff7a2f));box-shadow:0 8px 0 #0003,0 14px 24px #0003;outline:8px solid transparent;outline-offset:6px;
+  transition:transform .12s;display:flex;flex-direction:column;align-items:center;padding:18px;white-space:normal}
+.card.focus{outline-color:var(--yellow);transform:scale(1.05)}
+.card .no{font-size:26px}.card .pic{width:244px;height:152px;border-radius:18px;margin:10px 0;background:#0002;box-shadow:inset 0 0 0 3px #fff8}
+.card .name{font-size:36px;line-height:1.2;text-align:center}.card .note{font-size:20px;line-height:1.45;text-align:center;margin-top:8px;white-space:normal}
+.card .best{margin-top:auto;font-size:20px;background:#0003;border-radius:12px;padding:4px 12px}.card .best small{font-size:14px}
+.card .obs{display:flex;gap:6px;margin-top:8px}.card .obs svg{width:36px;height:36px;color:#fff;filter:drop-shadow(0 2px 0 #0004)}
+.card.dist{--c1:#ffb36b;--c2:#ff7a2f}.card .m{font-size:64px;line-height:1.1}
+.card .drops{display:flex;gap:6px;height:40px;margin:8px 0}
+.card .drops i{display:block;width:26px;height:36px;background:#7fd4ff;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;clip-path:polygon(50% 0,100% 62%,90% 88%,50% 100%,10% 88%,0 62%);box-shadow:inset -4px -4px 0 #3fa9f5}
+.card.diff{--c2:#0002;background:linear-gradient(var(--c1),color-mix(in srgb,var(--c1) 70%,#000))}
+.card.diff .name{font-size:56px;margin-top:40px}
+#distCards .card,#diffCards .card{width:330px;height:410px;justify-content:center}
+body.portrait .cards{top:170px;flex-wrap:wrap;width:660px;justify-content:center;gap:22px}
+body.portrait #courseCards .card{width:300px;height:440px}
+body.portrait #distCards,body.portrait #diffCards{flex-direction:column;width:600px}
+body.portrait #distCards .card,body.portrait #diffCards .card{width:600px;height:250px;gap:2px}
+body.portrait .card .name,body.portrait .card .m{white-space:nowrap}body.portrait .card.dist .name{font-size:32px}body.portrait .card .m{font-size:60px}body.portrait .card.dist .drops{margin:0 0 4px}
+body.portrait #diffCards .card .note{width:520px}
+body.portrait .card.diff .name{margin-top:0}
+
+/* じゃまの 注意 */
+#jamaPanel{width:780px;text-align:center}#jamaPanel h2{font-size:52px}
+#jamaText{font-size:24px;line-height:1.6;margin:10px 0;font-weight:800}
+#jamaText .jRows{display:flex;flex-direction:column;gap:6px;margin-top:10px;background:#eef6ff;border-radius:16px;padding:10px}
+#jamaText .jRows div{display:flex;align-items:center;justify-content:center;gap:8px}#jamaText svg{width:44px;height:44px}
+#jamaWarn{border:4px solid var(--red);color:var(--red);border-radius:16px;padding:8px;font-size:22px;font-weight:800;margin:10px 0}
+#jamaPrep{display:flex;align-items:center;justify-content:center;gap:16px;font-size:34px;font-weight:800;margin:8px 0}#jamaPic{width:80px;height:80px}
+#jamaBtns{display:flex;gap:30px;justify-content:center;margin-top:14px}
+body.portrait #jamaPanel{width:660px}
+
+/* 紹介 */
+#introCard{position:absolute;left:0;top:60px;padding:16px 60px 18px 40px;border-radius:0 40px 40px 0;color:#fff;background:linear-gradient(90deg,var(--c,#56d364),color-mix(in srgb,var(--c,#56d364) 70%,#000));transform:translateX(-110%);transition:transform .45s cubic-bezier(.2,1.2,.4,1);box-shadow:0 8px 20px #0004}
+#introCard.in{transform:none}
+#introCard .no{font-size:26px;font-weight:800}#introCard .name{font-size:60px;line-height:1.15;font-weight:800}#introCard .sub{font-size:26px;font-weight:800}
+#introObs{position:absolute;left:0;right:0;bottom:90px;display:flex;justify-content:center;gap:18px}
+#introObs i{width:84px;height:84px;border-radius:50%;background:#0b163088;border:4px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff}
+#introObs svg{width:60%;height:60%}
+#introSkip{position:absolute;right:30px;bottom:30px;font-size:22px;color:#fff;display:flex;align-items:center;gap:6px;font-weight:800}#introSkip svg{width:36px;height:36px}
+body.portrait #introCard{top:120px}body.portrait #introObs{bottom:200px}
+
+/* 一時停止 */
+#scrPause{pointer-events:auto;background:var(--veil)}
+#pausePanel{width:520px;text-align:center}
+#pausePanel h2{font-size:44px;margin-bottom:16px}#pausePanel p{font-size:24px;margin:6px 0 18px}
+#pausePanel .btn{display:block;width:100%;margin-top:16px}
+#pausePanel .bigPic{width:120px;height:120px;margin:0 auto;color:var(--navy)}
+
+/* けっか */
+#resHead{top:22px;font-size:44px}
+#resRows{position:absolute;left:60px;top:100px;width:720px;padding:14px 20px}
+.rRow{display:flex;align-items:center;gap:14px;height:62px;padding:0 14px;border-radius:16px;font-size:30px;font-weight:800;margin:3px 0;animation:rowIn .4s cubic-bezier(.2,1.3,.4,1) both}
+@keyframes rowIn{from{opacity:0;transform:translateY(40px)}}
+.rRow .rk{width:44px;font-size:38px;text-align:center}.rRow img{width:52px;height:52px}
+.rRow .nm{flex:1}.rRow .nm small{font-size:20px;margin-left:6px}
+.rRow .badge{font-size:18px;color:#c8541a}.rRow .tm{font-variant-numeric:tabular-nums;width:140px;text-align:right}
+.rRow.you{background:#ffe9a0}.rRow.p1{background:#ffd8bf}.rRow.p2{background:#cfe9ff}
+#resStats{position:absolute;left:810px;top:100px;width:410px;padding:16px 22px;font-size:22px;font-weight:800}
+#resStats h3{margin:0 0 6px;font-size:26px}
+#resStats .st{display:flex;align-items:center;gap:10px;height:40px;border-bottom:2px solid #e3eaf5}
+#resStats .st svg{width:30px;height:30px;flex:none}#resStats .st .lb{flex:1}#resStats .st b{font-variant-numeric:tabular-nums}
+#resStats table{width:100%;border-collapse:collapse}#resStats td,#resStats th{height:38px;border-bottom:2px solid #e3eaf5;padding:0 4px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}#resStats td.lb{text-align:left}#resStats td.lb svg{width:28px;height:28px;vertical-align:middle;margin-right:6px}#resStats th{font-size:22px}#resStats th.p1{color:var(--p1)}#resStats th.p2{color:var(--p2)}
+#resBtns{position:absolute;left:50%;bottom:84px;transform:translateX(-50%);display:flex;gap:70px}
+#hNext{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);display:none;align-items:center;gap:12px;padding:12px 30px;border-radius:999px;background:#0b1630aa;color:#fff;font-size:30px;font-weight:800;white-space:nowrap;pointer-events:none}
+#hNext.on{display:flex;animation:toastIn .25s cubic-bezier(.3,1.6,.5,1) both,focusPulse 1s .3s ease-in-out infinite}#hNext svg{width:44px;height:44px;color:#fff}
+body.portrait #hNext{bottom:260px}
+#resWin{position:absolute;left:0;right:0;top:250px;text-align:center;font-size:110px;color:var(--yellow);font-weight:800;display:none;pointer-events:none}
+#resWin.on{display:block;animation:winIn .6s 1.2s cubic-bezier(.3,1.6,.5,1) both,winFade .5s 3.8s forwards}@keyframes winFade{to{opacity:0;transform:scale(1.15)}}
+@keyframes winIn{from{transform:scale(.2) rotate(-10deg);opacity:0}}
+body.portrait #resRows{left:30px;top:110px;width:660px}
+body.portrait #resStats{left:30px;top:560px;width:660px}
+body.portrait #resBtns{flex-direction:column;gap:22px;bottom:120px}body.portrait #resBtns .btn{width:560px}
+
+/* すこし やすもう */
+#restPanel{width:720px;text-align:center}#restPanel h2{font-size:52px;margin-bottom:10px}#restPanel p{font-size:28px;margin:8px}
+#restPanel .btns{display:flex;gap:60px;justify-content:center;margin-top:24px}
+
+/* せってい */
+#setPanel{position:absolute;left:50%;top:110px;transform:translateX(-50%);width:900px;padding:12px 28px;max-height:540px;overflow:auto;pointer-events:auto}
+.setRow{display:flex;align-items:center;justify-content:space-between;height:46px;font-size:22px;font-weight:800;border-bottom:2px solid #e3eaf5;padding:0 8px;gap:12px}
+.setRow .lb{flex:1}
+.setVal{pointer-events:auto;cursor:pointer;font-family:var(--font);font-weight:800;font-size:20px;border:0;border-radius:999px;padding:4px 10px;background:#e3eaf5;color:var(--navy);min-width:240px;display:flex;align-items:center;justify-content:space-between;outline:4px solid transparent}
+.setVal.focus{outline-color:var(--yellow);background:#fff3c4}
+.setVal .arr{padding:0 8px;color:var(--sky-dark)}
+.setRow .btn.small{height:40px;font-size:18px}
+#setCredit{font-size:14px;color:#7a88a8;text-align:right;margin-top:8px}
+body.portrait #setPanel{width:680px;max-height:960px;top:130px}
+
+/* ---------------- HUD ---------------- */
+#hud{position:absolute;top:0;bottom:0;left:calc(env(safe-area-inset-left,0px) / var(--k));right:calc(env(safe-area-inset-right,0px) / var(--k));display:none}
+#hud.on{display:block}
+#hPlayers{position:absolute;inset:0}
+.hudP{position:absolute;inset:0}
+body.two .hudP{width:50%}body.two .hudP[data-p="1"]{left:50%}
+.hRank{position:absolute;left:24px;top:10px;color:#fff;font-weight:800;display:flex;align-items:baseline}
+.hRankNum{font-size:96px;line-height:1;display:inline-block}.hRankNum.r1{color:var(--yellow)}.hRankNum.r2{color:#e6edf5}.hRankNum.r3{color:#ffb37a}
+.hRankSuf{font-size:40px}.hRankOf{font-size:30px;margin-left:4px}
+.hRankNum.up{animation:rankUp .3s cubic-bezier(.3,1.8,.5,1)}.hRankNum.down{animation:rankDown .25s}
+@keyframes rankUp{0%{transform:translateY(40px) scale(1);opacity:.3}60%{transform:scale(1.35)}100%{transform:none}}
+@keyframes rankDown{0%{transform:translateY(-30px);opacity:.3}100%{transform:none}}
+.hCrown{width:60px;height:45px;position:absolute;left:30px;top:-22px;display:none}.hCrown.on{display:block}.hCrown.drop{animation:crownDrop .4s ease-out}
+@keyframes crownDrop{from{transform:translateY(-60px);opacity:0}}
+body.two .hRank{transform:scale(.85);transform-origin:0 0}body.two .hudP[data-p="1"] .hRank{left:auto;right:24px;transform-origin:100% 0}body.two #hRemain{display:none}
+.hTag{position:absolute;left:180px;top:28px;font:800 34px var(--font);color:#fff;border-radius:14px;padding:2px 14px}
+.hTag.p0{background:var(--p1)}.hTag.p1{background:var(--p2)}
+.hList{position:absolute;left:24px;top:146px;width:60px;height:360px}
+.hFace{position:absolute;left:0;top:0;width:50px;height:50px;border-radius:50%;border:4px solid #fff;background:#fff center/cover;transition:transform .3s;box-shadow:0 3px 6px #0004}
+.hFace.you{border-color:var(--yellow);width:58px;height:58px;left:-4px;z-index:2}
+.hFace.you::after{content:'▶';position:absolute;left:-24px;top:14px;color:var(--yellow);font-size:18px;text-shadow:0 2px 0 var(--navy)}
+.hFace.fin{opacity:.6}
+body.portrait .hList,body.two .hList{display:none}
+.hCue{position:absolute;left:50%;top:470px;transform:translateX(-50%);display:none;align-items:center;gap:16px;color:#fff;font-weight:800}
+.hCue.on{display:flex}.hCue.in{animation:cueIn .15s ease-out}
+@keyframes cueIn{from{transform:translateX(-50%) scale(.6);opacity:0}}
+.hCueRingWrap{position:relative;width:132px;height:132px}
+.hCueRing{width:100%;height:100%}
+.hCueRing .bg{fill:#0b163099;stroke:#ffffff55;stroke-width:8}.hCueRing .fg{fill:none;stroke:var(--yellow);stroke-width:8;stroke-linecap:round}
+.hCuePic{position:absolute;inset:20px;color:#fff;filter:drop-shadow(0 3px 0 #1d2b53)}
+.hCueNum{font-size:140px;line-height:1;min-width:110px;text-align:center;display:inline-block}
+.hCueNum.pop{animation:numPop .25s ease-out}@keyframes numPop{50%{transform:scale(1.35)}}
+.hCueText{position:absolute;left:50%;top:136px;transform:translateX(-50%);white-space:nowrap;font-size:46px}
+.hCue.go .hCueText{color:var(--yellow);font-size:70px;top:126px}
+.hCueText.shake{animation:goShake .3s steps(4) 2}
+.hCue.go .hCueRing .fg{stroke:#fff}.hCue.go .hCueRingWrap{animation:numPop .3s ease-out}
+@keyframes goShake{25%{margin-left:-8px}75%{margin-left:8px}}
+.hCue.burst .hCueRingWrap{animation:ringBurst .35s ease-out forwards}.hCue.burst .hCueNum,.hCue.burst .hCueText{opacity:0;transition:opacity .2s}
+@keyframes ringBurst{to{transform:scale(1.8);opacity:0}}
+.hCue.fail .hCueRing .fg{stroke:var(--red)}.hCue.fail{animation:failShake .25s steps(4) 2}.hCue.fail .hCuePic{color:var(--red)}
+@keyframes failShake{25%{margin-left:-10px}75%{margin-left:10px}}
+.hCueArrow{position:absolute;top:30px;width:110px;height:90px;display:none;color:var(--yellow);filter:drop-shadow(0 4px 0 #1d2b53)}
+.hCueArrow svg{width:100%;height:100%}
+.hCueArrow.on.R{display:block;left:calc(100% + 10px);animation:blinkSoft .5s infinite}
+.hCueArrow.on.L{display:block;right:calc(100% + 10px);transform:scaleX(-1);animation:blinkSoft .5s infinite}
+@keyframes blinkSoft{50%{opacity:.4}}
+body:has(#touch.on):not(.portrait) .hCue{top:236px}
+body.portrait .hCue{top:330px}body.portrait .hCueRingWrap{width:170px;height:170px}body.portrait .hCueNum{font-size:180px}body.portrait .hCueText{top:178px}
+body.two .hCue{top:430px;transform:translateX(-50%) scale(.8)}
+.hSpeed{position:absolute;right:24px;bottom:24px;width:210px;height:140px}
+.hSpeedArc{width:100%;height:100%}
+.hSpeedNum{position:absolute;left:0;right:0;top:40px;text-align:center;font-size:62px;color:#fff;font-weight:800;font-variant-numeric:tabular-nums}
+.hSpeedUnit{position:absolute;left:0;right:0;top:110px;text-align:center;font-size:18px;color:#fff;font-weight:800}
+body.two .hSpeed{transform:scale(.8);transform-origin:100% 100%}
+.hSwing{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);display:none;align-items:center;gap:12px;color:#fff;font-weight:800}
+.hSwing.on{display:flex}.hSwingIcon{width:56px;height:56px;color:#ffb020;filter:drop-shadow(0 3px 0 #1d2b53)}
+.hSwingBar{width:360px;height:26px;border-radius:13px;background:#0b163099;border:3px solid #fff;overflow:hidden}
+.hSwingBar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ffd54a,#ff3b00);transition:width .1s}
+.hSwingText{position:absolute;left:0;right:0;top:-48px;text-align:center;font-size:34px;animation:blinkSoft .6s infinite}
+body.two .hSwingBar{width:260px}
+.hJama{position:absolute;left:0;right:0;bottom:120px;height:80px;display:none}.hJama.on{display:block}
+.hJama>div{position:absolute;display:flex;gap:6px;opacity:0;transition:opacity .15s}.hJama>div.on{opacity:1}
+.hJamaL{left:calc(50% - 300px)}.hJamaR{right:calc(50% - 300px)}.hJama svg{width:64px;height:64px;color:#fff;filter:drop-shadow(0 0 6px #ff3b3b)}
+#hProg{position:absolute;left:50%;top:22px;width:640px;margin-left:-320px}
+#hProgBar{position:relative;height:16px;border-radius:8px;background:#0b163088;border:3px solid #fff}
+#hProgFinal{position:absolute;left:var(--f0,80%);right:0;top:0;bottom:0;background:#ff4d4d99;border-radius:0 8px 8px 0}
+#hProg.final #hProgFinal{animation:progPulse .5s ease-in-out infinite alternate}
+@keyframes progPulse{to{background:#ff2a2aee;box-shadow:0 0 14px #ff2a2a}}
+#hProgBar::before,#hProgBar::after{content:'';position:absolute;top:-14px;width:26px;height:26px;background:var(--flagIcon) center/contain no-repeat}
+#hProgBar::before{left:-34px}#hProgBar::after{right:-34px;background-image:var(--goalIcon)}
+#hProgMarks .m{position:absolute;left:var(--p);top:-28px;width:22px;height:22px;margin-left:-11px;color:#fff;opacity:.85;filter:drop-shadow(0 2px 0 #1d2b53)}
+#hProgMarks svg{width:100%;height:100%}
+#hProgDots .pd{position:absolute;left:var(--p);top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;border:3px solid #fff;background:#fff center/cover;transition:left .1s linear}
+#hProgDots .pd.you{width:42px;height:42px;margin:-21px 0 0 -21px;border-color:var(--yellow);z-index:2;animation:dotHop .4s ease-in-out infinite alternate}
+#hProgDots .pd.you.p1{border-color:var(--p2)}
+body.two #hProgDots .pd.you.p0{border-color:var(--p1)}
+@keyframes dotHop{to{margin-top:-25px}}
+#hProgInfo{display:flex;justify-content:center;gap:24px;margin-top:20px;color:#fff;font-weight:800}
+#hRemain{font-size:30px}#hRemain.red{color:var(--red);animation:blinkSoft .5s infinite}#hTime{font-size:26px;font-variant-numeric:tabular-nums;line-height:44px}
+body.portrait #hProg{left:40px;top:260px;width:16px;height:720px;margin:0}
+body.portrait #hProgBar{width:16px;height:720px}
+body.portrait #hProgFinal{left:0;right:0;top:0;bottom:var(--f0,80%);border-radius:8px 8px 0 0}
+body.portrait #hProgBar::before{left:-5px;top:auto;bottom:-34px}body.portrait #hProgBar::after{right:-5px;top:-34px}
+body.portrait #hProgDots .pd{left:50%!important;top:auto;bottom:var(--p);margin:0 0 -14px -14px}
+body.portrait #hProgDots .pd.you{margin:0 0 -21px -21px}
+body.portrait #hProgMarks .m{left:22px;top:auto;bottom:var(--p);margin:0 0 -11px 0}
+body.portrait #hProgInfo{position:fixed;left:24px;top:132px;flex-direction:column;align-items:flex-start;gap:0;margin:0}
+body.two #hProg{width:560px;margin-left:-280px}
+#hToast{position:absolute;left:0;right:0;top:186px;text-align:center;font-size:60px;color:#fff;font-weight:800;pointer-events:none}
+#hToast .t{display:inline-block}#hToast .t.y{color:var(--yellow)}
+#hToast .t.in{animation:toastIn .25s cubic-bezier(.3,1.6,.5,1) both}#hToast .t.out{animation:toastOut .3s forwards}
+@keyframes toastIn{0%{transform:translateY(30px) scale(.6);opacity:0}100%{transform:none;opacity:1}}
+@keyframes toastOut{to{transform:translateY(-30px);opacity:0}}
+body.portrait #hToast{top:330px}
+#hBanner{position:absolute;left:0;right:0;top:250px;height:110px;display:none;pointer-events:none}
+#hBanner .band{position:absolute;inset:0;background:linear-gradient(90deg,transparent,#ff3b00ee 15%,#ffb000ee 85%,transparent);color:#fff;font-size:80px;font-weight:800;text-align:center;line-height:110px;transform:translateX(-120%) skewX(-12deg)}
+#hBanner.on{display:block}#hBanner.on .band{animation:bannerSweep 2.2s ease-in-out forwards}
+@keyframes bannerSweep{0%{transform:translateX(-120%) skewX(-12deg)}15%,80%{transform:translateX(0) skewX(-12deg)}100%{transform:translateX(120%) skewX(-12deg)}}
+body.portrait #hBanner{top:420px}body.portrait #hBanner .band{font-size:64px}
+#hBig{position:absolute;left:0;right:0;top:240px;text-align:center;font-size:160px;color:#fff;font-weight:800;pointer-events:none;line-height:1.1}
+#hBig .t{display:inline-block}#hBig .t.in{animation:bigIn .4s cubic-bezier(.3,1.6,.5,1) both}#hBig .t.out{animation:bigOut .35s ease-in forwards}@keyframes bigOut{to{transform:translateY(-80px) scale(.6);opacity:0}}
+#hBig .t.go{color:var(--yellow);font-size:200px}
+@keyframes bigIn{0%{transform:scale(.3);opacity:0}100%{transform:scale(1);opacity:1}}
+#hBig .t{white-space:nowrap}body.portrait #hBig{top:460px}body.portrait #hBig .t{font-size:100px}body.portrait #hBig .t.go{font-size:170px}
+#hCount{position:absolute;left:0;right:0;top:250px;text-align:center;font-size:160px;color:#fff;font-weight:800;display:none}#hCount.on{display:block}#hCount.pop{animation:numPop .3s}
+#hPhoto{position:absolute;inset:0;display:none;background:#0006;align-items:center;justify-content:center}#hPhoto.on{display:flex}
+#hPhoto div{font-size:90px;color:#fff;font-weight:800;border:10px solid #fff;padding:10px 40px;transform:rotate(-6deg)}
+body.photo #gl{filter:grayscale(1) contrast(1.15)}
+
+/* ---------------- 擬音・カットイン（付録AC） ---------------- */
+#giongo{position:fixed;inset:0;pointer-events:none;z-index:40;overflow:hidden}
+.gio{position:absolute;transform-origin:50% 60%;will-change:transform,opacity}
+.gio canvas{position:absolute;top:0;height:100%}
+.gio canvas.word{left:0;width:100%}
+.gio canvas.burst{animation:burstOut .3s ease-out forwards}
+@keyframes burstOut{0%{opacity:1;transform:scale(.7) rotate(0)}100%{opacity:0;transform:scale(1.2) rotate(8deg)}}
+.gio.pop{animation:gioPop 1.0s cubic-bezier(.2,.9,.3,1.2) forwards}
+.gio.pop.l,.gio.pop.xl{animation:gioPop 1.0s cubic-bezier(.2,.9,.3,1.2) forwards,gioShake .25s steps(6) 1}
+@keyframes gioPop{
+  0%{transform:translate(0,0) rotate(calc(var(--rot) - 10deg)) scale(.2);opacity:0}
+  8%{transform:translate(0,0) rotate(var(--rot)) scale(1.25);opacity:1}
+  20%{transform:translate(calc(var(--dx) * .2),-6px) rotate(var(--rot)) scale(1)}
+  75%{transform:translate(calc(var(--dx) * .8),-20px) rotate(var(--rot)) scale(1.06);opacity:1}
+  100%{transform:translate(var(--dx),-26px) rotate(var(--rot)) scale(1.08);opacity:0}}
+@keyframes gioShake{0%,100%{margin-left:0}20%{margin-left:-4px}40%{margin-left:4px}60%{margin-left:-3px}80%{margin-left:3px}}
+.gio.oneByOne{animation:gioFade 1.6s linear forwards}
+.gio.oneByOne canvas{opacity:0;animation:gioChar .25s ease-out forwards,gioWobble .5s ease-in-out .25s infinite alternate}
+@keyframes gioChar{0%{opacity:0;transform:scale(1.8)}100%{opacity:1;transform:scale(1)}}
+@keyframes gioWobble{from{transform:rotate(-3deg) scale(1)}to{transform:rotate(3deg) scale(1.05)}}
+@keyframes gioFade{0%,80%{opacity:1}100%{opacity:0}}
+.gio.trail canvas{opacity:0;animation:gioTrail .7s linear forwards}
+@keyframes gioTrail{0%{opacity:0;transform:translateX(0) scale(.9)}15%{opacity:.95}100%{opacity:0;transform:translateX(-120px) scale(1)}}
+#cutin{position:fixed;inset:0;z-index:45;pointer-events:none;display:none;overflow:hidden}
+#cutin.on,#cutin.out{display:block}
+#cutinBand{position:absolute;left:-6%;right:-6%;top:29%;height:42%;transform:skewY(-8deg) translateX(110%);border:8px solid #0b0b14;box-shadow:inset 0 0 0 3px #fff,0 14px 40px #000a;overflow:visible;background:#fff}
+#cutin.on #cutinBand{animation:cutIn .10s ease-out forwards}
+#cutin.out #cutinBand{animation:cutOut .12s ease-in forwards}
+@keyframes cutIn{from{transform:skewY(-8deg) translateX(110%)}to{transform:skewY(-8deg) translateX(0)}}
+@keyframes cutOut{from{transform:skewY(-8deg) translateX(0)}to{transform:skewY(-8deg) translateX(-110%)}}
+#cutinBg{position:absolute;inset:0;width:100%;height:100%}
+#cutinFace{position:absolute;left:8%;bottom:-10%;height:120%;transform:skewY(8deg);filter:drop-shadow(6px 6px 0 #0b0b14)}
+#cutinWord{position:absolute;left:36%;top:4%;height:68%;max-width:58%;transform:skewY(8deg) rotate(-6deg);object-fit:contain}
+#cutinCap{position:absolute;right:6%;bottom:8%;font:800 48px var(--font);color:#fff;transform:skewY(8deg)}
+#cutin.half0 #cutinBand{left:-3%;right:50%}#cutin.half1 #cutinBand{left:50%;right:-3%}
+
+/* ---------------- すみ ---------------- */
+#mirror{position:absolute;top:calc(10px*var(--k));right:calc(10px*var(--k));width:clamp(132px,18vw,240px);display:none}
+#mirror.on{display:block}body.portrait #mirror{width:30vw}
+body.two.racing #mirror{right:auto;left:50%;transform:translateX(-50%);top:calc(110px*var(--k));width:clamp(120px,19vw,240px)}
+#mirrorBox{position:relative;border-radius:14px;overflow:hidden;border:3px solid #fff;box-shadow:0 4px 14px #0007;background:#0b1630}
+#mirrorBox.lost{border-color:var(--red)}
+#mirrorCv{display:block;width:100%}
+#mirrorTip{position:absolute;left:0;right:0;bottom:0;font:800 12px var(--font);color:#fff;background:#d33c;text-align:center;padding:2px;display:none}
+#mirrorShift{position:relative;height:12px;margin-top:4px;border-radius:6px;background:#0b1630cc}
+#mirrorShift i{position:absolute;left:50%;top:1px;bottom:1px;width:2px;background:#fff8}
+#mirrorShift i.goR{left:62%;width:38%;background:#ffd54a88;animation:blinkSoft .4s infinite}#mirrorShift i.goL{left:0;width:38%;background:#ffd54a88;animation:blinkSoft .4s infinite}
+#mirrorShift b{position:absolute;top:0;left:50%;width:12px;height:12px;margin-left:-6px;border-radius:50%;background:var(--yellow);transition:left .08s}
+#btnPause{position:absolute;right:calc(14px*var(--k));top:calc(230px*var(--k));width:52px;height:52px;border-radius:50%;border:3px solid #fff;background:#0b163088;color:#fff;font-size:20px;pointer-events:auto;display:none;cursor:pointer}
+#btnPause.on{display:block}
+body:not(.cam) #btnPause{top:calc(10px*var(--k) + 40px)}
+body.portrait #btnPause{top:calc(10px*var(--k) + 30vw * .8 + 26px)}
+body.portrait:not(.cam) #btnPause{top:calc(10px*var(--k) + 40px)}
+body.two.racing #btnPause{right:auto;left:50%;margin-left:-26px;top:auto;bottom:calc(14px*var(--k))}
+#inputBadge{position:absolute;top:calc(10px*var(--k));right:calc(10px*var(--k));background:#fff;color:var(--navy);border-radius:10px;padding:4px 10px;font:800 14px var(--font);display:none;box-shadow:0 3px 8px #0004}
+#inputBadge.on{display:block}
+body.racing #inputBadge{display:none}
+#pcamBadge{position:absolute;left:10px;bottom:10px;background:#0b1630cc;color:#fff;border-radius:10px;padding:4px 10px;font:800 13px var(--font);display:none}
+#pcamBadge.on{display:block}#pcamBadge.ng{background:#d33c}
+#audioTip{position:absolute;right:10px;bottom:10px;background:#0b1630cc;color:#fff;border-radius:10px;padding:6px 12px;font:800 14px var(--font);display:none;pointer-events:auto}
+#audioTip.on{display:block}
+
+/* タッチ */
+#touch{position:absolute;inset:0;display:none;--fh:22vh;--fw:32vw;--act:24vmin}
+#touch.on{display:block}body.paused #touch{display:none}
+body.portrait #touch{--fh:16vh;--fw:44vw}
+.tfoot{position:absolute;bottom:10px;width:var(--fw);height:var(--fh);border-radius:24px;border:4px solid #fffc;background:#0b163055;color:#fff;
+  font:800 20px var(--font);display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;transition:transform .05s}
+.tfoot svg{width:40%;height:50%}
+#tFootL svg{transform:scaleX(-1)}
+#tFootL{left:10px}#tFootR{right:10px}
+.tfoot.on{background:#ffd54acc;color:var(--navy);transform:translateY(3px)}
+#tAct{position:absolute;left:50%;bottom:calc(var(--fh) * .2);width:var(--act);height:var(--act);margin-left:calc(var(--act) / -2);border-radius:50%;
+  border:5px solid #fff;background:#0b163077;color:#fff;font:800 calc(var(--act) * .13) var(--font);display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:auto;touch-action:none;opacity:.55}
+body.portrait #tAct{bottom:calc(var(--fh) + 24px)}
+#tAct.cue{opacity:1;background:#ff7a2fdd;animation:focusPulse .6s ease-in-out infinite}
+#tAct.on{background:#ffd54add;color:var(--navy)}
+#tActPic{width:55%;height:55%}#tActPic svg{width:100%;height:100%}
+.tsmall{position:absolute;bottom:calc(var(--fh) + 30px);width:84px;height:84px;border-radius:50%;border:4px solid #fff;background:#ff3b3bcc;color:#fff;
+  font:800 22px var(--font);display:none;align-items:center;justify-content:center;pointer-events:auto}
+.tsmall.on{display:flex}#tJamaArm{left:calc(50% - 190px)}#tJamaLeg{left:calc(50% + 106px)}
+.footPop{position:absolute;width:60px;height:60px;color:#fff;pointer-events:none;animation:footPop .4s ease-out forwards}
+@keyframes footPop{from{opacity:1;transform:translateY(0) scale(.6)}to{opacity:0;transform:translateY(-60px) scale(1.2)}}
+body:has(#touch.on) .hSpeed{right:124px;top:60px;bottom:auto}
+body:has(#touch.on) .hSwing{bottom:auto;top:580px}
+body.portrait:has(#touch.on) .hSwing{top:900px}
+body.portrait:has(#touch.on) .hCue{top:620px}
+
+/* よこにしてね */
+#rotateTip{position:fixed;inset:0;z-index:95;display:none;flex-direction:column;align-items:center;justify-content:center;gap:22px;background:var(--navy);color:#fff;font:800 24px var(--font);text-align:center;padding:24px;word-break:keep-all}
+#rotateTip svg{width:120px;height:120px;animation:rotHint 2.4s ease-in-out infinite}
+#rotateTip small{font-size:16px;font-weight:500;opacity:.85}
+@keyframes rotHint{0%,25%{transform:rotate(0)}55%,100%{transform:rotate(-90deg)}}
+body.needLand #rotateTip{display:flex}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="speedLines"></canvas>
+<div id="vignette"></div>
+<canvas id="bigLines"></canvas>
+<div id="flash"></div>
+<div id="giongo"></div>
+<div id="cutin"><div id="cutinBand"><canvas id="cutinBg" width="1024" height="420"></canvas><img id="cutinFace" alt=""><canvas id="cutinWord"></canvas><div id="cutinCap" class="ol"></div></div></div>
+<div id="divider"></div>
+
+<div id="ui">
+  <div id="hud">
+    <div id="hPlayers"></div>
+    <div id="hProg"><div id="hProgBar"><i id="hProgFinal"></i><div id="hProgMarks"></div><div id="hProgDots"></div></div>
+      <div id="hProgInfo"><span id="hRemain" class="ol">のこり 1000m</span><span id="hTime" class="ol">0:00.0</span></div></div>
+    <div id="hToast" class="ol6"></div>
+    <div id="hBanner"></div>
+    <div id="hBig" class="ol6"></div>
+    <div id="hCount" class="ol6"></div>
+    <div id="hPhoto"><div>しゃしん はんてい！</div></div>
+    <div id="hNext" class="ol"></div>
+  </div>
+
+  <div id="screens">
+    <div id="scrLoad" class="screen on">
+      <div class="center" style="width:680px">
+        <div id="loadLogo" class="ol"><div class="l1">はしれ！ とべ！</div><div>ぜんしん ダッシュ！</div></div>
+        <div id="loadTrack"><div id="loadBar"></div><svg id="loadRunner" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><circle cx="56" cy="14" r="10" fill="currentColor" stroke="none"/><path d="M54 25 L48 55 M52 32 L66 42 L74 34 M52 32 L38 44 L32 38 M48 55 L64 62 L60 80 M48 55 L40 75 L44 92"/></svg></div>
+        <div id="loadMsg">よみこみ中…</div>
+      </div>
+    </div>
+
+    <div id="scrGate" class="screen">
+      <div id="gatePanel" class="panel center hit">
+        <div class="kicker">ぜんしんで あそぶ</div>
+        <h1>はしれ！とべ！ぜんしんダッシュ！</h1>
+        <div id="gateList"></div>
+        <div id="gateNotes"></div>
+        <button id="gateCam" class="btn main">📷 カメラで あそぶ</button>
+        <button id="gateTouch" class="btn">👆 タッチで あそぶ</button>
+        <button id="gateKey" class="btn sub small">⌨ キーボードで ためす</button>
+        <button id="gatePhone" class="btn">📱 スマホを カメラにする（QR）</button>
+        <div id="gateMsg"></div>
+        <div id="gatePrivacy">カメラの えいぞうは ほぞんしません</div>
+      </div>
+    </div>
+
+    <div id="scrPrep" class="screen">
+      <div id="prepMirrorSlot"></div>
+      <div id="prepNote" class="ol"></div>
+      <div id="prepBtns"><button id="prepSkip" class="btn sub small" data-nav="0">とばす</button><button id="prepBack" class="btn sub small" data-nav="1">もどる</button></div>
+      <div id="prepBottom"><div id="prepSteps"></div>
+        <div id="prepMain"><div id="prepPic"></div><div style="flex:1"><div id="prepText"></div><div id="prepBarWrap"><div id="prepBar"></div></div></div></div></div>
+    </div>
+
+    <div id="scrTitle" class="screen">
+      <div id="titleLogo" class="ol6"></div>
+      <div id="titleMenu">
+        <button class="btn main" data-act="solo">🏃 ひとりで はしる</button>
+        <button class="btn" data-act="jama">😈 じゃまモード</button>
+        <button class="btn" data-act="two">👫 ふたりで たいせん</button>
+        <div class="row"><button class="btn sub" data-act="prep" id="titlePrep">🤸 れんしゅう</button><button class="btn sub" data-act="settings">⚙ せってい</button></div>
+      </div>
+      <div id="titleTwoNote" class="ol"></div>
+      <div id="titleBest" class="ol"></div>
+      <div id="titleCredit">こえ：VOICEVOX:No.7、VOICEVOX:ずんだもん</div>
+    </div>
+
+    <div id="scrTwo" class="screen"><div id="twoPanel" class="panel center"><h2>ふたりで ならんで</h2><div id="twoMirrorSlot"><div class="half h1">1P</div><div class="half h2">2P</div></div><div id="twoText"></div></div></div>
+
+    <div id="scrChar" class="screen">
+      <h2 id="charHead" class="ol">キャラクターを えらんでね</h2>
+      <button id="charPrev" class="arrow">◀</button><button id="charNext" class="arrow">▶</button>
+      <div id="charName" class="ol6"></div><div id="charSay" class="ol"></div><div id="charNote" class="ol">どれを えらんでも はやさは おなじ</div>
+      <button id="charOk" class="btn main" data-nav="0">これに する</button>
+    </div>
+
+    <div id="scrCourse" class="screen"><h2 class="ol">コースを えらんでね</h2><div id="courseCards" class="cards"></div></div>
+    <div id="scrDist" class="screen"><h2 class="ol">ながさを えらんでね</h2><div id="distCards" class="cards"></div></div>
+    <div id="scrDiff" class="screen"><h2 class="ol">むずかしさを えらんでね</h2><div id="diffCards" class="cards"></div></div>
+
+    <div id="scrJama" class="screen">
+      <div id="jamaPanel" class="panel center"><h2>😈 じゃまモード</h2><div id="jamaText"></div><div id="jamaWarn">⚠ まわりに ひとや ものが ないか みてね</div>
+        <div id="jamaPrep" class="hide"><div id="jamaPic"></div><div id="jamaStep"></div></div>
+        <div id="jamaBtns"><button id="jamaPractice" class="btn">れんしゅう する</button><button id="jamaStart" class="btn main">はじめる</button></div></div>
+    </div>
+
+    <div id="scrIntro" class="screen"><div id="introCard"><div class="no ol"></div><div class="name ol6"></div><div class="sub ol"></div></div><div id="introObs"></div><div id="introSkip" class="ol"></div></div>
+
+    <div id="scrPause" class="screen"><div id="pausePanel" class="panel center hit"></div></div>
+
+    <div id="scrResult" class="screen">
+      <h2 id="resHead" class="ol">けっか</h2>
+      <div id="resRows" class="panel"></div>
+      <div id="resStats" class="panel"></div>
+      <div id="resBtns"></div>
+      <div id="resWin" class="ol6"></div>
+    </div>
+
+    <div id="scrRest" class="screen"><div id="restPanel" class="panel center"><h2>すこし やすもう</h2><p>みずを のもう。じゅんびが できたら つづけてね</p><div class="btns"><button class="btn main" data-nav="0">つづける</button><button class="btn sub" data-nav="1">おわる</button></div></div></div>
+
+    <div id="scrSettings" class="screen"><h2 class="ol">せってい</h2><div id="setPanel" class="panel"><div id="setRows"></div><div id="setCredit">こえ：VOICEVOX:No.7、VOICEVOX:ずんだもん</div></div></div>
+
+    <div id="helpBar"></div>
+    <button id="backHold" class="btn sub small">もどる</button>
+  </div>
+</div>
+
+<div id="corners">
+  <div id="mirror"><div id="mirrorBox"><canvas id="mirrorCv" width="640" height="480"></canvas><div id="mirrorTip"></div></div><div id="mirrorShift"><i></i><b></b></div></div>
+  <div id="inputBadge"></div>
+  <button id="btnPause" title="ひとやすみ">⏸</button>
+  <div id="pcamBadge">📱 スマホカメラ</div>
+  <div id="audioTip">🔇 さわると おとが でます</div>
+  <div id="touch">
+    <div class="tfoot" id="tFootL"></div>
+    <div class="tfoot" id="tFootR"></div>
+    <div id="tAct"><div id="tActPic"></div><span id="tActText">ジャンプ</span></div>
+    <div id="tJamaArm" class="tsmall">て</div><div id="tJamaLeg" class="tsmall">あし</div>
+  </div>
+</div>
+
+<div id="rotateTip"><svg viewBox="0 0 100 100" fill="none" stroke="#fff" stroke-width="6" stroke-linejoin="round"><rect x="30" y="12" width="40" height="76" rx="8"/><circle cx="50" cy="78" r="3" fill="#fff" stroke="none"/></svg><div>スマホを よこにしてね</div><small>ふたりで たいせんは よこの がめんで あそびます</small></div>
+<div id="fade"><svg id="fadeRunner" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"><circle cx="56" cy="14" r="10" fill="currentColor" stroke="none"/><path d="M54 25 L48 55 M52 32 L66 42 L74 34 M52 32 L38 44 L32 38 M48 55 L64 62 L60 80 M48 55 L40 75 L44 92"/></svg></div>
+<div id="dbgInfo"></div>
+<video id="camVideo" playsinline muted></video>
+
+<script src="voice/list.js" onerror="window.ZDASH_VOICE=window.ZDASH_VOICE||null"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script defer src="../phonecam.js" onerror="void 0"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
