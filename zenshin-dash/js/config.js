@@ -4,13 +4,13 @@ export const CFG = {
 
   // ---------- 体の読みとり（第4部・第5部） ----------
   body: {
-    VIS_SHOULDER: 0.5, VIS_WRIST: 0.4, VIS_ELBOW: 0.4, VIS_HIP: 0.5, VIS_KNEE: 0.5, VIS_ANKLE: 0.4, VIS_NOSE: 0.5,
+    VIS_SHOULDER: 0.5, VIS_WRIST: 0.4, VIS_ELBOW: 0.4, VIS_HIP: 0.5, VIS_KNEE: 0.3, VIS_ANKLE: 0.25, VIS_NOSE: 0.5,
     SMOOTH_U: 0.3,
 
     // 足ぶみ（グランプリと同じ）
-    WIN: 0.5, K_LO: 0.10, K_HI: 0.75, ANKLE_K: 0.8, B_LO: 0.035, B_HI: 0.16,
-    STEP_TH: 0.12, STEP_GAP_SH: 0.18, CAD_WIN: 2.0, CAD_FULL: 3.6, CAD_W: 0.9,
-    THR_UP: 0.12, THR_DOWN: 0.45, THR_DOWN_SQUAT: 1.2, THR_DOWN_BANZAI: 1.0, AIR_HOLD: true, SH_MASK: 0.4,
+    WIN: 0.6, K_LO: 0.04, K_HI: 0.22, ANKLE_K: 1.0, B_LO: 0.015, B_HI: 0.055,   // 2026-10-22 ユーザー「激甘に」
+    STEP_TH: 0.04, STEP_GAP_SH: 0.15, CAD_WIN: 2.0, CAD_FULL: 2.0, CAD_W: 1.0,
+    THR_UP: 0.08, THR_DOWN: 0.8, THR_DOWN_SQUAT: 1.2, THR_DOWN_BANZAI: 1.0, AIR_HOLD: true, SH_MASK: 0.4,
     LEG_SENS: { high: 0.7, mid: 1.0, low: 1.35 },
     STEP_RATE_WIN: 1.5,        // 歩数の速さを 数える窓（秒）
 
@@ -69,7 +69,7 @@ export const CFG = {
 
   // ---------- 走り（第9部） ----------
   run: {
-    V_MAX: 21.0, V_FLOOR: 0.18, TH_POW: 0.85,           // （調整）
+    V_MAX: 21.0, V_FLOOR: 0.18, TH_POW: 0.5,            // 少しの 足ぶみでも 速く（2026-10-22）
     TAU_UP: 0.70, TAU_DOWN: 1.40, TAU_HOLD: 4.0, HOLD_T: 0.8, AIR_DRAG: 0.02,
     V_CARRY: 9.0, V_CWALK: 2.2,
     STUMBLE_K_OBS: 0.72, STUMBLE_K_JAMA: 0.85, STUMBLE_T: 0.8, STUMBLE_CAP: 0.6, SAFE_T: 1.4, STUMBLE_PUSH: 1.5,
