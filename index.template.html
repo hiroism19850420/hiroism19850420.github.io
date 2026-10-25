@@ -107,6 +107,10 @@ footer{border-top:1px solid var(--line);padding:22px;font-size:11px;display:flex
 .clerk img{display:block;width:100%;height:auto;border-radius:14px;border:2px solid #fff;animation:clerk-bob 3.6s ease-in-out infinite}
 @keyframes clerk-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 @media(min-width:700px){.clerk{width:130px;right:18px;bottom:16px}}
+.clerk .say{position:absolute;right:calc(100% - 34px);top:-30px;white-space:nowrap;background:#fff;color:#c2410c;border:3px solid #f97316;border-radius:18px;padding:7px 14px;font-weight:900;font-size:17px;letter-spacing:.04em;box-shadow:0 4px 10px rgba(0,0,0,.2);transform-origin:100% 100%;animation:say-pop 4s ease-in-out infinite}
+.clerk .say:after{content:"";position:absolute;right:16px;bottom:-13px;border:8px solid transparent;border-top:12px solid #f97316;border-bottom:0}
+@keyframes say-pop{0%,100%{transform:scale(1)}8%{transform:scale(1.14)}16%{transform:scale(1)}}
+@media(min-width:700px){.clerk .say{font-size:22px;padding:9px 18px;right:calc(100% - 44px)}}
 </style>
 <script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
@@ -236,6 +240,6 @@ $("reset").addEventListener("click",function(){state.cat="all";state.q="";$("q")
 var lastN=0;window.addEventListener("resize",function(){var n=cols();if(n!==lastN){lastN=n;render()}});
 buildCats();lastN=cols();render();
 </script>
-<div class="clerk" aria-hidden="true"><img src="clerk.jpg" alt=""></div>
+<div class="clerk" aria-hidden="true"><span class="say">いらっしゃいませ！</span><img src="clerk.jpg" alt=""></div>
 </body>
 </html>
