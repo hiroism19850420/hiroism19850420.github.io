@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a1931">
+<title>じぴこのゲーム棚 — 動画のゲーム、ここで遊べます。</title>
+<meta name="description" content="YouTubeで作ったゲームを置いています。棚から気になるゲームを選んで、ブラウザで遊べます。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;700;900&family=DotGothic16&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#f5f1e6;--ink:#102337;--night:#08172e;--red:#df4429;--green:#205649;--muted:#6c7169;--line:#b7b5a9;color-scheme:light}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:24px}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:'DM Sans','Noto Sans JP',sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p{margin:0}button,input,select{font:inherit}button,a{-webkit-tap-highlight-color:transparent;touch-action:manipulation}button{cursor:pointer}a{color:inherit;text-decoration:none}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #d85a25;outline-offset:4px}
+[hidden]{display:none!important}
+.site-shell{max-width:1500px;margin-inline:auto;padding:0 30px}
+.site-header{height:84px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid var(--ink);margin-bottom:24px}
+.brand{font-size:42px;font-weight:900;letter-spacing:-.07em;line-height:1}
+#main-nav{display:flex;gap:36px;font-size:14px;font-weight:700}
+#main-nav a{padding:12px 0;border-bottom:2px solid transparent}#main-nav a:hover,#main-nav .cur{border-bottom-color:var(--red)}
+
+/* hero: 夜の空とドット絵の星 */
+.hero{position:relative;background:var(--ink);padding:7px;clip-path:polygon(20px 0,calc(100% - 20px) 0,calc(100% - 20px) 7px,calc(100% - 7px) 7px,calc(100% - 7px) 20px,100% 20px,100% calc(100% - 20px),calc(100% - 7px) calc(100% - 20px),calc(100% - 7px) calc(100% - 7px),calc(100% - 20px) calc(100% - 7px),calc(100% - 20px) 100%,20px 100%,20px calc(100% - 7px),7px calc(100% - 7px),7px calc(100% - 20px),0 calc(100% - 20px),0 20px,7px 20px,7px 7px,20px 7px)}
+.hero-in{min-height:440px;border:3px solid #efe6cd;position:relative;overflow:hidden;box-shadow:inset 0 0 0 4px var(--night);background:linear-gradient(#08172e 0,#10294d 55%,#27406a 100%)}
+.stars{position:absolute;inset:0;background-image:radial-gradient(2px 2px at 8% 18%,#f6ecd3 98%,transparent),radial-gradient(2px 2px at 22% 62%,#f6ecd3 98%,transparent),radial-gradient(3px 3px at 41% 12%,#f6ecd3 98%,transparent),radial-gradient(2px 2px at 57% 40%,#f6ecd3 98%,transparent),radial-gradient(2px 2px at 71% 20%,#f6ecd3 98%,transparent),radial-gradient(3px 3px at 84% 52%,#f6ecd3 98%,transparent),radial-gradient(2px 2px at 93% 14%,#f6ecd3 98%,transparent),radial-gradient(2px 2px at 33% 82%,#f6ecd3 98%,transparent),radial-gradient(2px 2px at 64% 76%,#f6ecd3 98%,transparent);opacity:.9;animation:tw 4s steps(2) infinite}
+@keyframes tw{50%{opacity:.55}}
+.moon{position:absolute;right:12%;top:56px;width:92px;height:92px;border-radius:50%;background:#f6ecd3;box-shadow:inset -16px -8px 0 #e3d6b0}
+.ground{position:absolute;left:0;right:0;bottom:0;height:70px;background:#0b1a2c;clip-path:polygon(0 40%,8% 40%,8% 20%,18% 20%,18% 55%,30% 55%,30% 30%,42% 30%,42% 60%,56% 60%,56% 25%,66% 25%,66% 50%,80% 50%,80% 15%,90% 15%,90% 45%,100% 45%,100% 100%,0 100%)}
+.hero-copy{position:relative;z-index:1;padding:54px 5% 70px;color:#f6ecd3;max-width:70%}
+.hero-copy h1{font-family:'DotGothic16','Noto Sans JP',sans-serif;font-weight:400;font-size:clamp(34px,5.5vw,78px);line-height:1.34;letter-spacing:-.035em;-webkit-text-stroke:2.5px currentColor;paint-order:stroke fill}
+.hero-copy h1 span{display:block}
+.hero-copy p{font-size:clamp(15px,1.6vw,23px);line-height:1.65;margin-top:19px;font-weight:500}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:15px;min-height:54px;background:var(--red);color:#fff7e7;padding:13px 28px;font-size:19px;font-weight:700;margin-top:29px;border:3px solid #f6ecd3;box-shadow:4px 0 #f6ecd3,-4px 0 #f6ecd3,0 4px #f6ecd3,0 -4px #f6ecd3;min-width:280px}
+.btn:hover{background:#c53721}
+.hero-yt{display:table;font-size:16px;font-weight:500;border-bottom:1px solid currentColor;margin-top:22px;padding:5px 0}
+.memo{position:absolute;right:20px;bottom:18px;width:140px;background:#faf5e8;color:#171e22;transform:rotate(-9deg);padding:12px 15px 12px;box-shadow:2px 3px 5px #0005;z-index:2;pointer-events:none;text-align:center;font-size:15px;letter-spacing:.07em}
+
+/* 棚 */
+.library{margin-top:44px;border:12px solid #f3eee1;border-top-width:0;border-bottom-width:6px;box-shadow:0 3px 8px #273b2420;background:#eae4d5}
+.cab{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:10px 26px;padding:24px 24px 16px;background:linear-gradient(#faf6ea,#f2eddf);border:1px solid #d3cbb9;border-top:0;box-shadow:0 9px 15px -10px #15291d80;position:relative;z-index:2}
+.sec-h{display:flex;align-items:center;gap:20px}.sec-h h2{font-size:34px;font-weight:900;letter-spacing:.07em;white-space:nowrap}
+.cross{display:block;width:7px;height:7px;background:var(--red);box-shadow:0 -7px var(--ink),0 7px var(--ink),-7px 0 var(--ink),7px 0 var(--ink);margin:0 7px}
+.ctl{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap}
+.search{display:flex;align-items:center;border:1px solid #7c827b;border-radius:5px;min-width:180px;max-width:285px;flex:1;height:44px;padding-left:13px;gap:8px}
+.search input{background:transparent;border:0;min-width:0;width:100%;color:var(--ink);font-size:14px;padding:10px 12px 10px 0}.search input:focus{outline:0}.search:focus-within{border-color:var(--green)}
+.cats{display:flex;gap:8px;flex-wrap:wrap}
+.cats button{border:1px solid var(--green);border-radius:5px;min-height:44px;background:transparent;color:var(--green);padding:8px 12px;font-size:13px;font-weight:700;white-space:nowrap}
+.cats button:hover{background:#2056490d}.cats button[aria-pressed=true]{background:var(--green);color:var(--paper)}
+.meta{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)}
+.meta select{border:0;background:transparent;color:var(--ink);font-weight:700}
+.grid{container-type:inline-size;display:flex;flex-direction:column;--columns:4;--gap:26px;--inset:30px;--top:28px;--label:108px}
+.row{--slot:calc((100cqw - (var(--columns) - 1)*var(--gap) - var(--inset)*2)/var(--columns));--bw:calc(var(--slot)*.82);--bh:calc(var(--bw)*1.5);--stage:calc(var(--bh) + 18px);--deck:calc(var(--top) + var(--stage) + 12px);display:grid;grid-template-columns:repeat(var(--columns),minmax(0,1fr));column-gap:var(--gap);position:relative;isolation:isolate;padding:var(--top) var(--inset) 0}
+.back{position:absolute;inset:0 0 auto;height:calc(var(--deck) - 12px);background:linear-gradient(180deg,#d3cec0 0,#e6e1d3 32px,#ede8da 55%,#ded8c9);box-shadow:inset 0 16px 24px -12px #1b211f60,inset 15px 0 18px -13px #1c201e5c,inset -15px 0 18px -13px #1c201e45;z-index:-3}
+.side{position:absolute;top:0;bottom:calc(var(--label) + 20px);width:var(--inset);z-index:-1}
+.side.l{left:0;background:linear-gradient(90deg,#f6f2e6,#e3ddcd 30%,#c9c2b1);clip-path:polygon(0 0,100% 18px,100% calc(100% - 10px),0 100%)}
+.side.r{right:0;background:linear-gradient(90deg,#c9c2b1,#e6e0d1 70%,#f8f4e8);clip-path:polygon(0 18px,100% 0,100% 100%,0 calc(100% - 10px))}
+.floor{position:absolute;left:0;right:0;top:calc(var(--deck) - 28px);height:28px;background:linear-gradient(180deg,#c9c1ad,#e8e2d1 40%,#f6f2e5);clip-path:polygon(var(--inset) 0,calc(100% - var(--inset)) 0,100% 100%,0 100%);z-index:-2}
+.board{position:absolute;left:-1px;right:-1px;top:var(--deck);bottom:0;background:linear-gradient(180deg,#fbf7eb,#f0ebdf 82%,#e1dacc);border-top:4px solid #345b4c;border-bottom:2px solid #c9c0ae;box-shadow:inset 0 2px 0 #ffffffb3,0 8px 14px -9px #111f1ba3;z-index:-1}
+.card{min-width:0;position:relative}
+.stage{display:block;position:relative;width:100%;height:var(--stage);perspective:3000px;perspective-origin:50% 100%;color:inherit}
+.stage::before{content:'';position:absolute;left:6%;right:4%;bottom:-9px;height:18px;border-radius:50%;background:radial-gradient(ellipse,#19261d55 0,#19261d22 45%,transparent 72%)}
+.box{--depth:calc(var(--bw)*.44);display:block;position:relative;width:var(--bw);height:var(--bh);top:18px;margin-inline:auto;transform-style:preserve-3d;transform:rotateX(-2deg) rotateY(29deg);transform-origin:50% 100%;transition:transform .3s cubic-bezier(.2,.75,.3,1);box-shadow:10px 14px 14px -12px #081a2b70}
+.front{display:flex;flex-direction:column;justify-content:space-between;position:absolute;inset:0;overflow:hidden;background:var(--c);border:1px solid #121b2780;transform:translateZ(calc(var(--depth)/2));backface-visibility:hidden;color:#f5ecd6;padding:10%}
+.front>img.bgi{position:absolute;left:-15%;top:-15%;width:130%;height:130%;object-fit:cover;filter:blur(16px) brightness(.75) saturate(1.2)}.front>img.shot{position:absolute;left:0;top:22%;width:100%;aspect-ratio:16/9;object-fit:cover;z-index:1;box-shadow:0 5px 12px #000a;border-block:2px solid #f6ecd388}.front>svg{position:absolute;inset:0;width:100%;height:100%;display:block}.front::before{content:'';position:absolute;inset:0;z-index:1;background:linear-gradient(transparent 52%,#08172ee6 82%);pointer-events:none}.front .bd{position:absolute;z-index:2;right:7%;top:5%;background:var(--red);color:#fff7e7;font-size:clamp(7px,calc(var(--bw)*.06),11px);font-weight:900;padding:2px 5px;letter-spacing:.05em}
+.front::after{content:'';z-index:3;position:absolute;inset:5px;border:1px solid #f5ecd655;pointer-events:none}
+.front .pub{position:relative;z-index:2;text-shadow:0 1px 2px #0008;font-size:clamp(7px,calc(var(--bw)*.055),11px);letter-spacing:.2em;font-weight:900;opacity:.85}
+.front .ic{position:relative;text-align:center;font-size:clamp(24px,calc(var(--bw)*.3),64px);line-height:1;filter:drop-shadow(0 3px 0 #0003)}
+.front .ti{position:relative;z-index:2;font-family:'DotGothic16','Noto Sans JP',sans-serif;font-size:clamp(11px,calc(var(--bw)*.105),22px);line-height:1.35;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;text-shadow:0 2px 0 #0004;overflow-wrap:anywhere}
+.spine{position:absolute;left:0;top:0;bottom:0;width:var(--depth);transform-origin:left;transform:translateZ(calc(var(--depth)/2)) rotateY(90deg);background:linear-gradient(90deg,#0003,#ffffff08 45%,#0001),var(--c);border:1px solid #dbc59c60;color:#fff0cc;display:flex;align-items:center;justify-content:center;padding:12px 0;overflow:hidden}
+.spine span{writing-mode:vertical-rl;font-family:'Noto Sans JP',sans-serif;font-weight:900;font-size:clamp(11px,calc(var(--bh)*.075),26px);max-height:92%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transform:scaleX(-1.5);text-shadow:0 1px 1px #0004}
+.top{position:absolute;top:0;left:0;right:0;height:var(--depth);background:linear-gradient(#ffffff20,#0003),var(--c);transform-origin:top;transform:translateZ(calc(var(--depth)/2)) rotateX(-90deg);border:1px solid #ddc7a24f}
+.stage:active .box{transform:translateY(-5px) rotateX(-3deg) rotateY(32deg)}
+@media(hover:hover) and (pointer:fine){.stage:hover .box{transform:translateY(-13px) rotateX(-4deg) rotateY(34deg) rotateZ(-.6deg)}}
+.stage:focus-visible .box{transform:translateY(-8px) rotateX(-3deg) rotateY(32deg)}
+.info{height:var(--label);margin-top:20px;padding:9px 4px 12px;display:grid;grid-template-columns:1fr auto;grid-template-rows:minmax(26px,1fr) 18px 19px;gap:4px 10px;align-items:center}
+.info .t{grid-column:1/-1;line-height:1.5;font-size:16px;font-weight:700;overflow-wrap:anywhere;color:#141e27;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.info .k{font-size:12px;color:#444e48}
+.info .tag{font-size:10px;border:1px solid #96998e;border-radius:2px;padding:2px 6px;justify-self:start}
+.info .go{grid-column:2;grid-row:2/4;font-size:16px;min-height:44px;display:inline-flex;align-items:center;font-weight:700;color:var(--green);border-bottom:1px solid currentColor;white-space:nowrap}.info .go:hover{color:var(--red)}
+.empty{text-align:center;padding:40px 12px}.empty h3{font-size:20px}.empty button{background:var(--green);color:#fff;border:0;padding:12px 16px;margin-top:18px;min-height:44px}
+.about{border-top:2px solid var(--ink);margin:50px 22px 0;padding:28px 0;display:grid;grid-template-columns:1fr 2fr;gap:35px}
+.about h2{font-size:19px}.about p{font-size:13px;line-height:2}
+.about a{display:inline-flex;align-items:center;min-height:44px;font-size:13px;color:var(--green);text-decoration:underline;text-underline-offset:5px}
+footer{border-top:1px solid var(--line);padding:22px;font-size:11px;display:flex;justify-content:space-between;align-items:center}footer a{min-height:44px;display:flex;align-items:center}
+@media(max-width:1100px){.grid{--columns:3}.cab{grid-template-columns:1fr}.ctl{justify-content:flex-start}}
+@media(max-width:700px){
+.site-shell{padding:0 14px}.site-header{height:64px}.brand{font-size:32px}#main-nav{gap:16px;font-size:12px}
+.hero-in{min-height:380px}.hero-copy{max-width:100%;padding:36px 6% 60px}.btn{min-width:0;width:100%}.memo{display:none}.moon{width:40px;height:40px;top:14px;right:16px;box-shadow:inset -8px -4px 0 #e3d6b0}.hero-copy{padding-top:64px}
+.grid{--columns:2;--gap:12px;--inset:18px;--top:20px;--label:118px}
+.info{grid-template-columns:1fr auto;grid-template-rows:auto auto;gap:2px 8px;align-content:start}.info .t{font-size:14px}.info .k{grid-column:1;grid-row:2;font-size:11px}.info .tag{display:none}.info .go{grid-column:2;grid-row:2;font-size:14px;min-height:36px}
+.sec-h h2{font-size:26px}.cab{padding:18px 14px 12px}.search{max-width:none}
+.library{border-width:6px;border-top-width:0}.about{grid-template-columns:1fr;gap:10px;margin:36px 8px 0}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</head>
+<body>
+<div class="site-shell" id="top">
+<header class="site-header">
+  <a class="brand" href="#top" aria-label="ホーム">HIROISM</a>
+  <nav id="main-nav" aria-label="メインナビゲーション">
+    <a class="cur" href="#shelf">ゲームの棚</a>
+    <a href="#about">について</a>
+  </nav>
+</header>
+<main>
+  <section class="hero" aria-labelledby="ttl">
+    <div class="hero-in">
+      <div class="stars"></div><div class="moon"></div><div class="ground"></div>
+      <div class="hero-copy">
+        <h1 id="ttl"><span>動画のゲーム、</span><span>ここで遊べます。</span></h1>
+        <p>動画で作ったゲームを置いています。<br>スマホでも、ブラウザですぐ遊べます。</p>
+        <a class="btn" href="#shelf">ゲームを選ぶ <span aria-hidden="true">↓</span></a>
+      </div>
+    </div>
+    <div class="memo" aria-hidden="true">どれにする？</div>
+  </section>
+
+  <section class="library" id="shelf" aria-labelledby="lib-h">
+    <div class="cab">
+      <div class="sec-h"><span class="cross"></span><h2 id="lib-h">ゲーム一覧</h2><span class="cross"></span></div>
+      <div class="ctl">
+        <div class="search"><span aria-hidden="true">🔍</span><input id="q" type="search" placeholder="ゲーム名で探す" aria-label="ゲームを検索" autocomplete="off"></div>
+        <div class="cats" id="cats" role="group" aria-label="ジャンル"></div>
+      </div>
+      <div class="meta"><span id="count" aria-live="polite"></span>
+        <label>並び替え <select id="sort"><option value="latest">最新順</option><option value="oldest">古い順</option><option value="name">名前順</option></select></label>
+      </div>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty" hidden><h3>ゲームが見つかりませんでした</h3><button type="button" id="reset">すべてのゲームに戻る</button></div>
+  </section>
+
+  <section class="about" id="about">
+    <h2>について</h2>
+    <div><p>動画で作ったゲームを、この棚に追加していきます。<br>カメラで体を動かすもの、スマホでタップするもの、声だけで遊ぶものがあります。</p></div>
+  </section>
+</main>
+<footer><p>© 2026 HIROISM</p><a href="#top">トップへ ↑</a></footer>
+</div>
+<script src="covers.js"></script>
+<script>
+var GAMES = {{GAMES}};
+var CATS = {{CATS}};
+var PALETTE = ["#12304a","#5a2a3a","#1f4d3f","#4a3a6b","#7a3b1d","#27406a","#3d4f1f","#6b2f55"];
+var $ = function(id){return document.getElementById(id)};
+var state = {cat:"all", q:"", sort:"latest"};
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function hash(s){var h=0;for(var i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))>>>0;return h}
+function catOf(id){for(var i=0;i<CATS.length;i++)if(CATS[i].id===id)return CATS[i];return CATS[1]}
+function cols(){var g=$("grid");return parseInt(getComputedStyle(g).getPropertyValue("--columns"))||4}
+
+function buildCats(){
+  var h='<button type="button" data-c="all" aria-pressed="true">すべて</button>';
+  CATS.forEach(function(c){var n=GAMES.filter(function(g){return g.cat===c.id}).length; if(n) h+='<button type="button" data-c="'+c.id+'" aria-pressed="false">'+esc(c.short)+'</button>'});
+  $("cats").innerHTML=h;
+}
+function filtered(){
+  var q=state.q.trim().toLowerCase();
+  var l=GAMES.filter(function(g){
+    if(state.cat!=="all"&&g.cat!==state.cat) return false;
+    return !q || (g.title+" "+g.desc).toLowerCase().indexOf(q)>=0;
+  });
+  l.sort(function(a,b){
+    if(state.sort==="name") return a.title.localeCompare(b.title,"ja");
+    var d=a.updated<b.updated?-1:a.updated>b.updated?1:0;
+    return state.sort==="oldest"?d:-d;
+  });
+  return l;
+}
+function card(g){
+  var c=catOf(g.cat), href=esc(g.slug)+"/", svg=window.coverSVG?coverSVG(g.slug):"";
+  var m=svg.match(/stop-color="([^"]+)"/), col=m?m[1]:PALETTE[hash(g.slug)%PALETTE.length];
+  var badge=g.cat==="camera"?'<span class="bd">全身</span>':"";
+  return '<div class="card"><a class="stage" href="'+href+'" aria-label="'+esc(g.title)+'で遊ぶ"><span class="box" style="--c:'+col+'">'
+   +'<span class="front">'+svg+'<img class="bgi" src="covers/'+esc(g.slug)+'.jpg" alt="" loading="lazy" onerror="this.remove()"><img class="shot" src="covers/'+esc(g.slug)+'.jpg" alt="" loading="lazy" onerror="this.remove()"><span class="pub">HIROISM</span>'+badge+'<span class="ti">'+esc(g.title)+'</span></span>'
+   +'<span class="spine"><span>'+esc(g.title)+'</span></span><span class="top"></span></span></a>'
+   +'<div class="info"><div class="t">'+esc(g.title)+'</div><div class="k">'+esc(c.short)+'</div><span class="tag">'+esc(g.updated)+'</span><a class="go" href="'+href+'">あそぶ →</a></div></div>';
+}
+function render(){
+  var l=filtered(), n=cols(), h="";
+  $("count").textContent=l.length+"こ";
+  $("empty").hidden=l.length>0;
+  for(var i=0;i<l.length;i+=n){
+    h+='<div class="row"><div class="back"></div><div class="side l"></div><div class="side r"></div><div class="floor"></div><div class="board"></div>';
+    for(var j=i;j<i+n;j++) h+= j<l.length ? card(l[j]) : '<div></div>';
+    h+='</div>';
+  }
+  $("grid").innerHTML=h;
+}
+$("cats").addEventListener("click",function(e){
+  var b=e.target.closest("button"); if(!b) return;
+  state.cat=b.dataset.c;
+  [].forEach.call($("cats").children,function(x){x.setAttribute("aria-pressed",x===b)});
+  render();
+});
+$("q").addEventListener("input",function(){state.q=this.value;render()});
+$("sort").addEventListener("change",function(){state.sort=this.value;render()});
+$("reset").addEventListener("click",function(){state.cat="all";state.q="";$("q").value="";$("cats").firstChild.click()});
+var lastN=0;window.addEventListener("resize",function(){var n=cols();if(n!==lastN){lastN=n;render()}});
+buildCats();lastN=cols();render();
+</script>
+</body>
+</html>

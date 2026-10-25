@@ -73,61 +73,17 @@ $games = @($games | ForEach-Object {
 $jsonText = "[`n" + (($games | ForEach-Object { ConvertTo-Json $_ -Compress }) -join ",`n") + "`n]"
 [IO.File]::WriteAllText($jsonPath, $jsonText, (New-Object Text.UTF8Encoding($false)))
 
-# 3) トップページを再生成(分類ボタン → タップするとその分類のゲーム一覧)
+# 3) トップページを再生成(index.template.html に games.json と分類を埋め込む。本棚に3Dのパッケージが並ぶ作り)
 $cats = @(
-  @{ id="camera"; name="カメラを使う全身ゲーム"; icon="📷"; note="カメラの前で 体を動かして あそぶ" },
-  @{ id="tap";    name="スマホでタップ";         icon="👆"; note="スマホの画面を さわって あそぶ" },
-  @{ id="voice";  name="声だけで遊ぶゲーム";     icon="🗣️"; note="画面を見ないで 声で あそぶ" },
-  @{ id="swing";  name="スマホを振る（注意）";   icon="📱"; note="スマホを ふって あそぶ。まわりに ちゅうい！" }
+  @{ id="camera"; short="カメラ";   icon="📷" },
+  @{ id="tap";    short="タップ";   icon="👆" },
+  @{ id="voice";  short="声";       icon="🗣️" },
+  @{ id="swing";  short="振る(注意)"; icon="📱" }
 )
-$buttons = ""; $sections = ""
-foreach ($c in $cats) {
-  $list = @($games | Where-Object { $_.cat -eq $c.id })
-  $cards = ($list | ForEach-Object {
-    $t = [Net.WebUtility]::HtmlEncode($_.title); $d = [Net.WebUtility]::HtmlEncode($_.desc)
-    "<a class=""card"" href=""$($_.slug)/""><h2>$t</h2><p>$d</p><small>更新: $($_.updated)</small></a>"
-  }) -join "`n"
-  $buttons  += "<a class=""cat cat-$($c.id)"" href=""#$($c.id)""><span class=""ic"">$($c.icon)</span><b>$($c.name)</b><span class=""note"">$($c.note)</span><span class=""n"">$($list.Count)こ</span></a>`n"
-  $sections += "<section class=""games"" id=""$($c.id)""><a class=""back"" href=""#"">← もどる</a><h2 class=""head"">$($c.icon) $($c.name)</h2><div class=""list"">`n$cards`n</div></section>`n"
-}
-$html = @'
-<!DOCTYPE html>
-<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>HTMLゲーム集</title>
-<style>
-body{margin:0;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;background:#fff8e7;color:#2b2b2b}
-.wrap{max-width:820px;margin:0 auto;padding:16px}
-h1{text-align:center;color:#ff7a2f}
-.cats{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
-.cat{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 16px;border-radius:20px;text-decoration:none;color:#fff;box-shadow:0 3px 10px #0003;text-align:center}
-.cat:hover{transform:translateY(-2px)}
-.cat .ic{font-size:2.6rem;line-height:1}.cat b{font-size:1.35rem}.cat .note{font-size:.9rem;opacity:.95}
-.cat .n{margin-top:4px;background:#fff3;border-radius:99px;padding:2px 12px;font-size:.9rem}
-.cat-camera{background:#ff7a2f}.cat-tap{background:#3b82f6}.cat-voice{background:#16a34a}.cat-swing{background:#e11d48}
-.games{display:none}
-.back{display:inline-block;margin:4px 0 8px;padding:8px 16px;border-radius:99px;background:#fff;color:#2b2b2b;text-decoration:none;box-shadow:0 2px 6px #0002}
-.head{margin:8px 0 14px}
-.list{display:grid;gap:14px;grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
-.card{display:block;background:#fff;border-radius:16px;padding:16px;box-shadow:0 2px 8px #0002;text-decoration:none;color:inherit}
-.card:hover{transform:translateY(-2px)}
-.card h2{margin:0 0 6px;color:#3b82f6;font-size:1.2rem}.card p{margin:0 0 8px}.card small{color:#888}
-</style><script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head><body><div class="wrap"><h1>HTMLゲーム集</h1>
-<div class="cats" id="top">
-{{BUTTONS}}</div>
-{{SECTIONS}}</div>
-<script>
-function show(){
-  var id=location.hash.slice(1), sec=id&&document.getElementById(id);
-  var ok=sec&&sec.className=="games";
-  document.getElementById("top").style.display=ok?"none":"";
-  var all=document.querySelectorAll(".games");
-  for(var i=0;i<all.length;i++) all[i].style.display=(ok&&all[i]===sec)?"block":"none";
-  window.scrollTo(0,0);
-}
-window.addEventListener("hashchange",show); show();
-</script></body></html>
-'@
-$html = $html.Replace("{{BUTTONS}}", $buttons).Replace("{{SECTIONS}}", $sections)
+$gamesJs = "[" + (($games | ForEach-Object { ConvertTo-Json $_ -Compress }) -join ",") + "]"
+$catsJs  = "[" + (($cats | ForEach-Object { ConvertTo-Json ([pscustomobject]$_) -Compress }) -join ",") + "]"
+$html = [IO.File]::ReadAllText((Join-Path $Repo "index.template.html"), [Text.Encoding]::UTF8)
+$html = $html.Replace("{{GAMES}}", $gamesJs.Replace("</", "<\/")).Replace("{{CATS}}", $catsJs)
 [IO.File]::WriteAllText((Join-Path $Repo "index.html"), $html, (New-Object Text.UTF8Encoding($false)))
 New-Item -ItemType File -Force (Join-Path $Repo ".nojekyll") | Out-Null
 
