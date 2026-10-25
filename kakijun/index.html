@@ -313,7 +313,7 @@ const isEnLv=lv=>lv>=EN0, isWordLv=lv=>lv>=EN0+2, isEnCh=ch=>!!(KVG[ch]&&KVG[ch]
 const LEVEL_ICON=['あ','ア','花','星','湖','飛','夢','誕','響','輝','麗','A','a','cat','apple','weather','culture'].map((c,i)=>LEVELS[i].includes(c)?c:Array.from(LEVELS[i])[0]);
 const LEVEL_COL=[['var(--orange)','var(--orange-s)'],['var(--blue)','var(--blue-s)'],['var(--green)','var(--green-s)'],['var(--grape)','var(--grape-s)'],['var(--red)','var(--red-s)']];
 const MODES=[
-  {id:'easy',name:'かんたん',ds:'やじるしで かきじゅんを おしえてくれるよ',cls:'green'},
+  {id:'easy',name:'かんたん',ds:'やじるしで かきじゅんを おしえてくれるよ',dsEn:'なぞる ところが ひかって おしえてくれるよ',cls:'green'},
   {id:'normal',name:'ふつう',ds:'うすい もじを なぞって かこう',cls:'blue'},
   {id:'hard',name:'むずかしい',ds:'なにも ない ところに かこう',cls:'red'},
   {id:'test',name:'かきとりテスト',ds:'よみがなを 見て、おぼえた かんじを かこう',dsEn:'いみを 見て、つづりを かこう',cls:'grape',kanjiOnly:true}];
@@ -698,6 +698,12 @@ function drawNum(c,st,num,col){
   const[x,y]=st.num;c.fillStyle=col||'#ff7a00';circle(c,x,y,4.1);c.fill();
   c.fillStyle='#fff';c.font='900 5.6px "Zen Maru Gothic",sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText(num,x,y+.4);
 }
+function drawGlowRest(c,S,done,now){
+  c.save();c.lineCap='round';c.lineJoin='round';const a=.32+.16*Math.sin(now/260);
+  c.strokeStyle=`rgba(255,166,77,${a})`;c.lineWidth=9;S.forEach((st,i)=>{if(!done||!done[i])c.stroke(st.p2)});
+  c.strokeStyle='rgba(255,122,0,.55)';c.lineWidth=1.6;c.setLineDash([2,3]);c.lineDashOffset=-now/60;S.forEach((st,i)=>{if(!done||!done[i])c.stroke(st.p2)});
+  c.restore();
+}
 function drawArrowGuide(c,st,now,num){
   c.save();c.lineCap='round';c.lineJoin='round';
   c.strokeStyle='rgba(255,166,77,.42)';c.lineWidth=8.6;c.stroke(st.p2);
@@ -778,7 +784,7 @@ function renderModeMinis(now){
     if(mm.mode==='test'&&k===0){c.fillStyle='#c9b6f2';c.font='900 44px "Zen Maru Gothic",sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText('？',54.5,57)}
     if(mm.mode!=='hard'&&mm.mode!=='test')drawGuide(c,g);
     for(let i=0;i<Math.min(k,g.strokes.length);i++)drawInk(c,g.strokes[i],1,INK);
-    if(mm.mode==='easy'&&k<g.strokes.length)drawArrowGuide(c,g.strokes[k],now,k+1);
+    if(mm.mode==='easy'&&k<g.strokes.length){if(isEnCh(ch))drawGlowRest(c,g.strokes,null,now);else drawArrowGuide(c,g.strokes[k],now,k+1)}
     if((mm.mode==='hard'||mm.mode==='test')&&k===g.strokes.length)drawHana(c,1,2.4);
   }
 }
@@ -842,11 +848,11 @@ function startChar(ch,keepQ){
     const ws=WORDS[ch]||[];PL.q=keepQ||(ws.length?pick(ws):[ch,READ[ch]||'',0,READ[ch]||'']);
     $('#tGlyph').innerHTML=qwordHTML(PL.q,false);$('#tRead').textContent=`（${PL.q[1]}）`;
   }else{$('#tGlyph').textContent=ch;const rd=READ[ch]||(typeof READ_FREQ!=='undefined'&&READ_FREQ[ch])||READ_AUTO[ch]||(isEnCh(ch)?ABC_NAME[ch.toUpperCase()]:'');$('#tRead').textContent=rd?`（${rd}）`:''}
-  $('#tKaku').textContent=n;
-  $('#btnShow').textContent=G.mode==='easy'?'みほん':test?'こたえ':'ヒント';
+  $('#tKaku').textContent=n;$('#tKaku').parentElement.hidden=isEnCh(ch); // 英語は 画数も 出さない
+  $('#btnShow').textContent=G.mode==='easy'?(isEnCh(ch)?'ひからせる':'みほん'):test?'こたえ':'ヒント';
   buildDots();hideBubble();
-  if(G.mode==='easy')startDemo();
-  else if(!(G.w&&G.w.i>0))setTimeout(()=>{if(PL&&PL.ch===ch&&!PL.cur)bannerOnPaper(G.w&&test?'いみの たんごを かこう！':test?'□の かんじを かこう！':G.mode==='hard'?'じぶんで かいてみよう！':'なぞって かこう！')},250);
+  if(G.mode==='easy'&&!isEnCh(ch))startDemo();
+  if(!(G.mode==='easy'&&!isEnCh(ch))&&!(G.w&&G.w.i>0))setTimeout(()=>{if(PL&&PL.ch===ch&&!PL.cur)bannerOnPaper(G.w&&test?'いみの たんごを かこう！':test?'□の かんじを かこう！':G.mode==='easy'?'なぞって みよう！':G.mode==='hard'?'じぶんで かいてみよう！':'なぞって かこう！')},250);
 }
 function qwordHTML(q,done){
   return'<span class="qword">'+Array.from(q[0]).map((c,i)=>i===q[2]?`<span class="qb"><span class="rt">${q[3]}</span><span class="bx${done?' ok':''}">${done?c:''}</span></span>`:`<span>${c}</span>`).join('')+'</span>';
@@ -885,7 +891,7 @@ function renderPlay(now){
       c.fillStyle=`rgba(255,215,90,${.55*a})`;circle(c,q[0],q[1],7+age/40);c.fill();
       c.fillStyle=`rgba(255,255,255,${.9*a})`;circle(c,q[0],q[1],2.6);c.fill();c.restore()}
     if(age<700&&PL.ink[j].perfect){c.save();c.globalAlpha=.6*(1-age/700);c.strokeStyle='#ffc83d';c.lineWidth=11;c.lineCap='round';c.stroke(S[i].p2);c.restore();drawInk(c,S[i],age/200,INK)}
-    if(G.mode==='easy'&&!PL.done&&n<=12)drawNum(c,S[i],i+1,'#9aa3b5');
+    if(G.mode==='easy'&&!PL.done&&n<=12&&!PL.sdone)drawNum(c,S[i],i+1,'#9aa3b5');
   }
   if(PL.demo){
     const d=PL.demo;let st=S[d.i],p=(now-d.ts)/demoDur(st);
@@ -897,7 +903,11 @@ function renderPlay(now){
     }
   }else if(!PL.done&&PL.cur<n){
     const ni=nextIdx();
-    if(G.mode==='easy')drawArrowGuide(c,S[ni],now,ni+1);
+    if(PL.sdone){ // アルファベット：書き順は 見せない。まだ なぞっていない ところを 光らせる
+      if(G.mode==='easy')drawGlowRest(c,S,PL.sdone,now);
+      else if(PL.hint){const p=(now-PL.hint)/1900;if(p<1){c.globalAlpha=Math.min(1,(1-p)*2.5);drawGlowRest(c,S,PL.sdone,now);c.globalAlpha=1}else PL.hint=null}
+    }
+    else if(G.mode==='easy')drawArrowGuide(c,S[ni],now,ni+1);
     else if(PL.hint){const p=(now-PL.hint)/1900;if(p<1){c.globalAlpha=Math.min(1,(1-p)*2.5);drawArrowGuide(c,S[ni],now,ni+1);c.globalAlpha=1}else PL.hint=null}
   }
   if(PL.wrong){const p=(now-PL.wrong.t)/750;if(p<1){c.save();c.globalAlpha=1-p;c.strokeStyle='#ff3b5c';c.lineWidth=5.4;c.lineCap='round';c.lineJoin='round';
@@ -1071,7 +1081,7 @@ $('#playBack').addEventListener('click',()=>{ensureAudio();sfx.click();$('#resul
 $('#btnRedo').addEventListener('click',()=>{ensureAudio();sfx.click();if(PL&&!PL.done)startChar(PL.ch,PL.q)});
 $('#btnShow').addEventListener('click',()=>{
   ensureAudio();sfx.click();if(!PL||PL.done||PL.demo)return;
-  if(G.mode==='easy'){if(isEnCh(PL.ch)){startChar(PL.ch);return}PL.cur=0;PL.ink=[];buildDots();startDemo();}
+  if(G.mode==='easy'){if(isEnCh(PL.ch)){bubble('ひかっている ところを なぞろう','good');return}PL.cur=0;PL.ink=[];buildDots();startDemo();}
   else if(G.mode==='test'){if(!PL.reveal){PL.reveal=true;PL.misses+=3;sfx.hint();bubble('こたえは うすく 出したよ。なぞって おぼえよう','good')}}
   else{PL.hint=performance.now();PL.misses++;sfx.hint();bubble('ヒント！ （★が へるよ）','good')}
 });
@@ -1090,7 +1100,7 @@ function showFinal(){
 
 /* ================= title demo ================= */
 const titleCv=$('#titleCv');let tctx=null,tS=0;
-const TD={list:['あ','山','A','花','ネ','g','木','さ','犬','R','カ'],i:0,t0:0};
+const TD={list:['あ','山','花','ネ','木','さ','犬','カ'],i:0,t0:0};
 function renderTitle(now){
   const S=Math.round(titleCv.getBoundingClientRect().width);if(!S)return;
   if(S!==tS){tS=S;tctx=sizeCanvas(titleCv,S)}
