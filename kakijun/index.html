@@ -190,6 +190,7 @@ html,body{height:100%;overflow:hidden;background:var(--sky-top);color:var(--on-n
 /* ---------- pops ---------- */
 .pop{position:absolute;translate:-50% -50%;font-weight:900;white-space:nowrap;font-size:clamp(22px,3vmin + 10px,40px);color:#fff;
   -webkit-text-stroke:6px var(--orange-s);paint-order:stroke fill;animation:popUp 1.3s cubic-bezier(.2,1.6,.4,1) forwards;letter-spacing:.04em}
+.fly{position:absolute;left:0;top:0;font-family:var(--f-display);font-weight:900;color:var(--ink);-webkit-text-stroke:3px #fff;paint-order:stroke fill;text-shadow:0 0 18px rgba(255,200,61,.9);line-height:1;pointer-events:none}
 .pop.gold{color:var(--gold);-webkit-text-stroke-color:#7a3d00}
 .pop.note{color:#fff;-webkit-text-stroke:5px var(--grape-s);font-size:clamp(18px,2vmin + 10px,28px)}
 .pop.combo{color:#7cf7ff;-webkit-text-stroke-color:#1b3a8a;font-size:clamp(20px,2.4vmin + 10px,32px)}
@@ -915,6 +916,8 @@ function renderPlay(now){
   if(drawing&&drawing.length){c.strokeStyle=INK;c.lineWidth=5.8;c.lineCap='round';c.lineJoin='round';c.beginPath();c.moveTo(drawing[0][0],drawing[0][1]);
     for(const q of drawing)c.lineTo(q[0],q[1]);if(drawing.length===1)c.lineTo(drawing[0][0]+.01,drawing[0][1]);c.stroke()}
   if(PL.hana)drawHana(c,(now-PL.hana)/1100);
+  // たんごの とちゅう：書けた 文字を 消して まっさらな 紙に もどす
+  if(PL.leave){const p=Math.max(0,Math.min(1,(now-PL.leave-120)/380));if(p>0){c.globalAlpha=p;drawSheet(c,isEnCh(PL.ch));c.globalAlpha=1}}
 }
 
 function canDraw(){return PL&&!PL.done&&!PL.demo&&$('#result').hidden}
@@ -1025,6 +1028,20 @@ function handleStrokeEn(pts){
   strokeFx(S[newly[0]],prec>.97);
 }
 function nextIdx(){if(!PL.sdone)return PL.cur;const i=PL.sdone.findIndex(x=>!x);return i<0?PL.cur:i}
+// 書けた 文字が 紙から 右の たんごの 札へ 飛んでいく
+function flyLetter(ch,x,y,slot){
+  const el=document.createElement('div');el.className='fly';el.textContent=ch;$('#pops').appendChild(el);
+  const r=slot?slot.getBoundingClientRect():null,tx=r?r.left+r.width/2:x,ty=r?r.top+r.height/2:y-120;
+  const fs=Math.min(paperS*.45,160);el.style.fontSize=fs+'px';
+  const a=el.animate([
+    {transform:`translate(${x}px,${y}px) translate(-50%,-50%) scale(1)`,opacity:1},
+    {transform:`translate(${(x+tx)/2}px,${Math.min(y,ty)-80}px) translate(-50%,-50%) scale(.7) rotate(-20deg)`,opacity:1,offset:.45},
+    {transform:`translate(${tx}px,${ty}px) translate(-50%,-50%) scale(${r?Math.max(.12,r.height/fs):.2}) rotate(0deg)`,opacity:.9}
+  ],{duration:560,easing:'cubic-bezier(.5,0,.3,1)'});
+  let gone=false;const end=()=>{if(gone)return;gone=true;el.remove();if(slot){slot.animate([{transform:'scale(1.8)'},{transform:'scale(1)'}],{duration:300,easing:'cubic-bezier(.2,2,.4,1)'});
+    starBurst(tx,ty,14,300);sfx.pop()}};
+  a.onfinish=end;setTimeout(end,700); // 画面が 裏に あっても かならず 消す
+}
 function finishChar(){
   const now=performance.now();PL.done=true;PL.finT=now;buildDots();
   if(G.w&&G.w.i<G.w.w.length-1){
@@ -1032,8 +1049,9 @@ function finishChar(){
     const r=paperCv.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
     sfx.letter();starBurst(cx,cy,45,Math.min(FW,FH)*.8);
     spawn({type:'ring',x:cx,y:cy,life:.6,size:20,grow:Math.min(FW,FH)*.45,lw:6,color:'#ffd166'});
-    pop(PL.ch+' ！',cx,cy,'gold');
+    PL.leave=now; // 紙の 文字を すっと 消す
     $('#tGlyph').innerHTML=wordHTML(G.mode==='test');
+    flyLetter(PL.ch,cx,cy,$('#tGlyph').querySelectorAll('.wl')[G.w.i-1]);
     const w=$('#paperWrap');w.classList.remove('hit');void w.offsetWidth;w.classList.add('hit');
     const ww=G.w;setTimeout(()=>{if(G.w===ww&&curScreen==='s-play')startChar(ww.w[ww.i])},650);
     return;
