@@ -158,21 +158,30 @@ B.start = async function(say, corner){
   say = say || (() => {});
   if (pose){ B.mode = 'cam'; return true; }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ say('この ひらきかたでは カメラを つかえません。https か localhost で ひらいてください。'); return false; }
-  say('カメラを じゅんび中…');
-  let stream;
-  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } } }); }
-  catch (e){ say('カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'); return false; }
-  buildMirror(corner);
-  video.srcObject = stream;
-  await video.play();
+  if (!video){
+    say('カメラを じゅんび中…');
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } } }); }
+    catch (e){ say('カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'); return false; }
+    buildMirror(corner);
+    video.srcObject = stream;
+    await video.play();
+  }
   asp = B.asp = (video.videoWidth || 640) / (video.videoHeight || 480);
   say('うごきを 見る じゅんび中…（はじめは すこし かかります）');
-  try {
-    const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
-    const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
-    const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
-    try { pose = await make('GPU'); } catch (e){ pose = await make('CPU'); }
-  } catch (e){ say('うごきを 見る しくみを よみこめませんでした。ネットに つながっているか かくにんしてください。'); return false; }
+  let err = null, where = '';
+  for (let n = 0; n < 2 && !pose; n++){
+    try {
+      where = 'プログラム';
+      const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
+      where = 'wasm';
+      const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
+      const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
+      where = 'モデル';
+      try { pose = await make('GPU'); } catch (e){ pose = await make('CPU'); }
+    } catch (e){ err = e; console.error(e); if (n === 0) say('よみこみに しっぱい。もういちど ためしています…'); }
+  }
+  if (!pose){ say(`うごきを 見る しくみを よみこめませんでした。もういちど「カメラで あそぶ」を おすか、Safari や Chrome で ひらいてね。［${where}：${String((err && err.message) || err).slice(0, 90)}］`); return false; }
   say('');
   B.mode = 'cam';
   requestAnimationFrame(loop);
