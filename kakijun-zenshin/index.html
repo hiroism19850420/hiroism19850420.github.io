@@ -345,7 +345,7 @@ const LEVEL_COL=[['var(--orange)','var(--orange-s)'],['var(--blue)','var(--blue-
 const MODES=[
   {id:'easy',name:'かんたん',ds:'やじるしで かきじゅんを おしえてくれるよ',dsEn:'なぞる ところが ひかって おしえてくれるよ',cls:'green'},
   {id:'normal',name:'ふつう',ds:'うすい もじを なぞって かこう',cls:'blue'},
-  {id:'hard',name:'むずかしい',ds:'なにも ない ところに かこう。ペンを とめると かきはじめ',cls:'red'}];
+  {id:'hard',name:'むずかしい',ds:'なにも ない ところに かこう。ひだりてを あげている あいだ かける',cls:'red'}];
 const MODE_COL={easy:['var(--green)','var(--green-s)'],normal:['var(--blue)','var(--blue-s)'],hard:['var(--red)','var(--red-s)'],test:['var(--grape)','var(--grape-s)']};
 // なにも うすい字を 出さない モード
 const isBlank=()=>G.mode==='hard'||G.mode==='test';
@@ -491,6 +491,8 @@ const sfx={
   whoosh(){noise({d:.38,v:.18,ft:'bandpass',f:350,f2:3800,q:1.4,a:.12})},
   gong(){tone({f:98,d:3.2,v:.35,vib:4.5});tone({f:147.5,d:2.6,v:.18});tone({f:262,d:1.8,v:.08});noise({d:.4,v:.25,f:1200});cymbal(0,.22,2.6)},
   penDown(){tone({f:300,f2:900,d:.1,v:.1,type:'triangle'})},
+  lift(){tone({f:500,f2:1600,d:.14,v:.09,type:'triangle'});noise({d:.18,v:.08,ft:'bandpass',f:3000,f2:9000,q:2});bell(2093,.06,.06)},
+  start(){tone({f:440,f2:1320,d:.12,v:.14,type:'triangle'});bell(1568,.03,.09);noise({d:.22,v:.12,ft:'bandpass',f:1200,f2:6000,q:1.2,a:.02})},
   twinkle(pan){tone({f:PENTA[8+((Math.random()*8)|0)],d:.22,v:.035,pan})},
   stroke(i,perfect){
     const f=scaleNote(i);
@@ -1013,7 +1015,7 @@ function sensLabel(){$('#sensBtn').textContent='うでの うごき：'+SENS[sen
 $('#sensBtn').addEventListener('click',()=>{sensI=(sensI+1)%SENS.length;try{localStorage.setItem(SKEY+':sens2',sensI)}catch(e){}sensLabel();sfx.pop()});
 sensLabel();
 const BODY={on:false,pose:null,lm:null,vw:640,vh:480,nextAt:0,lastVT:-1,cost:0,seenT:-9,vis:false,
-  w:null,ax:null,ay:null,tx:0,ty:0,x:0,y:0,dx:-.6,dy:-.8,fake:null};
+  w:null,ax:null,ay:null,tx:0,ty:0,x:0,y:0,dx:-.6,dy:-.8,fake:null,fakeL:false,lup:false,lupEdge:false,ldownEdge:false};
 async function loadPose(){
   if(BODY.pose)return true;
   gmsg('からだを 見る じゅんびちゅう…（はじめは すこし かかります）');
@@ -1053,11 +1055,20 @@ function feedPose(lm,vw,vh,t){
   BODY.dx+=(dx-BODY.dx)*.12;BODY.dy+=(dy-BODY.dy)*.12;
   const tip=[wr[0]+dx*.22*BODY.w,wr[1]+dy*.22*BODY.w],sc=FW/(SENS[sensI].k*BODY.w),[mx,my]=mapCenter();
   BODY.tx=fX((tip[0]-BODY.ax)*sc+mx,t);BODY.ty=fY((tip[1]-BODY.ay)*sc+my,t);
+  // 左手：手首が 肩より 上で「あげた」、肩より 少し 下まで おろしたら「さげた」（ゆれで ぱたぱた しないように）
+  let up=false;
+  if(vis(15)>.35){const lw=P(15),ls=P(11);up=BODY.lup?lw[1]<ls[1]+.15*BODY.w:lw[1]<ls[1]-.1*BODY.w}
+  setLeft(up);
+}
+function setLeft(up){
+  if(up&&!BODY.lup){BODY.lupEdge=true;sfx.lift()}
+  if(!up&&BODY.lup)BODY.ldownEdge=true;
+  BODY.lup=up;
 }
 function bodyTick(now,dt){
   if(!BODY.on)return;
   const t=now/1000;
-  if(BODY.fake){BODY.tx=BODY.fake.x;BODY.ty=BODY.fake.y;BODY.seenT=t}
+  if(BODY.fake){BODY.tx=BODY.fake.x;BODY.ty=BODY.fake.y;BODY.seenT=t;setLeft(!!BODY.fakeL)}
   else{
     const v=$('#camVideo');
     if(BODY.pose&&v.readyState>=2&&v.currentTime!==BODY.lastVT&&now>=BODY.nextAt){
@@ -1075,11 +1086,12 @@ function bodyTick(now,dt){
 
 /* ---- ペンを おろす・あげる（レール） ---- */
 // からだで かくと 手が ふるえるので、ペンは お手本の 線（レール）に すいつく。
-// かきはじめ：かんたん・ふつう＝みどりの 点に ペン先を 0.25びょう あわせる／むずかしい＝紙の 上で 0.5びょう とめる。
+// かきはじめ（まちなし）：かんたん・ふつう＝みどりの 点に ペン先が ふれた しゅんかん／
+// むずかしい＝左手を あげている あいだ ペンが 紙に つく。正しい はじまりに ふれたら かきはじめ、ほかの 画の はじまりなら じゅんばんミス。
 // かいている あいだは、手に いちばん ちかい レールの 点まで インクが のびる（もどらない）。
 // 手が レールから 大きく はなれたら やりなおし、おわりまで のびたら 1画 できあがり
-const BP={down:false,dwell:0,hist:[],t0:0,armed:true,upAt:null,upT:0,ring:0,rail:null};
-const START_R=13,HARD_R=17,HARD_HOLD=500,RAIL_R=24,LOST_T=.9;
+const BP={down:false,dwell:0,hist:[],t0:0,armed:true,upAt:null,upT:0,ring:0,rail:null,trail:[],missed:false};
+const START_R=13,HARD_R=15,RAIL_R=26,LOST_T=1;
 function penCancel(){if(BP.down){BP.down=false;BP.rail=null;drawing=null;scratchStop()}BP.dwell=0;BP.hist.length=0;BP.armed=true;BP.upAt=null}
 function penStarts(){
   const S=PL.g.strokes;
@@ -1102,19 +1114,25 @@ function bodyPen(dt,now){
   BP.hist.push([now,u[0],u[1]]);while(BP.hist.length>2&&now-BP.hist[0][0]>1500)BP.hist.shift();
   if(!BP.armed&&BP.upAt&&dist(u,BP.upAt)>7)BP.armed=true;
   if(!BP.down){
-    if(now-BP.upT<300)return;
+    if(now-BP.upT<120)return;
     if(isBlank()){
-      // うごかしたら また はかりなおす
-      const h=BP.hist,last=h[h.length-1];let i=h.length-1;while(i>0&&Math.hypot(h[i-1][1]-last[1],h[i-1][2]-last[2])<3.2)i--;
-      const held=last[0]-h[i][0],need=BP.armed?HARD_HOLD:HARD_HOLD*2;
-      if(inside){BP.ring=Math.min(1,held/need);
-        if(held>=need){const r=railFor(u,HARD_R);if(r)railDown(r,now);else{BP.armed=false;BP.upAt=u;BP.upT=now;BP.hist.length=0;strokeMiss([u,[u[0]+.01,u[1]]],'place')}}}
+      if(!BODY.lup){BP.missed=false;return}
+      BP.trail.push([BODY.x,BODY.y,now]);
+      const r=railFor(u,HARD_R);if(r){railDown(r,now);return}
+      // ほかの 画の はじまりに ふれた ＝ じゅんばんが ちがう（左手を おろすまで 1回だけ）
+      if(!BP.missed&&!PL.sdone){const S=PL.g.strokes;for(let j=PL.cur+1;j<S.length;j++)if(dist(u,S[j].pts[0])<HARD_R*.8){BP.missed=true;strokeMiss([u,[u[0]+.01,u[1]]],'order');break}}
       return;
     }
     const r=railFor(u,START_R);
-    if(r)BP.dwell+=dt;else BP.dwell=Math.max(0,BP.dwell-dt*3);
-    const need=BP.armed?.25:.7;BP.ring=r?Math.min(1,BP.dwell/need):0;
-    if(r&&BP.dwell>=need)railDown(r,now);
+    // かきおえた 点に かさなる はじまりは、いちど ペンを はなしてから（B の 2画目 など）
+    if(r&&!BP.armed&&BP.upAt){const st=PL.g.strokes[r.si],p0=r.rev?st.pts[st.pts.length-1]:st.pts[0];if(dist(p0,BP.upAt)<10)return}
+    if(r)railDown(r,now);
+    return;
+  }
+  // むずかしい：とちゅうで 左手を おろしたら、8わりまで かけていれば できあがり、たりなければ やりなおし
+  if(isBlank()&&!BODY.lup&&BP.rail){const R=BP.rail;
+    if(R.k>=(R.P.length-1)*.8){R.k=R.P.length-1;railDone(u,now)}
+    else{penCancel();BP.upT=now;sfx.miss();bubble('ひだりてを おろすと ペンが はなれるよ','good')}
     return;
   }
   // レールの 上を すすむ：いまの 点から すこし さきまでの うち、手に いちばん ちかい 点へ
@@ -1125,19 +1143,19 @@ function bodyPen(dt,now){
     R.far=0;R.err+=bd;R.cnt++;
     if(bi>R.k){R.k=bi;const [sx,sy]=paperToScreen(P[R.k]);penMoveFx(sx,sy,now)}else scratchSpeed(0);
   }else{R.far+=dt;scratchSpeed(0);
-    if(R.far>LOST_T){penCancel();BP.armed=false;BP.upAt=u;BP.upT=now;sfx.miss();bubble(isBlank()?'せんから はなれちゃった。もういちど':'みどりの てんから もういちど','good')}}
+    if(R.far>LOST_T){penCancel();BP.upT=now;sfx.miss();bubble(isBlank()?'せんから はなれちゃった。もういちど':'みどりの てんから もういちど','good')}}
   if(BP.down&&R.k>=n-2)railDone(u,now);
 }
 function railDown(r,now){
   const st=PL.g.strokes[r.si],P=r.rev?st.pts.slice().reverse():st.pts;
   BP.rail={si:r.si,rev:r.rev,P,k:0,err:0,cnt:0,far:0};BP.down=true;BP.t0=now;BP.dwell=0;BP.hist.length=0;
   const [sx,sy]=paperToScreen(P[0]);lastMove={x:sx,y:sy,t:now};
-  scratchStart();sfx.penDown();starBurst(sx,sy,12,260);
+  scratchStart();sfx.start();starBurst(sx,sy,18,320);
   spawn({type:'ring',x:sx,y:sy,life:.45,size:4,grow:56,lw:5,color:'#7cf7ff'});
 }
 function railDone(u,now){
   const R=BP.rail,perfect=R.err/Math.max(1,R.cnt)<9;
-  BP.down=false;BP.rail=null;BP.armed=false;BP.upAt=u;BP.upT=now;BP.hist.length=0;scratchStop();
+  BP.down=false;BP.rail=null;BP.armed=false;BP.upAt=R.P[R.P.length-1];BP.upT=now;BP.hist.length=0;scratchStop();
   if(PL.sdone){handleStrokeEn(R.P.map(p=>[p[0],p[1]]));return}
   const st=PL.g.strokes[PL.cur];PL.ink.push({t:now-400,perfect,si:PL.cur});PL.cur++;strokeFx(st,perfect);
 }
@@ -1185,12 +1203,13 @@ function hoverTick(dt){
   if(!BODY.on||!BODY.vis||BP.down||drawing){clearHov();return}
   if(HOV.cool>0)HOV.cool-=dt;
   let el=btnAt(BODY.x,BODY.y);
+  if(HOV.leave){if(el&&!BODY.lupEdge){clearHov();return}HOV.leave=false}
   if(el!==HOV.el){
     if(HOV.el&&HOV.lost<.4){HOV.lost+=dt;el=HOV.el}
     else{clearHov();HOV.el=el;if(el){el.classList.add('hov');tone({f:880,d:.06,v:.05,type:'triangle'})}}
   }else HOV.lost=0;
   if(el&&HOV.cool<=0){HOV.t+=dt;el.style.setProperty('--hp',Math.min(1,HOV.t/HOV_T).toFixed(3));
-    if(HOV.t>=HOV_T){const e=el;clearHov();HOV.cool=1;sfx.pop();
+    if(HOV.t>=HOV_T||BODY.lupEdge){BODY.lupEdge=false;const e=el;clearHov();HOV.cool=1;sfx.pop();
       const r=e.getBoundingClientRect();starBurst(r.left+r.width/2,r.top+r.height/2,26,460);e.click()}}
 }
 
@@ -1238,11 +1257,11 @@ function drawBigPen(c,x,y,dx,dy,down,S){
 }
 // ペンの そばに 出す ひとこと（いま なにを すれば よいか）
 function penTip(){
-  if(HOV.el)return HOV.cool>0?'':'そのまま まってね';
+  if(HOV.el)return HOV.cool>0?'':'✋ ひだりてを あげる！';
   if(curScreen!=='s-play'||!PL||PL.done||PL.demo||!$('#result').hidden)return '';
   if(BP.down)return 'せんの うえを なぞろう';
-  if(isBlank())return BP.ring>.05?'そのまま…':'かきはじめで ペンを とめよう';
-  return BP.ring>.05?'そのまま…':'みどりの ● へ';
+  if(isBlank())return BODY.lup?'かきはじめへ！':'✋ ひだりてを あげると かける';
+  return 'みどりの ● へ';
 }
 function pill(c,t,x,y,fs,col){
   c.font=`900 ${fs}px "Zen Maru Gothic",sans-serif`;c.textAlign='center';c.textBaseline='middle';
@@ -1255,7 +1274,7 @@ function drawPen(now){
   if(BODY.on){
     if(!BODY.vis){pill(c,'からだ と みぎて が カメラに うつるように してね',FW/2,FH*.92,Math.round(fs*1.2),'#ffc83d');return}
     // えらぶ がめんでは つかいかたを 下に 出しておく
-    if(curScreen==='s-level'||curScreen==='s-mode'||!$('#result').hidden)pill(c,'✋ ペンを ボタンに あわせて、じっと まつと えらべるよ',FW/2,FH-fs*1.6,fs,'#ffe9a8');
+    if(curScreen==='s-level'||curScreen==='s-mode'||!$('#result').hidden)pill(c,'ペンを ボタンに あわせて ✋ひだりてを あげると けってい（じっと まっても OK）',FW/2,FH-fs*1.6,fs,'#ffe9a8');
     let x=BODY.x,y=BODY.y;
     // かいている あいだは ペン先が レールに すいつく
     if(BP.down&&BP.rail){const [rx,ry]=paperToScreen(BP.rail.P[BP.rail.k]);x=rx*.8+x*.2;y=ry*.8+y*.2;
@@ -1267,7 +1286,10 @@ function drawPen(now){
       c.save();c.lineCap='round';c.lineWidth=S*.04;c.strokeStyle='rgba(255,255,255,.3)';circle(c,x,y,S*.14);c.stroke();
       c.strokeStyle=HOV.el?'#ffc83d':'#22c27a';c.beginPath();c.arc(x,y,S*.14,-Math.PI/2,-Math.PI/2+6.283*Math.min(1,pr));c.stroke();c.restore();
     }
-    drawBigPen(c,x,y,BODY.dx/dl,BODY.dy/dl,BP.down,S);
+    BP.trail=BP.trail.filter(q=>now-q[2]<350);
+    if(BP.trail.length>1&&!BP.down){c.save();c.lineCap='round';c.lineJoin='round';
+      for(let i=1;i<BP.trail.length;i++){const a=BP.trail[i-1],b=BP.trail[i],k=1-(now-b[2])/350;c.strokeStyle=`rgba(124,220,255,${.6*k})`;c.lineWidth=S*.05*k;c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(b[0],b[1]);c.stroke()}c.restore()}
+    drawBigPen(c,x,y,BODY.dx/dl,BODY.dy/dl,BP.down||(BODY.lup&&curScreen==='s-play'),S);
     if(!BP.down&&curScreen==='s-play'){c.fillStyle='#fff';circle(c,x,y,Math.max(4,S*.022));c.fill();c.strokeStyle='#1d2333';c.lineWidth=2;c.stroke()}
     const t=penTip();if(t)pill(c,t,x,y-S*.24,fs,HOV.el?'#ffc83d':'#fff');
     return;
@@ -1290,7 +1312,10 @@ function drawPip(){
   if(lm){
     const P=i=>[ox+(1-lm[i].x)*vw*s,oy+lm[i].y*vh*s];
     c.lineCap='round';c.lineWidth=Math.max(2,W*.02);c.strokeStyle='rgba(255,255,255,.55)';
-    for(const[a,b]of[[11,12],[11,13],[13,15],[11,23],[12,24],[23,24]]){const p=P(a),q=P(b);c.beginPath();c.moveTo(p[0],p[1]);c.lineTo(q[0],q[1]);c.stroke()}
+    for(const[a,b]of[[11,12],[11,23],[12,24],[23,24]]){const p=P(a),q=P(b);c.beginPath();c.moveTo(p[0],p[1]);c.lineTo(q[0],q[1]);c.stroke()}
+    c.strokeStyle=BODY.lup?'#7cf7ff':'rgba(124,247,255,.45)';c.lineWidth=Math.max(3,W*(BODY.lup?.04:.025));
+    for(const[a,b]of[[11,13],[13,15]]){const p=P(a),q=P(b);c.beginPath();c.moveTo(p[0],p[1]);c.lineTo(q[0],q[1]);c.stroke()}
+    if(BODY.lup){const q=P(15);c.fillStyle='#7cf7ff';circle(c,q[0],q[1],W*.04);c.fill()}
     c.strokeStyle='#ffc83d';c.lineWidth=Math.max(3,W*.03);
     for(const[a,b]of[[12,14],[14,16]]){const p=P(a),q=P(b);c.beginPath();c.moveTo(p[0],p[1]);c.lineTo(q[0],q[1]);c.stroke()}
     const w=P(16),e=P(14),d=Math.hypot(w[0]-e[0],w[1]-e[1])||1;
@@ -1474,6 +1499,7 @@ function finishChar(){
 }
 function showResult(stars){
   if(curScreen!=='s-play'||!PL||!PL.done)return;
+  HOV.leave=true;
   const last=G.idx>=G.list.length-1;
   $('#result').hidden=false;$('#finalList').hidden=true;
   $('#resTitle').textContent=stars===3?'かんぺき！':stars===2?'はなまる！':'よく できました';
@@ -1505,6 +1531,7 @@ $('#btnShow').addEventListener('click',()=>{
   else{PL.hint=performance.now();PL.misses++;sfx.hint();bubble('ヒント！ （★が へるよ）','good')}
 });
 function showFinal(){
+  HOV.leave=true;
   const tot=G.results.reduce((a,r)=>a+(r?r.stars:0),0),max=G.list.length*3;
   $('#result').hidden=false;
   $('#resTitle').textContent=tot>=max?(isEnLv(G.lv)?'えいご はかせ！':'かきじゅん はかせ！'):tot>=max*.7?'すばらしい！':'がんばったね！';
@@ -1551,7 +1578,7 @@ function loop(){
     else if(curScreen==='s-title')renderTitle(now);
     else if(curScreen==='s-mode')renderModeMinis(now);
   }catch(e){console.error(e)}
-  try{bodyTick(now,dt);bodyPen(dt,now);hoverTick(dt);drawPen(now);drawPip()}catch(e){console.error(e)}
+  try{bodyTick(now,dt);bodyPen(dt,now);hoverTick(dt);BODY.lupEdge=BODY.ldownEdge=false;drawPen(now);drawPip()}catch(e){console.error(e)}
 }
 sizeBg();sizeFx();sizePen();
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{});
@@ -1570,6 +1597,7 @@ if(/[?&]dbg/.test(location.search)){
     // カメラなしで からだの ペンを ためす：body() で オン、hand(x,y) で ペン先、trace() で いまの 画を 手で なぞる
     body(on=true){BODY.on=on;BODY.fake=on?{x:FW/2,y:FH/2}:null;$('#sensBtn').hidden=!on},
     hand(x,y){BODY.fake={x,y}},
+    left(on=true){BODY.fakeL=on},
     trace(ms=1400,hold=0,wob=0){if(!PL||PL.done)return;PL.demo=null;const st=PL.g.strokes[PL.cur],P=st.pts.map(q=>[q[0]+rand(-wob,wob),q[1]+rand(-wob,wob)]),t0=performance.now()+400;
       const f=()=>{const k=(performance.now()-t0)/ms,q=P[Math.max(0,Math.min(P.length-1,Math.floor(k*P.length)))],[x,y]=paperToScreen(q);BODY.fake={x,y};
         if(k<1+hold/ms)requestAnimationFrame(f)};f()},
