@@ -121,6 +121,8 @@ html,body{height:100%;overflow:hidden;background:var(--sky-top);color:var(--on-n
 .play-main.land{flex-direction:row}
 .paper-wrap{position:relative;flex:none;border-radius:4px;box-shadow:0 20px 44px rgba(0,0,0,.55),0 0 0 6px rgba(255,255,255,.05)}
 .paper-wrap canvas{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:4px;touch-action:none;cursor:crosshair}
+.paper-wrap.hit{animation:hit .28s cubic-bezier(.2,2.2,.4,1)}
+@keyframes hit{0%{transform:scale(1.035)}100%{transform:scale(1)}}
 .paper-wrap.win{animation:win .9s cubic-bezier(.2,1.6,.4,1)}
 @keyframes win{30%{transform:scale(1.07) rotate(-2deg)}60%{transform:scale(.98) rotate(1deg)}}
 .tape{position:absolute;width:64px;height:22px;background:rgba(255,214,120,.55);top:-9px;pointer-events:none;box-shadow:0 1px 2px rgba(0,0,0,.15)}
@@ -179,6 +181,7 @@ html,body{height:100%;overflow:hidden;background:var(--sky-top);color:var(--on-n
 .pop{position:absolute;translate:-50% -50%;font-weight:900;white-space:nowrap;font-size:clamp(22px,3vmin + 10px,40px);color:#fff;
   -webkit-text-stroke:6px var(--orange-s);paint-order:stroke fill;animation:popUp 1.3s cubic-bezier(.2,1.6,.4,1) forwards;letter-spacing:.04em}
 .pop.gold{color:var(--gold);-webkit-text-stroke-color:#7a3d00}
+.pop.note{color:#fff;-webkit-text-stroke:5px var(--grape-s);font-size:clamp(18px,2vmin + 10px,28px)}
 .pop.combo{color:#7cf7ff;-webkit-text-stroke-color:#1b3a8a;font-size:clamp(20px,2.4vmin + 10px,32px)}
 .pop.huge{font-size:clamp(46px,10vmin,110px);color:#fff;-webkit-text-stroke:10px var(--shu);animation:popHuge 1.9s cubic-bezier(.2,1.6,.4,1) forwards}
 .pop.banner{font-size:clamp(26px,4.4vmin + 8px,48px);color:#fff;-webkit-text-stroke:8px var(--green-s);animation:popHuge 1.6s cubic-bezier(.2,1.6,.4,1) forwards}
@@ -422,6 +425,11 @@ const bell=(f,t,v=.12,pan=0)=>{tone({f,t,d:1.1,v,pan});tone({f:f*2.76,t,d:.5,v:v
 function drumroll(t,d,v=.22){for(let x=0;x<d;x+=.034){const k=x/d;noise({t:t+x,d:.06,v:v*(.35+.65*k),ft:'bandpass',f:1900,q:.9,pan:(Math.random()-.5)*.4})}}
 function applause(t,d,v=.5){const n=Math.round(d*90);for(let i=0;i<n;i++){const x=Math.random()*d,k=Math.min(1,x/.4)*Math.min(1,(d-x)/(d*.5));
   noise({t:t+x,d:rand(.015,.04),v:v*k*rand(.4,1)+.001,ft:'bandpass',f:rand(900,2600),q:1.2,pan:rand(-.9,.9)})}}
+// 1画ごとに ドレミファソラシド… と上がっていく。2オクターブ（15画）で ドに もどる
+const DOREMI=['ド','レ','ミ','ファ','ソ','ラ','シ'];
+const MAJOR=[0,2,4,5,7,9,11];
+function scaleNote(i){const k=i%15,oct=Math.floor(k/7),deg=k%7;return 523.25*Math.pow(2,oct+MAJOR[deg]/12)}
+function scaleName(i){return DOREMI[(i%15)%7]}
 const PENTA=[523.25,587.33,659.25,783.99,880,1046.5,1174.66,1318.5,1567.98,1760,2093,2349.3,2637,3136,3520,4186];
 const sfx={
   click(){tone({f:520,f2:1250,d:.09,type:'triangle',v:.16});tone({f:1560,t:.04,d:.12,v:.05})},
@@ -430,12 +438,14 @@ const sfx={
   penDown(){tone({f:300,f2:900,d:.1,v:.1,type:'triangle'})},
   twinkle(pan){tone({f:PENTA[8+((Math.random()*8)|0)],d:.22,v:.035,pan})},
   stroke(i,perfect){
-    const f=PENTA[Math.min(i,PENTA.length-1)];
-    bell(f,0,.17);tone({f:f/2,d:.35,type:'triangle',v:.16});
+    const f=scaleNote(i);
+    // メロディ（ドレミ）を いちばん目立たせる
+    tone({f,d:.55,type:'triangle',v:.26});tone({f:f*2,d:.32,v:.07});tone({f:f*4,d:.12,v:.03});
+    bell(f*2,0,.12);tone({f:f/2,d:.35,type:'triangle',v:.16});
     noise({d:.25,v:.1,ft:'bandpass',f:2500,f2:9000,q:1.5,a:.03});
     tone({f:f*1.5,t:.07,d:.3,v:.06,type:'triangle'});
     if(perfect){
-      for(let k=0;k<8;k++)bell(PENTA[6+((Math.random()*9)|0)],.05+k*.04,.05,(Math.random()-.5)*1.6);
+      for(let k=0;k<8;k++)bell(f*[2,2.52,3,4][k%4],.05+k*.04,.05,(Math.random()-.5)*1.6);
       choir([f,f*1.26,f*1.5].map(x=>x/2),.02,.9,.03);taiko(0,.35);
     }
   },
@@ -444,7 +454,7 @@ const sfx={
     if(n%5===0){brass(523.25,.05,.25,.07);brass(783.99,.3,.5,.08);cymbal(.3,.25)}
   },
   miss(){tone({f:420,f2:120,d:.55,v:.2,vib:11});tone({f:196,t:.03,d:.16,type:'square',v:.04});tone({f:147,t:.2,d:.26,type:'square',v:.04})},
-  demo(i){const f=PENTA[Math.min(i,PENTA.length-1)]/2;bell(f,0,.12);tone({f:f/2,d:.25,type:'triangle',v:.1})},
+  demo(i){const f=scaleNote(i)/2;bell(f,0,.12);tone({f:f/2,d:.25,type:'triangle',v:.1})},
   whistle(){tone({f:420,f2:1700,d:.9,v:.04,pan:(Math.random()-.5)*1.4});noise({d:.75,v:.04,ft:'bandpass',f:2500,f2:7000,q:3})},
   boom(big){const pan=(Math.random()-.5)*1.2;noise({d:big?2:1.4,v:big?1:.7,f:600,f2:50,pan});tone({f:90,f2:32,d:.9,v:big?.6:.45});noise({d:.3,v:.3,ft:'highpass',f:2500,pan})},
   crackle(t=0){for(let i=0;i<40;i++)noise({t:t+Math.random()*1.1,d:.025,v:rand(.08,.22),ft:'bandpass',f:rand(2500,8000),q:2,pan:rand(-1,1)})},
@@ -585,6 +595,8 @@ function drawFx(){
     if(p.type==='fw'){
       if(p.tr&&p.tr.length>=4){c.strokeStyle=p.color;c.lineWidth=p.size;c.lineCap='round';c.beginPath();c.moveTo(p.tr[0],p.tr[1]);c.lineTo(p.x,p.y);c.stroke()}
       c.fillStyle='#fff';c.beginPath();c.arc(p.x,p.y,p.size*.7,0,6.283);c.fill();
+    }else if(p.type==='ring'){
+      c.strokeStyle=p.color;c.lineWidth=Math.max(.5,p.lw*(1-life));c.beginPath();c.arc(p.x,p.y,p.size+p.grow*(1-(1-life)*(1-life)),0,6.283);c.stroke();
     }else if(p.type==='star'){
       c.save();c.translate(p.x,p.y);c.rotate(p.rot);c.fillStyle=p.color;starPath(c,p.size*(1-life*.5));c.fill();c.restore();
     }else{
@@ -780,6 +792,10 @@ function renderPlay(now){
   // かいた線
   for(let i=0;i<PL.cur;i++){
     const age=now-PL.ink[i].t;const end=drawInk(c,S[i],age/200,INK);
+    if(age<420){const P=S[i].pts,q=P[Math.min(P.length-1,Math.floor(P.length*age/260))],a=1-age/420;
+      c.save();c.globalCompositeOperation='lighter';
+      c.fillStyle=`rgba(255,215,90,${.55*a})`;circle(c,q[0],q[1],7+age/40);c.fill();
+      c.fillStyle=`rgba(255,255,255,${.9*a})`;circle(c,q[0],q[1],2.6);c.fill();c.restore()}
     if(age<700&&PL.ink[i].perfect){c.save();c.globalAlpha=.6*(1-age/700);c.strokeStyle='#ffc83d';c.lineWidth=11;c.lineCap='round';c.stroke(S[i].p2);c.restore();drawInk(c,S[i],age/200,INK)}
     if(G.mode==='easy'&&!PL.done&&n<=12)drawNum(c,S[i],i+1,'#9aa3b5');
   }
@@ -848,9 +864,16 @@ function handleStroke(pts){
   const now=performance.now(),S=PL.g.strokes;
   if(res.ok){
     const st=S[PL.cur];PL.ink.push({t:now,perfect:res.perfect});PL.cur++;PL.sMiss=0;PL.hint=null;PL.combo++;
-    sfx.stroke(PL.cur-1+(res.perfect?1:0),res.perfect);
+    sfx.stroke(PL.cur-1,res.perfect);
+    {const [sx,sy]=paperToScreen(st.pts[0]);pop('♪'+scaleName(PL.cur-1),sx,sy-14,'note')}
     // ほし
-    const nn=res.perfect?34:20;for(let i=0;i<nn;i++){const q=st.pts[(Math.random()*st.pts.length)|0],[x,y]=paperToScreen(q);
+    {const [ex2,ey2]=paperToScreen(st.pts[st.pts.length-1]),big=Math.min(1,PL.combo/8);
+      spawn({type:'ring',x:ex2,y:ey2,life:.5,size:6,grow:70+big*80,lw:5,color:res.perfect?'#ffd166':'#ffffff'});
+      if(res.perfect||PL.combo>=3)spawn({type:'ring',x:ex2,y:ey2,life:.75,size:10,grow:130+big*120,lw:3,color:pick(SPARK)});
+      spawn({type:'flash',x:ex2,y:ey2,life:.25,size:60+big*60});
+      const w=$('#paperWrap');w.classList.remove('hit');void w.offsetWidth;w.classList.add('hit');
+      if(navigator.vibrate)try{navigator.vibrate(res.perfect?[12,30,12]:12)}catch(_){}}
+    const nn=(res.perfect?34:20)+Math.min(40,PL.combo*4);for(let i=0;i<nn;i++){const q=st.pts[(Math.random()*st.pts.length)|0],[x,y]=paperToScreen(q);
       spawn({type:Math.random()<.5?'star':'dot',x,y,vx:rand(-90,90),vy:rand(-220,-40),g:380,drag:1,life:rand(.6,1.1),size:rand(3,res.perfect?9:6),color:pick(SPARK),rot:rand(0,6),vr:rand(-6,6)})}
     const [ex,ey]=paperToScreen(st.pts[st.pts.length-1]);
     if(PL.cur<S.length){
