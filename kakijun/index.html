@@ -838,7 +838,7 @@ addEventListener('resize',()=>{sizeBg();sizeFx();if(curScreen==='s-play')fitPape
 function startChar(ch,keepQ){
   $('#result').hidden=true;
   PL={ch,g:geom(ch),cur:0,ink:[],misses:0,sMiss:0,combo:0,wrong:null,hint:null,demo:null,done:false,shake:0,finT:0,hana:0,glow:0};
-  if(isEnCh(ch)){PL.sdone=PL.g.strokes.map(()=>0);PL.cov=PL.g.strokes.map(st=>new Uint8Array(st.pts.length));PL.userInk=[]}
+  if(isEnCh(ch)){PL.combo=G.combo||0;PL.hits=0;PL.sdone=PL.g.strokes.map(()=>0);PL.cov=PL.g.strokes.map(st=>new Uint8Array(st.pts.length));PL.userInk=[]}
   const n=PL.g.strokes.length;
   $('#pTitle').textContent=`${LEVEL_NAMES[G.lv]} ・ ${MODES.find(m=>m.id===G.mode).name}`;
   $('#pProg').textContent=G.chal?`${G.idx+1} / ${G.list.length} もんめ`:`${G.idx+1} / ${G.list.length}`;
@@ -917,7 +917,7 @@ function renderPlay(now){
     for(const q of drawing)c.lineTo(q[0],q[1]);if(drawing.length===1)c.lineTo(drawing[0][0]+.01,drawing[0][1]);c.stroke()}
   if(PL.hana)drawHana(c,(now-PL.hana)/1100);
   // たんごの とちゅう：書けた 文字を 消して まっさらな 紙に もどす
-  if(PL.leave){const p=Math.max(0,Math.min(1,(now-PL.leave-120)/380));if(p>0){c.globalAlpha=p;drawSheet(c,isEnCh(PL.ch));c.globalAlpha=1}}
+  if(PL.leave){const p=Math.max(0,Math.min(1,(now-PL.leave-60)/300));if(p>0){c.globalAlpha=p;drawSheet(c,isEnCh(PL.ch));c.globalAlpha=1}}
 }
 
 function canDraw(){return PL&&!PL.done&&!PL.demo&&$('#result').hidden}
@@ -1000,7 +1000,7 @@ function strokeFx(st,perfect){
 }
 function strokeMiss(pts,why){
   const now=performance.now();
-  PL.misses++;PL.sMiss++;PL.combo=0;PL.wrong={pts,t:now};PL.shake=now;sfx.miss();
+  PL.misses++;PL.sMiss++;PL.combo=0;G.combo=0;PL.wrong={pts,t:now};PL.shake=now;sfx.miss();
   if(navigator.vibrate)try{navigator.vibrate(60)}catch(_){}
   const msg=why==='rev'?'むきが はんたいだよ！':why==='order'?`じゅんばんが ちがうよ！ つぎは ${PL.cur+1}かくめ`:why==='en'?pick(['おしい！ かたちを よく見てね','あれれ？ もういちど']):pick(['おしい！ もういちど','あれれ？ もういちど']);
   bubble(msg,'bad');
@@ -1012,20 +1012,44 @@ function strokeMiss(pts,why){
 function handleStrokeEn(pts){
   const S=PL.g.strokes,now=performance.now(),Ln=polyLen(pts);
   const u=Ln<1.5?[pts[0]]:resample(pts,Math.max(8,Math.round(Ln/1.5)));
-  const hard=isBlank(),T={rp:6,rph:8.5,rc:6,rch:7.5,pr:.9,cv:.92},Rp=hard?T.rph:T.rp,Rc=hard?T.rch:T.rc;
+  const hard=isBlank(),X={rp:6.5,rph:8.5,rc:6.5,rch:7.5,pr:.9,cv:.92,all:.95},Rp=hard?X.rph:X.rp,Rc=hard?X.rch:X.rc;
   let good=0;
   for(const q of u){let ok=false;for(const st of S){for(const m of st.pts)if(Math.abs(q[0]-m[0])<Rp&&Math.abs(q[1]-m[1])<Rp&&dist(q,m)<Rp){ok=true;break}if(ok)break}if(ok)good++}
   const prec=good/u.length;
-  if(prec<T.pr){strokeMiss(pts,'en');return}
+  if(prec<X.pr){strokeMiss(pts,'en');return}
   const newly=[];let gained=0;
   S.forEach((st,si)=>{if(PL.sdone[si])return;const cv=PL.cov[si];
     st.pts.forEach((m,k)=>{if(cv[k])return;for(const q of u)if(dist(q,m)<Rc){cv[k]=1;gained++;break}});
-    let c=0;for(const x of cv)c+=x;if(c/cv.length>=(T.cv||.92)){PL.sdone[si]=1;newly.push(si)}});
+    let c=0;for(const x of cv)c+=x;if(c/cv.length>=X.cv){PL.sdone[si]=1;newly.push(si)}});
   if(!gained)return; // 書いた所を もういちど なぞっただけ
   PL.userInk.push(pts);
-  if(!newly.length){sfx.penDown();return}
+  // 字ぜんたいで 9割ちかく なぞれたら できあがり
+  let all=0,tot=0;S.forEach((st,si)=>{for(const x of PL.cov[si]){all+=x;tot++}});
+  if(all/tot>=X.all)S.forEach((st,si)=>{if(!PL.sdone[si]){PL.sdone[si]=1;newly.push(si)}});
   for(const si of newly){PL.ink.push({t:now,perfect:prec>.97,si});PL.cur++}
-  strokeFx(S[newly[0]],prec>.97);
+  if(gained<4&&!newly.length){sfx.penDown();return}
+  PL.hits=(PL.hits||0)+1;
+  enFx(pts,prec>.97);
+}
+// アルファベットは 書いた線ごとに かならず ドレミと 光を出す（途中まででも）
+function enFx(pts,perfect){
+  const S=PL.g.strokes,idx=PL.base+PL.hits-1;
+  PL.sMiss=0;PL.hint=null;PL.combo++;
+  sfx.stroke(idx,perfect);
+  const p0=paperToScreen(pts[0]),p1=paperToScreen(pts[pts.length-1]),big=Math.min(1,PL.combo/10);
+  pop('♪'+scaleName(idx),p0[0],p0[1]-14,'note');
+  spawn({type:'ring',x:p1[0],y:p1[1],life:.5,size:6,grow:70+big*90,lw:5,color:perfect?'#ffd166':'#ffffff'});
+  if(perfect||PL.combo>=3)spawn({type:'ring',x:p1[0],y:p1[1],life:.75,size:10,grow:130+big*130,lw:3,color:pick(SPARK)});
+  spawn({type:'flash',x:p1[0],y:p1[1],life:.25,size:60+big*60});
+  const w=$('#paperWrap');w.classList.remove('hit');void w.offsetWidth;w.classList.add('hit');
+  if(navigator.vibrate)try{navigator.vibrate(perfect?[12,30,12]:12)}catch(_){}
+  const nn=(perfect?30:18)+Math.min(40,PL.combo*3);
+  for(let i=0;i<nn;i++){const q=pts[(Math.random()*pts.length)|0],[x,y]=paperToScreen(q);
+    spawn({type:Math.random()<.5?'star':'dot',x,y,vx:rand(-90,90),vy:rand(-220,-40),g:380,drag:1,life:rand(.6,1.1),size:rand(3,perfect?9:6),color:pick(SPARK),rot:rand(0,6),vr:rand(-6,6)})}
+  if(PL.cur<S.length&&Math.random()<.6)pop(perfect?pick(PERFECT):pick(PRAISE),p1[0],p1[1]-20,perfect?'gold':'');
+  if(PL.combo>=3&&PL.combo%2===1)setTimeout(()=>{sfx.combo(PL.combo);const r=paperCv.getBoundingClientRect();pop(`${PL.combo} れんぞく！`,r.left+r.width/2,r.top+r.height*.12,'combo')},140);
+  buildDots();
+  if(PL.cur>=S.length)setTimeout(finishChar,220);
 }
 function nextIdx(){if(!PL.sdone)return PL.cur;const i=PL.sdone.findIndex(x=>!x);return i<0?PL.cur:i}
 // 書けた 文字が 紙から 右の たんごの 札へ 飛んでいく
@@ -1037,15 +1061,15 @@ function flyLetter(ch,x,y,slot){
     {transform:`translate(${x}px,${y}px) translate(-50%,-50%) scale(1)`,opacity:1},
     {transform:`translate(${(x+tx)/2}px,${Math.min(y,ty)-80}px) translate(-50%,-50%) scale(.7) rotate(-20deg)`,opacity:1,offset:.45},
     {transform:`translate(${tx}px,${ty}px) translate(-50%,-50%) scale(${r?Math.max(.12,r.height/fs):.2}) rotate(0deg)`,opacity:.9}
-  ],{duration:560,easing:'cubic-bezier(.5,0,.3,1)'});
+  ],{duration:420,easing:'cubic-bezier(.5,0,.3,1)'});
   let gone=false;const end=()=>{if(gone)return;gone=true;el.remove();if(slot){slot.animate([{transform:'scale(1.8)'},{transform:'scale(1)'}],{duration:300,easing:'cubic-bezier(.2,2,.4,1)'});
     starBurst(tx,ty,14,300);sfx.pop()}};
-  a.onfinish=end;setTimeout(end,700); // 画面が 裏に あっても かならず 消す
+  a.onfinish=end;setTimeout(end,560); // 画面が 裏に あっても かならず 消す
 }
 function finishChar(){
-  const now=performance.now();PL.done=true;PL.finT=now;buildDots();
+  const now=performance.now();PL.done=true;PL.finT=now;buildDots();G.combo=PL.combo;
   if(G.w&&G.w.i<G.w.w.length-1){
-    G.w.miss+=PL.misses;G.w.sk+=PL.g.strokes.length;G.w.i++;
+    G.w.miss+=PL.misses;G.w.sk+=(PL.hits||PL.g.strokes.length);G.w.i++;
     const r=paperCv.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
     sfx.letter();starBurst(cx,cy,45,Math.min(FW,FH)*.8);
     spawn({type:'ring',x:cx,y:cy,life:.6,size:20,grow:Math.min(FW,FH)*.45,lw:6,color:'#ffd166'});
@@ -1053,7 +1077,7 @@ function finishChar(){
     $('#tGlyph').innerHTML=wordHTML(G.mode==='test');
     flyLetter(PL.ch,cx,cy,$('#tGlyph').querySelectorAll('.wl')[G.w.i-1]);
     const w=$('#paperWrap');w.classList.remove('hit');void w.offsetWidth;w.classList.add('hit');
-    const ww=G.w;setTimeout(()=>{if(G.w===ww&&curScreen==='s-play')startChar(ww.w[ww.i])},650);
+    const ww=G.w;setTimeout(()=>{if(G.w===ww&&curScreen==='s-play')startChar(ww.w[ww.i])},430);
     return;
   }
   if(G.w){G.w.miss+=PL.misses;PL.misses=G.w.miss;G.w.i=G.w.w.length;$('#tGlyph').innerHTML=wordHTML(false);setTimeout(()=>speak(G.w&&G.w.word||''),300)}
@@ -1063,6 +1087,21 @@ function finishChar(){
   const key=skey(G.lv,G.mode,item);if((save[key]||0)<stars){save[key]=stars;persist()}
   G.results[G.idx]={ch:item,stars};
   const r=paperCv.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+  if(isEnLv(G.lv)&&!G.w){
+    sfx.letter();if(stars===3)sfx.combo(5);flash();
+    const w=$('#paperWrap');w.classList.remove('win');void w.offsetWidth;w.classList.add('win');
+    starBurst(cx,cy,stars===3?70:45,Math.min(FW,FH)*.9);
+    spawn({type:'ring',x:cx,y:cy,life:.6,size:20,grow:Math.min(FW,FH)*.5,lw:7,color:'#ffd166'});
+    pop((stars===3?'かんぺき！':stars===2?'はなまる！':'できた！')+' '+'★'.repeat(stars),cx,cy-r.height*.05,'huge');
+    PL.hana=now+80;launch(rand(FW*.15,FW*.85),pick(['peony','ring','heart','glitter']));
+    PL.leave=now+650;
+    const it=PL;setTimeout(()=>{
+      if(PL!==it||curScreen!=='s-play')return;
+      if(G.chal&&G.idx>=G.list.length-1){showFinal();return}
+      G.idx=(G.idx+1)%G.list.length;startItem(G.list[G.idx]);
+    },1050);
+    return;
+  }
   sfx.fanfare(stars===3);flash();
   const w=$('#paperWrap');w.classList.remove('win');void w.offsetWidth;w.classList.add('win');
   starBurst(cx,cy,stars===3?90:55,Math.min(FW,FH)*1.1);
