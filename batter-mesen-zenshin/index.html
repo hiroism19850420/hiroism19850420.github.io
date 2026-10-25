@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>バッター目線 ぜんしん版</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#000;color:#fff;overflow:hidden;overscroll-behavior:none;touch-action:none;
+    font-family:"Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic",sans-serif;
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+  .hide{display:none!important}
+  #pc{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
+  #stage{position:relative;width:min(100vw,calc(100vh*16/9));aspect-ratio:16/9}
+  #c{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:rgba(6,30,16,.9);text-align:center;padding:2%;overflow:auto;justify-content:safe center}
+  h1{font-size:clamp(26px,4.6vw,58px);margin:0 0 .3em;color:#ffd84a;letter-spacing:2px;
+    text-shadow:0 3px 0 #7a3b12,2px 0 0 #7a3b12,-2px 0 0 #7a3b12,0 -2px 0 #7a3b12}
+  h1 small{display:block;font-size:.45em;color:#fff;letter-spacing:.3em;text-shadow:none;margin-top:.2em}
+  .sub{font-size:clamp(13px,1.7vw,20px);line-height:1.7;margin:0 0 .6em;color:#e3f6f4}
+  button{font-family:inherit;font-weight:bold;color:#1b1b1b;background:#ffd84a;border:0;border-radius:14px;
+    padding:.6em 1.2em;font-size:clamp(15px,2vw,24px);box-shadow:0 5px 0 #b98f00;cursor:pointer;margin:.25em}
+  button:active{transform:translateY(3px);box-shadow:0 2px 0 #b98f00}
+  button.sel{background:#7dffa0;box-shadow:0 5px 0 #2a9c4a}
+  button.small{font-size:clamp(12px,1.4vw,18px);padding:.3em .8em;background:#d7e6dd;box-shadow:0 3px 0 #7e9a88}
+  .row{display:flex;flex-wrap:wrap;justify-content:center;align-items:center}
+  .pairbox{display:flex;gap:1.6vw;align-items:center;justify-content:center;background:#0006;border-radius:16px;padding:.8vw 2vw;margin:.4em 0 .6em}
+  #stanceIcon{font-size:clamp(26px,3.6vw,46px)}
+  #stanceTxt{font-size:clamp(15px,2vw,24px);font-weight:bold}
+  #stanceTxt.ok{color:#7dffa0}
+  .note{font-size:clamp(11px,1.3vw,15px);color:#a8c8b4;line-height:1.6}
+  .clap{font-size:clamp(14px,1.8vw,22px);color:#ffd84a;font-weight:bold;margin-top:.3em}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+
+<div id="pc">
+  <div id="stage">
+    <canvas id="c" width="1280" height="720"></canvas>
+
+    <div id="title" class="panel hide">
+      <h1>⚾ バッター目線<small>ぜんしん版</small></h1>
+      <p class="sub">カメラの前で バットを かまえて、ボールが きたら よこに ふろう！<br>ひきつけて ふるほど 遠くへ とぶ（10球）</p>
+      <div class="pairbox">
+        <div id="stanceIcon">🧍</div>
+        <div style="text-align:left">
+          <div id="stanceTxt">かまえ：まだ</div>
+          <div class="note" id="stanceNote">りょう手を 右か左の 肩の前で にぎると、右打ち・左打ちが きまるよ</div>
+        </div>
+      </div>
+      <div class="row" id="levels">
+        <button data-lv="0">やさしい</button>
+        <button data-lv="1" class="sel">ふつう</button>
+        <button data-lv="2">むずかしい</button>
+      </div>
+      <div class="row"><button id="startBtn">はじめる</button></div>
+      <div class="clap" id="clapHint">👏 手を たたいても はじまるよ</div>
+      <div class="row note">
+        タイミング調整
+        <button class="small" id="offMinus">−10ms</button>
+        <b id="offVal" style="min-width:5em">0ms</b>
+        <button class="small" id="offPlus">+10ms</button>
+        （「おそい」が 多いなら −、「はやい」が 多いなら +）
+      </div>
+    </div>
+
+    <div id="final" class="panel hide">
+      <h1 id="finTitle"></h1>
+      <p class="sub" id="finBody"></p>
+      <div class="row"><button id="againBtn">もういちど</button><button id="backBtn" class="small">せってい</button></div>
+      <div class="clap" id="finClap">👏 手を たたくと もういちど</div>
+    </div>
+  </div>
+</div>
+
+<script src="body.js"></script>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const params=new URLSearchParams(location.search);
+const DBG=params.has("dbg");
+const store={
+  get(k,d){try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const cam=()=>Body.mode==="cam";
+
+const cv=$("c"), ctx=cv.getContext("2d");
+const W=1280,H=720,HY=300,F=700,CAM={x:0,y:1.6,z:-3.5};
+const Z0=18.44;                     // ピッチャーとの距離(m)
+const BALL_R=0.11;                  // ボールの半径(m)。はなれて見るので 元より大きめ
+const TOTAL=10;
+// 体は 指より おそいので、元の ゲームより 球を ゆっくりに してある
+const LEVELS=[{name:"やさしい",T:2100,types:["straight"]},
+              {name:"ふつう",T:1700,types:["straight","straight","change","slider"]},
+              {name:"むずかしい",T:1350,types:["straight","curve","slider","change"]}];
+const PITCHES={
+  straight:{name:"ストレート",k:1.0, bx:0,    by:0.05},
+  curve:   {name:"カーブ",   k:1.18,bx:0.18, by:-0.6},
+  slider:  {name:"スライダー",k:1.05,bx:-0.5, by:-0.12},
+  change:  {name:"チェンジアップ",k:1.3,bx:0,by:-0.3}
+};
+/* 判定（ms）。dt＝ふった時刻 − ボールが ホームに つく時刻。マイナスが はやい。
+   激甘：ホームランの はばは 300ms ある。はやいほど 飛距離が へる（＝ひきつけるほど とぶ） */
+const J={MISS_EARLY:-650, FOUL_EARLY:-430, JUST_LO:-110, JUST_HI:110, FOUL_LATE:300, LOOK:340};
+const SWING_LAG=60;                 // カメラの おくれ − ふりはじめから 当たるまで（ms）
+const HITSTOP={hr:170,hit:110,out:80,foul:80};
+const WINDUP=900, READY=1300, COUNT=3000, RESULT_MIN=1800;
+
+const game={
+  state:"boot", level:1, n:0, score:0, tally:{hr:0,hit:0,out:0,foul:0,miss:0},
+  pitch:null, tState:0, swing:null, launch:null, banner:null, flash:0, impact:null, trail:[],
+  side:null, stance:null, stanceAt:0, longest:0,
+  best:parseInt(store.get("bmz_best","0"),10)||0,
+  offset:parseInt(store.get("bmz_offset","0"),10)||0
+};
+
+/* ---------- 遠近投影 ---------- */
+function proj(x,y,z){const d=Math.max(0.3,z-CAM.z), s=F/d; return {x:W/2+(x-CAM.x)*s, y:HY+(CAM.y-y)*s, s}}
+
+/* ---------- 背景 ---------- */
+const crowd=[]; for(let i=0;i<260;i++) crowd.push([Math.random()*W,222+Math.random()*60,`hsl(${Math.floor(Math.random()*360)},55%,${45+Math.random()*25}%)`]);
+function drawBackground(){
+  const sky=ctx.createLinearGradient(0,0,0,HY); sky.addColorStop(0,"#4aa8e8"); sky.addColorStop(1,"#cfeaff");
+  ctx.fillStyle=sky; ctx.fillRect(0,0,W,HY+10);
+  ctx.fillStyle="#2c3a4a"; ctx.fillRect(0,216,W,72);          // スタンド
+  for(const c of crowd){ctx.fillStyle=c[2]; ctx.fillRect(c[0],c[1],4,4)}
+  ctx.fillStyle="#1e5a34"; ctx.fillRect(0,284,W,26);           // フェンス
+  ctx.fillStyle="#f4d03a"; ctx.fillRect(0,284,W,3);
+  ctx.font="bold 15px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillStyle="#f4d03a";
+  for(const [dx,l] of [[-170,"100"],[170,"100"],[-460,"95"],[460,"95"]]) ctx.fillText(l,W/2+dx,298);
+  ctx.fillStyle="#3aa954"; ctx.fillRect(0,309,W,H-309);         // 芝(縞)
+  ctx.fillStyle="#2f9a48";
+  for(let z=140,k=0;z>-3.4;z-=6,k++){
+    if(k%2) continue;
+    const yf=Math.max(proj(0,0,z+6).y,309), yn=proj(0,0,z).y;
+    if(yn>yf) ctx.fillRect(0,yf,W,yn-yf);
+  }
+  poly([[-6,-2],[6,-2],[10,26],[-10,26]],"#b9824a");           // 内野の土
+  poly([[-3.2,-2],[3.2,-2],[3.6,2.5],[-3.6,2.5]],"#a9733d");
+  ell(0,Z0,3.0,"#c8925a");                                       // マウンド
+  poly([[-0.22,0.2],[0.22,0.2],[0.22,-0.12],[0,-0.34],[-0.22,-0.12]],"#fff");   // ホームベース
+  ctx.strokeStyle="#ffffffaa"; ctx.lineWidth=3;                  // バッターボックス線
+  for(const sx of[-1,1]){line3(sx*0.9,0,-1.0,sx*0.9,0,1.2);line3(sx*1.8,0,-1.0,sx*1.8,0,1.2);line3(sx*0.9,0,1.2,sx*1.8,0,1.2);line3(sx*0.9,0,-1.0,sx*1.8,0,-1.0)}
+}
+function poly(pts,col){ctx.beginPath();pts.forEach((p,i)=>{const q=proj(p[0],0,p[1]);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});ctx.closePath();ctx.fillStyle=col;ctx.fill()}
+function ell(x,z,r,col){const q=proj(x,0,z);ctx.beginPath();ctx.ellipse(q.x,q.y,r*q.s,r*q.s*0.35,0,0,7);ctx.fillStyle=col;ctx.fill()}
+function line3(x1,y1,z1,x2,y2,z2){const a=proj(x1,y1,z1),b=proj(x2,y2,z2);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()}
+
+function drawZone(){
+  ctx.save(); ctx.setLineDash([8,6]); ctx.strokeStyle="#ffffffaa"; ctx.lineWidth=2;
+  const a=proj(-0.3,1.15,0), b=proj(0.3,0.45,0);
+  ctx.strokeRect(a.x,a.y,b.x-a.x,b.y-a.y); ctx.restore();
+}
+
+/* ---------- ピッチャー ---------- */
+function drawPitcher(ph){        // ph: 0..1 (ふりかぶり→リリース)
+  const base=proj(0,0,Z0), s=base.s;
+  const P=(x,y)=>({x:base.x+x*s,y:base.y-y*s});
+  ctx.lineCap="round"; ctx.lineJoin="round";
+  const seg=(a,b,w,col)=>{ctx.strokeStyle=col;ctx.lineWidth=Math.max(1,w*s);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()};
+  const lift=clamp((ph-0.15)/0.45,0,1)*(ph<0.75?1:Math.max(0,1-(ph-0.75)/0.25));
+  seg(P(0.12,0.95),P(0.14,0),0.16,"#f2f2f2");
+  seg(P(-0.12,0.95),P(-0.12-0.15*lift,0.95-0.45*lift),0.16,"#f2f2f2");
+  seg(P(-0.12-0.15*lift,0.95-0.45*lift),P(-0.12-0.12*lift,Math.max(0,0.4*(1-lift*0.5)+0)),0.15,"#f2f2f2");
+  seg(P(0,0.95),P(0,1.5),0.34,"#1a3f8a");
+  ctx.fillStyle="#f3c9a0"; ctx.beginPath(); ctx.arc(P(0,1.68).x,P(0,1.68).y,0.12*s,0,7); ctx.fill();
+  seg(P(-0.12,1.76),P(0.12,1.76),0.08,"#1a3f8a");
+  seg(P(-0.2,1.45),P(-0.35,1.2+0.2*lift),0.1,"#f3c9a0");
+  const sh=P(0.2,1.45);
+  let ang,len=0.7;
+  if(ph<0.7){ang=Math.PI*(1-ph/0.7)}else{ang=0;len=0.7-0.35*((ph-0.7)/0.3)}
+  const hand={x:sh.x+Math.sin(ang)*len*s, y:sh.y-Math.cos(ang)*len*s};
+  seg(sh,hand,0.1,"#f3c9a0");
+}
+
+/* ---------- ボール ---------- */
+function ballAt(p,u){      // u: 0=リリース 1=ホームベース
+  const b=u<=1?6.75*u*u*(1-u):0;
+  return {x:p.x0+(p.xT-p.x0)*u+p.bx*b, y:p.y0+(p.yT-p.y0)*u+p.by*b, z:Z0*(1-u)};
+}
+// 遠くの ボールも 見えるよう、小さいときは 白い ふちどりを つける（大きさは 遠近だけで かわる）
+function drawBall(x,y,z,minR){
+  const g=proj(x,0,z), q=proj(x,y,z), r0=BALL_R*q.s, r=Math.max(minR||2,r0);
+  if(y<30){ctx.globalAlpha=0.3; ctx.fillStyle="#000"; ctx.beginPath(); ctx.ellipse(g.x,g.y,r*1.1,r*0.4,0,0,7); ctx.fill(); ctx.globalAlpha=1}
+  if(r0<12){ctx.fillStyle="rgba(255,255,255,.28)"; ctx.beginPath(); ctx.arc(q.x,q.y,r+7,0,7); ctx.fill()}
+  ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(q.x,q.y,r,0,7); ctx.fill();
+  if(r>4){
+    ctx.strokeStyle="#d33"; ctx.lineWidth=Math.max(1,r*0.12);
+    ctx.beginPath(); ctx.arc(q.x-r*1.0,q.y,r*0.9,-0.9,0.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(q.x+r*1.0,q.y,r*0.9,Math.PI-0.9,Math.PI+0.9); ctx.stroke();
+  }
+  return q;
+}
+// ミートポイント：ボールが ホームに つく場所。うごかない 目じるし
+function drawMeet(p){
+  const q=proj(p.xT,p.yT,0), r=BALL_R*q.s*1.6;
+  ctx.save(); ctx.setLineDash([6,6]); ctx.strokeStyle="rgba(255,240,150,.75)"; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(q.x,q.y,r,0,7); ctx.stroke(); ctx.restore();
+}
+
+/* ---------- バット（右打ちは 右下から 左へ、左打ちは 左下から 右へ） ---------- */
+function batShape(deg,side,alpha){
+  const a=deg*Math.PI/180, px=side==="L"?W-1120:1120, py=700, L=660;
+  const ux=Math.cos(a)*(side==="L"?-1:1), uy=Math.sin(a), nx=-uy, ny=ux;
+  ctx.globalAlpha=alpha;
+  ctx.fillStyle="#d9a85c"; ctx.strokeStyle="#7a4a1e"; ctx.lineWidth=3;
+  ctx.beginPath();
+  ctx.moveTo(px+nx*8,py+ny*8); ctx.lineTo(px+ux*L*0.45+nx*10,py+uy*L*0.45+ny*10);
+  ctx.lineTo(px+ux*L+nx*24,py+uy*L+ny*24); ctx.lineTo(px+ux*L-nx*24,py+uy*L-ny*24);
+  ctx.lineTo(px+ux*L*0.45-nx*10,py+uy*L*0.45-ny*10); ctx.lineTo(px-nx*8,py-ny*8);
+  ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.globalAlpha=1;
+}
+const REST=-66, END=-162;
+function drawBat(ts,side){            // ts: スイングからの経過ms
+  if(ts<0||ts>900) return;
+  const t=clamp(ts/180,0,1), e=1-Math.pow(1-t,3);
+  batShape(REST+(END-REST)*e,side,ts>650?1-(ts-650)/250:1);
+}
+
+/* ---------- 音 ---------- */
+let ac=null;
+function audio(){if(!ac){try{ac=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}} if(ac&&ac.state==="suspended") ac.resume(); return ac}
+function beep(f0,f1,dur,type,vol,delay){
+  const a=audio(); if(!a) return; const o=a.createOscillator(), g=a.createGain(), t0=a.currentTime+(delay||0);
+  o.type=type||"sine"; o.frequency.setValueAtTime(f0,t0); o.frequency.exponentialRampToValueAtTime(Math.max(30,f1),t0+dur);
+  g.gain.setValueAtTime(vol||.2,t0); g.gain.exponentialRampToValueAtTime(.001,t0+dur);
+  o.connect(g).connect(a.destination); o.start(t0); o.stop(t0+dur);
+}
+function noise(dur,vol,hp,type,swell){
+  const a=audio(); if(!a) return; const n=Math.floor(a.sampleRate*dur), buf=a.createBuffer(1,n,a.sampleRate), d=buf.getChannelData(0);
+  for(let i=0;i<n;i++){const k=i/n; d[i]=(Math.random()*2-1)*(swell?Math.min(1,k*4)*(1-k):1-k)}
+  const s=a.createBufferSource(); s.buffer=buf; const f=a.createBiquadFilter(); f.type=type||"highpass"; f.frequency.value=hp||1500;
+  const g=a.createGain(); g.gain.value=vol||.4; s.connect(f).connect(g).connect(a.destination); s.start();
+}
+const sfx={
+  hit(q){ if(q==="just"){noise(.12,.8,2500);beep(1400,260,.18,"triangle",.35)} else {noise(.1,.5,1500);beep(900,200,.14,"triangle",.25)} },
+  miss(){noise(.18,.25,600)},
+  ready(){beep(660,660,.08,"square",.08)},
+  cheer(){noise(2.2,.5,900,"bandpass",true)},
+  fanfare(){[523,659,784,1047].forEach((f,i)=>beep(f,f,.2,"square",.12,[0,.12,.24,.4][i]))}
+};
+
+/* ---------- ゲーム進行 ---------- */
+function now(){return performance.now()}
+function setState(s){game.state=s; game.tState=now()}
+
+function newPitch(){
+  const lv=LEVELS[game.level];
+  const type=lv.types[Math.floor(Math.random()*lv.types.length)], def=PITCHES[type];
+  game.pitch={type,name:def.name,bx:def.bx*(Math.random()<.5?-1:1),by:def.by,
+    T:lv.T*def.k, x0:0.25, y0:1.9, xT:(Math.random()*2-1)*0.22, yT:0.55+Math.random()*0.45,
+    tRelease:0, tArrive:0};
+  game.swing=null; game.launch=null; game.banner=null; game.impact=null; game.trail=[]; game.early=0;
+  setState("ready"); sfx.ready();
+}
+
+function startGame(){
+  audio();
+  game.n=0; game.score=0; game.longest=0; game.tally={hr:0,hit:0,out:0,foul:0,miss:0};
+  game.pitch=null; game.swing=null; game.launch=null; game.banner=null; sparks.length=0;
+  $("title").classList.add("hide"); $("final").classList.add("hide");
+  if(cam()) setState("count"); else newPitch();
+}
+
+/* スイングの受付。at=当たる 時刻(ms) */
+function onSwing(power,at){
+  game.lastSwing={t:now(),power};
+  if(game.state==="ready"||game.state==="windup"||game.state==="count"){game.early=now();return}   // 投げる前は 数えない（罰なし）
+  if(game.state!=="flight"||game.swing) return;
+  game.swing={at,power};
+  const p=game.pitch, dt=at-p.tArrive;
+  if(dt<J.MISS_EARLY){finish("miss",0,"空振り！",{note:"はやすぎ！ もっと ひきつけて",dt});return}
+  if(dt>J.FOUL_LATE){finish("miss",0,"空振り！",{note:"おそかった！ すこし はやく ふろう",dt});return}
+  const u=clamp((at-p.tRelease)/p.T,0,1.15), bp=ballAt(p,u), sgn=game.side==="L"?-1:1;
+  let kind,dist,angle,label,pts,note,q="nice";
+  if(dt<J.FOUL_EARLY||dt>J.JUST_HI){            // ファウル
+    kind="foul"; dist=25+power*30; angle=sgn*(dt<0?-1:1)*(52+Math.random()*18); label="ファウル"; pts=0; q="foul";
+    note=dt<0?"はやい！ もっと ひきつけて":"ふりおくれ！";
+  }else{
+    // ひきつけ度 k：はやいほど 小さい。JUST_LO〜JUST_HI は 満点
+    const k=dt>=J.JUST_LO?1:(dt-J.FOUL_EARLY)/(J.JUST_LO-J.FOUL_EARLY);
+    dist=k>=1?118+power*22+Math.random()*8:30+k*85+power*12;
+    angle=sgn*clamp(dt/220,-1,1)*16+(Math.random()*8-4);
+    if(dist>=100){kind="hr";label="ホームラン！！";pts=100;q="just"}
+    else if(dist>=80){kind="hit";label="ツーベース！";pts=60}
+    else if(dist>=55){kind="hit";label="ヒット！";pts=40}
+    else{kind="out";label=Math.random()<.5?"ゴロ…アウト":"ポップフライ…";pts=5}
+    note=Math.abs(dt)<=60?"ドンピシャ！":dt<J.JUST_LO?(k<0.6?"はやい！ もっと ひきつけて":"もうすこし ひきつけて"):"いい タイミング！";
+  }
+  launch(bp,kind,dist,angle);
+  game.longest=Math.max(game.longest,kind==="foul"?0:Math.round(dist));
+  finish(kind,pts,label,{note,dist:kind==="foul"?0:Math.round(dist),q,dt});
+}
+
+function launch(bp,kind,dist,angleDeg){
+  const T={hr:3.4,hit:2.2,out:1.6,foul:2.4}[kind];
+  const rad=angleDeg*Math.PI/180;
+  const vz=dist*Math.cos(rad)/T, vx=dist*Math.sin(rad)/T;
+  let vy;
+  if(kind==="hr") vy=4.9*T*0.95;
+  else if(kind==="hit") vy=(dist>=80?4.9*T*0.7:2);
+  else if(kind==="foul") vy=4.9*T*0.6;
+  else vy=(Math.random()<.5?-1.5:4.9*T*0.75);
+  const t0=now()+HITSTOP[kind];
+  game.launch={t0,T:T*1000,x0:bp.x,y0:Math.max(0.2,bp.y),z0:clamp(bp.z,-1.2,4),vx,vy,vz,kind,dist,landed:false};
+  const q=proj(bp.x,bp.y,bp.z);
+  game.impact={x:q.x,y:q.y,t:now(),big:kind==="hr"||kind==="hit"};
+}
+function launchPos(L,t){   // t: 秒
+  const tl=(L.vy+Math.sqrt(L.vy*L.vy+19.6*L.y0))/9.8;
+  let y;
+  if(t<=tl) y=L.y0+L.vy*t-4.9*t*t;
+  else{const tt=t-tl, vb=0.45*Math.abs(L.vy-9.8*tl); y=Math.max(0,vb*tt-4.9*tt*tt)}
+  return {x:L.x0+L.vx*t,y,z:L.z0+L.vz*t};
+}
+
+function finish(kind,pts,label,info){
+  game.score+=pts; game.tally[kind]++;
+  game.banner={text:label,kind,note:info.note||"",dist:info.dist,dt:info.dt,pitch:game.pitch.name,t:now()};
+  if(info.dist&&kind!=="foul"&&info.dist>game.best){game.best=info.dist; store.set("bmz_best",game.best); game.banner.newBest=true}
+  if(kind==="hr") game.flash=.35; else if(kind==="hit") game.flash=.2;
+  if(kind==="miss") sfx.miss(); else sfx.hit(info.q||"nice");
+  setState("result");
+}
+
+/* ---------- 花火（ホームランの あと、空に だけ 出す） ---------- */
+const sparks=[];
+function fireworks(){
+  for(let k=0;k<4;k++){
+    const cx=180+Math.random()*920, cy=60+Math.random()*120, col=`hsl(${Math.floor(Math.random()*360)},90%,65%)`, t0=now()+k*300;
+    for(let i=0;i<34;i++){const a=i/34*Math.PI*2, v=110+Math.random()*70; sparks.push({x:cx,y:cy,vx:Math.cos(a)*v,vy:Math.sin(a)*v,t0,col})}
+    beep(180,60,.35,"sine",.25,k*.3);
+  }
+}
+
+function update(){
+  const t=now(), el=t-game.tState;
+  if(game.state==="count"&&el>COUNT) newPitch();
+  else if(game.state==="ready"&&el>READY) setState("windup");
+  else if(game.state==="windup"&&el>WINDUP){
+    const p=game.pitch; p.tRelease=t; p.tArrive=t+p.T; setState("flight");
+    if(dbgAuto!=null) setTimeout(()=>dbg.swingNow(),Math.max(0,p.T+dbgAuto));
+  }else if(game.state==="flight"&&!game.swing&&t>game.pitch.tArrive+J.LOOK){
+    finish("miss",0,"見逃し！",{note:"ボールが きたら よこに ふろう"});
+  }else if(game.state==="result"){
+    const L=game.launch;
+    if(L&&!L.landed&&t>=L.t0+L.T){
+      L.landed=true; L.landT=t;
+      if(L.kind==="hr"){fireworks(); sfx.cheer(); sfx.fanfare()}
+    }
+    const wait=L?L.t0-game.tState+L.T+(L.kind==="hr"?2300:L.kind==="foul"?500:1100):RESULT_MIN;
+    if(el>Math.max(RESULT_MIN,wait)) nextBall();
+  }
+}
+function nextBall(){
+  game.n++;
+  if(game.n>=TOTAL) showFinal(); else newPitch();
+}
+
+/* ---------- 描画 ---------- */
+function draw(){
+  const t=now(), p=game.pitch, st=game.state;
+  drawBackground(); drawZone();
+
+  let ph=0;
+  if(st==="windup") ph=clamp((t-game.tState)/WINDUP,0,1);
+  else if(st==="flight"||(st==="result"&&p&&p.tRelease)) ph=1;
+  drawPitcher(ph);
+
+  if(p&&(st==="windup"||st==="flight"||st==="ready")) drawMeet(p);
+
+  // ボール
+  if(p&&(st==="flight"||st==="result")){
+    const L=game.launch;
+    if(L){
+      const ts=(t-L.t0)/1000;
+      if(ts<0){const b=ballAt(p,clamp((game.swing.at-p.tRelease)/p.T,0,1.15)); drawBall(b.x,b.y,b.z,3)}   // 当たった しゅんかん（すこし 止める）
+      else if(ts*1000<L.T){
+        const q=launchPos(L,ts);
+        if(!(L.kind==="hr"&&q.z>96&&q.y<5)){                                  // ホームランは スタンドに 入ったら 消える
+          const s=proj(q.x,q.y,q.z); game.trail.push([s.x,s.y]); if(game.trail.length>18) game.trail.shift();
+          drawTrail(); drawBall(q.x,q.y,q.z,6);
+        }
+      }else if(L.kind!=="foul"&&L.kind!=="hr") drawFlag(L);
+    }else if(p.tRelease){
+      const u=(t-p.tRelease)/p.T;
+      if(u>=0&&u<1.12){const b=ballAt(p,u); drawBall(b.x,b.y,b.z,3)}
+    }
+  }
+
+  // 花火
+  for(let i=sparks.length-1;i>=0;i--){
+    const s=sparks[i], age=(t-s.t0)/1000;
+    if(age>1.5){sparks.splice(i,1);continue} if(age<0) continue;
+    ctx.globalAlpha=1-age/1.5; ctx.fillStyle=s.col;
+    ctx.fillRect(s.x+s.vx*age-2.5,s.y+s.vy*age+50*age*age-2.5,5,5);
+  }
+  ctx.globalAlpha=1;
+
+  // バット
+  const side=game.side||"R";
+  if(game.swing) drawBat(t-game.swing.at,side);
+  else if(["count","ready","windup","flight"].includes(st)) batShape(REST,side,!cam()||game.stance?0.95:0.35);
+
+  // 当たった しゅんかん
+  if(game.impact){
+    const im=game.impact, a=(t-im.t)/420;
+    if(a<1){
+      const R=(im.big?60:38)+a*(im.big?170:90);
+      ctx.strokeStyle=`rgba(255,250,200,${1-a})`; ctx.lineWidth=10*(1-a)+2;
+      ctx.beginPath(); ctx.arc(im.x,im.y,R,0,7); ctx.stroke();
+      ctx.lineWidth=6*(1-a)+1;
+      for(let i=0;i<14;i++){const g=i/14*Math.PI*2; ctx.beginPath(); ctx.moveTo(im.x+Math.cos(g)*R*0.55,im.y+Math.sin(g)*R*0.55); ctx.lineTo(im.x+Math.cos(g)*R*1.1,im.y+Math.sin(g)*R*1.1); ctx.stroke()}
+    }
+    if(t-im.t<900){
+      ctx.globalAlpha=clamp(1-(t-im.t-600)/300,0,1);
+      big(im.big?"カキーン！":"カツッ",clamp(im.x,240,W-240),clamp(im.y-110,120,600),im.big?"#fff36a":"#e8f4ff",im.big?96:64);
+      ctx.globalAlpha=1;
+    }
+  }
+
+  if(game.flash>0){ctx.fillStyle=`rgba(255,255,230,${game.flash})`;ctx.fillRect(0,0,W,H);game.flash=Math.max(0,game.flash-.025)}
+
+  // HUD
+  ctx.fillStyle="#0009"; ctx.fillRect(0,0,W,52);
+  ctx.fillStyle="#fff"; ctx.font="bold 28px sans-serif"; ctx.textBaseline="middle"; ctx.textAlign="left";
+  ctx.fillText(`ボール ${Math.min(game.n+1,TOTAL)} / ${TOTAL}`,20,27);
+  ctx.fillStyle="#ffd84a"; ctx.fillText(side==="L"?"🏏 ひだりうち":"🏏 みぎうち",250,27);
+  ctx.fillStyle="#fff"; ctx.textAlign="center"; ctx.fillText(`スコア ${game.score}`,W/2+80,27);
+
+  // メッセージ
+  ctx.textAlign="center";
+  if(st==="count"){
+    const n=Math.ceil((COUNT-(t-game.tState))/1000);
+    big("はなれて、バットを かまえて",640,170,"#fff",44);
+    big(String(Math.max(1,n)),640,330,"#ffd84a",150);
+  }
+  if(st==="ready"){big("ピッチャー かまえた…",640,150,"#fff",42); if(cam()&&!game.stance) big("バットを かまえて",640,215,"#9ad0ff",34)}
+  if((st==="ready"||st==="windup")&&game.early&&t-game.early<900) big("まだ！ なげてから ふろう",640,270,"#9ad0ff",34);
+  if(game.lastSwing&&t-game.lastSwing.t<600&&!game.impact){
+    ctx.globalAlpha=1-(t-game.lastSwing.t)/600; big("ブンッ！",side==="L"?240:1040,460,"#7dffa0",44); ctx.globalAlpha=1;
+  }
+  if(st==="windup") big("…",640,150,"#fff",42);
+  if(st==="flight"&&!game.swing&&t>p.tRelease&&t<p.tRelease+500) big("きた！",640,150,"#ffd84a",56);
+  if(game.banner) drawBanner(t);
+}
+function drawTrail(){
+  const tr=game.trail; if(tr.length<2) return;
+  ctx.lineCap="round";
+  for(let i=1;i<tr.length;i++){
+    ctx.strokeStyle=`rgba(255,255,255,${i/tr.length*0.6})`; ctx.lineWidth=2+i/tr.length*6;
+    ctx.beginPath(); ctx.moveTo(tr[i-1][0],tr[i-1][1]); ctx.lineTo(tr[i][0],tr[i][1]); ctx.stroke();
+  }
+}
+function drawFlag(L){      // ボールが おちた所に 旗と きょり
+  const e=launchPos(L,L.T/1000), q=proj(e.x,0,e.z);
+  ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(q.x,q.y); ctx.lineTo(q.x,q.y-46); ctx.stroke();
+  ctx.fillStyle="#ff5a3c"; ctx.beginPath(); ctx.moveTo(q.x,q.y-46); ctx.lineTo(q.x+30,q.y-38); ctx.lineTo(q.x,q.y-30); ctx.fill();
+  ctx.font="bold 22px sans-serif"; ctx.textAlign="center"; ctx.lineWidth=5; ctx.strokeStyle="#000";
+  const txt=Math.round(L.dist)+"m";
+  ctx.strokeText(txt,q.x,q.y-62); ctx.fillStyle="#fff"; ctx.fillText(txt,q.x,q.y-62);
+}
+function drawBanner(t){
+  const b=game.banner, L=game.launch, col={hr:"#ff5a3c",hit:"#ffd84a",out:"#cfd8dc",foul:"#9ad0ff",miss:"#ffffff"}[b.kind];
+  const flying=b.dist&&L&&!L.landed;
+  // 結果の文字は、とんでいる間は 出さない（空を あけて ボールを 見せる）。おちたら 出す
+  if(!flying){
+    const t0=b.dist&&L?L.landT:b.t, a=clamp((t-t0)/180,0,1);
+    big(b.text,640,118,col,64*(0.8+0.2*a));
+    ctx.font="bold 26px sans-serif"; ctx.fillStyle="#fff"; ctx.strokeStyle="#000"; ctx.lineWidth=5;
+    const sub=`${b.pitch}　${b.note}`;
+    ctx.strokeText(sub,640,178); ctx.fillText(sub,640,178);
+    if(b.dt!=null) drawGauge(b.dt);
+  }
+  // 飛距離：とぶ間 数字が ふえ、おちたら 大きく 止まる
+  if(b.dist&&L&&t-b.t>550){
+    ctx.globalAlpha=clamp((t-b.t-550)/200,0,1);
+    const k=clamp((t-L.t0)/L.T,0,1), d=Math.round(b.dist*k);
+    let sz=b.kind==="hr"?150:116;
+    if(L.landed){const e=clamp((t-L.landT)/260,0,1); sz*=1+0.25*(1-e)*(1-e)}
+    const y=605;
+    big("飛距離",640,y-86,"#fff",34);
+    big(`${d}m`,640,y,b.kind==="hr"?"#ffe84a":"#ffffff",sz);
+    if(L.landed&&b.kind==="hr"){
+      big("スタンド イン！",640,y-142,"#ff9a3c",48);
+      if(b.newBest) big("🏆 さいちょう きろく！",640,360,"#7dffa0",36);
+    }
+    ctx.globalAlpha=1;
+  }
+}
+// どのくらい はやかった・おそかったかを 帯で 見せる
+function drawGauge(dt){
+  const G0=-750,G1=420,x0=360,w=560,y=232,h=16;
+  const X=v=>x0+clamp((v-G0)/(G1-G0),0,1)*w;
+  const hrLo=J.FOUL_EARLY+(J.JUST_LO-J.FOUL_EARLY)*0.72;
+  const zones=[[G0,J.MISS_EARLY,"#777"],[J.MISS_EARLY,J.FOUL_EARLY,"#5aa8e8"],[J.FOUL_EARLY,hrLo,"#f2c23a"],[hrLo,J.JUST_HI,"#ff5a3c"],[J.JUST_HI,J.FOUL_LATE,"#5aa8e8"],[J.FOUL_LATE,G1,"#777"]];
+  ctx.fillStyle="#0008"; ctx.fillRect(x0-6,y-6,w+12,h+12);
+  for(const z of zones){ctx.fillStyle=z[2]; ctx.fillRect(X(z[0]),y,X(z[1])-X(z[0]),h)}
+  ctx.font="bold 18px sans-serif"; ctx.lineWidth=4; ctx.strokeStyle="#000"; ctx.fillStyle="#fff";
+  ctx.textAlign="right"; ctx.strokeText("はやい",x0-14,y+h/2); ctx.fillText("はやい",x0-14,y+h/2);
+  ctx.textAlign="left"; ctx.strokeText("おそい",x0+w+14,y+h/2); ctx.fillText("おそい",x0+w+14,y+h/2);
+  ctx.textAlign="center";
+  const mx=X(dt);
+  ctx.fillStyle="#fff"; ctx.strokeStyle="#000"; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(mx,y-4); ctx.lineTo(mx-11,y-20); ctx.lineTo(mx+11,y-20); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillRect(mx-2,y-4,4,h+8);
+}
+function big(text,x,y,col,size){
+  ctx.font=`bold ${size}px "Hiragino Maru Gothic ProN","Yu Gothic",sans-serif`; ctx.lineWidth=Math.max(6,size/8);
+  ctx.textAlign="center"; ctx.textBaseline="middle";
+  ctx.strokeStyle="#000"; ctx.lineJoin="round"; ctx.strokeText(text,x,y); ctx.fillStyle=col; ctx.fillText(text,x,y);
+}
+
+/* ---------- 結果画面 ---------- */
+function showFinal(){
+  setState("final");
+  game.banner=null; game.launch=null; game.pitch=null; game.swing=null;
+  const s=game.score, t=game.tally;
+  const rank=s>=500?["🏆 ミスター・スラッガー！","もう プロ級。ホームランの かんかくが バッチリ！"]:
+             s>=300?["🥇 4番バッター","ひきつけて ふれてる！ いい スイング"]:
+             s>=150?["🥈 レギュラー","あと すこし。ボールが ミートポイントに くるまで まとう"]:
+             s>=50 ?["🥉 ベンチ入り","ボールを よく見て、いちばん ひきつけて ふろう"]:["🌱 しんじん","まずは ボールに バットを あてるところから！"];
+  $("finTitle").textContent=rank[0];
+  $("finBody").innerHTML=`スコア <b style="font-size:1.6em;color:#ffd84a">${s}</b> 点　いちばん とんだ <b style="font-size:1.3em;color:#ffd84a">${game.longest}m</b>（きろく ${game.best}m）<br>`+
+    `ホームラン ${t.hr}　ヒット ${t.hit}　アウト ${t.out}　ファウル ${t.foul}　空振り/見逃し ${t.miss}<br><br>${rank[1]}`;
+  $("finClap").classList.toggle("hide",!cam());
+  $("final").classList.remove("hide"); sfx.fanfare();
+}
+function showTitle(){
+  $("final").classList.add("hide"); $("title").classList.remove("hide"); setState("title");
+  $("clapHint").classList.toggle("hide",!cam());
+  if(!cam()){$("stanceTxt").textContent="スペース か クリックで スイング"; $("stanceNote").textContent="カメラなしの おためし。右打ちで あそぶよ"; $("stanceIcon").textContent="⌨"}
+}
+
+/* ---------- カメラ：かまえ と スイング ---------- */
+// かまえ：手が 肩より 少し下までの 高さで、体の まん中から 右か左に よっている（りょう手が 見えるときは 近くに ある）
+function readStance(){
+  if(!Body.ok) return null;
+  const hs=Body.hands.filter(h=>h.vis); if(!hs.length) return null;
+  if(Body.both&&Body.gap>1.5) return null;
+  let mx=0,my=0; hs.forEach(h=>{mx+=(h.x-Body.cx)*Body.asp/Body.unit; my+=(h.y-Body.cy)/Body.unit}); mx/=hs.length; my/=hs.length;
+  if(my>1.4||Math.abs(mx)<0.2) return null;
+  return mx>0?"R":"L";      // 鏡うつしなので、画面の右に 手が ある＝右打ち
+}
+let stCand=null, stSince=0;
+Body.on("pose",()=>{
+  if(!cam()) return;
+  const s=readStance(), t=now();
+  if(s!==stCand){stCand=s; stSince=t}
+  game.stance=s&&t-stSince>200?s:null;
+  // 右打ち・左打ちは さいしょに かまえた手で きめる。1球目を 投げはじめたら かえない
+  const st=game.state;
+  if(game.stance&&(!game.side||st==="title"||st==="count"||(st==="ready"&&game.n===0))) game.side=game.stance;
+  if(game.state==="title"){
+    const el=$("stanceTxt");
+    el.textContent=game.side?`かまえ：${game.side==="L"?"ひだりうち":"みぎうち"} ✔`:"かまえ：まだ";
+    el.classList.toggle("ok",!!game.side);
+    $("stanceIcon").textContent=game.stance?"🏏":"🧍";
+  }
+});
+Body.on("swing",e=>{
+  if(!cam()) return;
+  if(e.dy<-0.75) return;                                  // 手を 上に あげる 動き（かまえ なおし）は ふりに しない
+  if(!game.side&&game.state==="flight") game.side=e.dx<0?"R":"L";   // かまえずに 打ったら、ふった向きで きめる
+  const power=clamp((e.speed-2.2)/5,0.25,1);
+  onSwing(power,now()-SWING_LAG+game.offset);
+});
+Body.on("clap",e=>{
+  if(!cam()) return;
+  if(Math.abs((e.x-Body.cx)*Body.asp/Body.unit)>0.45) return;    // 肩の よこで 手を あわせたのは バットの にぎり。手たたきに しない
+  const t=now(), st=game.state;
+  if(st==="title") startGame();
+  else if(st==="final"&&t-game.tState>1500) startGame();
+  else if(st==="result"&&game.launch&&game.launch.landed&&t-game.launch.landT>500) nextBall();   // もう1球（とんだ ボールを 見おわってから）
+});
+
+/* ---------- 入力（カメラなし） ---------- */
+function keySwing(){
+  audio();
+  if(game.state==="title"||game.state==="final"||game.state==="boot") return;
+  onSwing(0.75,now()+game.offset);
+}
+window.addEventListener("keydown",e=>{if(e.code==="Space"){e.preventDefault();keySwing()}});
+cv.addEventListener("pointerdown",keySwing);
+document.addEventListener("pointerdown",()=>audio(),true);   // 音は さいしょに さわった ときに よういする
+
+$("startBtn").addEventListener("click",startGame);
+$("againBtn").addEventListener("click",startGame);
+$("backBtn").addEventListener("click",showTitle);
+$("levels").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-lv]"); if(!b) return;
+  game.level=+b.dataset.lv; [...$("levels").children].forEach(x=>x.classList.toggle("sel",x===b));
+});
+function showOffset(){$("offVal").textContent=(game.offset>0?"+":"")+game.offset+"ms"}
+$("offMinus").addEventListener("click",()=>{game.offset-=10;store.set("bmz_offset",game.offset);showOffset()});
+$("offPlus").addEventListener("click",()=>{game.offset+=10;store.set("bmz_offset",game.offset);showOffset()});
+showOffset();
+
+/* ---------- 確認用：?dbg ---------- */
+let dbgAuto=null;
+const dbg={
+  get game(){return game}, get state(){return game.state},
+  start(lv){if(lv!=null) game.level=lv; startGame()},
+  pitch(){if(game.state==="title"||game.state==="final") startGame(); else newPitch()},
+  // いまの球に、ホームに つく時刻＋off(ms) で ふる
+  swing(off=0,power=0.8){
+    if(game.state!=="flight"){onSwing(power,now());return "flight ではない: "+game.state}
+    const at=game.pitch.tArrive+off; setTimeout(()=>onSwing(power,now()),Math.max(0,at-now())); return "ok";
+  },
+  swingNow(power=0.8){onSwing(power,now())},
+  auto(off){dbgAuto=off==null?null:off},          // 毎球 自動で ふる（null で やめる）
+  stance(side){game.side=side; game.stance=side},
+  cam(v=true){Body.mode=v?"cam":"nocam"},          // カメラの 処理（swing・clap）を カメラなしで ためす
+  clap(){Body.emit("clap",{})},
+  fakeSwing(dx=-1,speed=6){Body.emit("swing",{dx,dy:0,speed,i:1,side:"R"})}
+};
+window.__bmz=game;
+
+/* ---------- 入口 ---------- */
+function loop(){update();draw();requestAnimationFrame(loop)}
+if(DBG){
+  window.dbg=dbg; Body.mode="nocam"; showTitle();
+}else{
+  Body.gate({title:"⚾ バッター目線 ぜんしん版",corner:"tr",lines:[
+    "りょう手で バットを にぎるように <b>右か左の 肩の前</b>で かまえる（右打ち・左打ちは かまえた手で きまる）",
+    "ボールが きたら、<b>うでを よこに ふる</b>。向きは だいたいで OK",
+    "<b>ひきつけて</b> ふるほど 遠くへ とぶ。はやすぎ・おそすぎは ファウルや 空振り（罰なし）",
+    "手を もどさなくても、つづけて ふれる",
+    "👏 手を たたく … はじめる・もういちど"],
+    onStart:m=>{audio(); if(m==="cam"){Body.cfg.SW_SPEED=2.4; Body.cfg.SW_DIST=0.3} showTitle()}});
+}
+loop();
+</script>
+</body>
+</html>
