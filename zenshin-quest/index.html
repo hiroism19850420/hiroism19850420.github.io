@@ -1878,17 +1878,19 @@ function dgHit(c){
     DG.stun = 0.45; DG.wob = 0.5; sfx.denied(); palMood('cry', 0.8, 'ちがうよ〜');
   }
 }
+const DG_EXIT = { x: 12, y: 12, w: 132, h: 44 };   // 左上の「ちずへ」ボタン（あそんでいる 途中でも でられる）
 function dgTap(x, y){
   if (DG.phase === 'over'){ x < W / 2 ? endDaruma() : startDaruma(); return; }
+  if (x >= DG_EXIT.x && x <= DG_EXIT.x + DG_EXIT.w && y >= DG_EXIT.y && y <= DG_EXIT.y + DG_EXIT.h){ endDaruma(); return; }
   dgHit(x < W / 3 ? 0 : x < W * 2 / 3 ? 1 : 2);
 }
 function dgHear(str){
-  if (DG.phase !== 'over' || S.now < VOICE.until + 0.3) return;
+  if (S.now < VOICE.until + 0.3) return;
   const n = norm(str);
-  if (/モウイチド|モウ一度|モウイッカイ|モウ1回|ツヅケ/.test(n)) startDaruma();
-  else if (/チズ|地図|オワリ|終ワリ|モドル|戻ル/.test(n)) endDaruma();
+  if (DG.phase === 'over' && /モウイチド|モウ一度|モウイッカイ|モウ1回|ツヅケ/.test(n)) startDaruma();
+  else if (/チズ|地図|オワリ|終ワリ|モドル|戻ル|ヤメ/.test(n)) endDaruma();
 }
-function endDaruma(){ DG.phase = 'off'; saveGame(); openMap(); buildPad(); }
+function endDaruma(){ DG.phase = 'off'; DG.hold = 0; DG.xhold = 0; saveGame(); openMap(); buildPad(); }
 function updateDaruma(dt){
   DG.press = DG.press.map(v => Math.max(0, v - dt)); DG.stun = Math.max(0, DG.stun - dt); DG.wob = Math.max(0, DG.wob - dt);
   if (DG.hammer){ DG.hammer.t -= dt; if (DG.hammer.t <= 0) DG.hammer = null; }
@@ -1896,6 +1898,10 @@ function updateDaruma(dt){
   DG.fly.forEach(f => { f.t += dt; f.x += f.vx * dt; f.vy += 1600 * dt; f.y += f.vy * dt; f.rot += f.vr * dt; });
   DG.fly = DG.fly.filter(f => f.t < 1.4);
   const away = S.mode === 'cam' && !P.seen;   // うつっていない 間は とけいを とめる
+  if (DG.phase !== 'over'){   // 途中でも りょう手を 上げて 2びょう → ちずへ
+    DG.xhold = S.mode === 'cam' && S.poseMagic ? (DG.xhold || 0) + dt : 0;
+    if (DG.xhold > 2){ endDaruma(); return; }
+  }
   if (DG.phase === 'ready'){
     // さいしょの あんないが おわってから 3・2・1
     if (DG.cd === 0 && S.now <= VOICE.until) DG.t = 0; else DG.t += dt;
@@ -1998,6 +2004,15 @@ function drawDaruma(){
     outText(`いちばん とおくまで：${st('dgBest')}だんかい`, cx, y + 118, 16, '#cfe0ff');
     outText(S.mode === 'cam' ? '👏 手を たたくと もういちど ／ 🙌 りょう手を 上げると ちずへ' : '「もういちど」「ちず」と いうか、下の ボタン', cx, y + 162, 16, '#fff');
     if (DG.hold > 0){ ctx.fillStyle = '#8ff0ff'; ctx.fillRect(x + 20, y + h - 12, (w - 40) * DG.hold / 1.2, 6); }
+  }
+  if (DG.phase !== 'over'){
+    const e = DG_EXIT;
+    ctx.fillStyle = 'rgba(35,48,107,.78)'; ctx.beginPath(); ctx.roundRect(e.x, e.y, e.w, e.h, 12); ctx.fill();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; outText('🗾 ちずへ', e.x + e.w / 2, e.y + e.h / 2, 20, '#fff');
+    if (S.mode === 'cam'){
+      outText('（りょう手を 上げて ながおし）', e.x + e.w / 2 + 40, e.y + e.h + 16, 13, '#23306b', 'rgba(255,255,255,.9)');
+      if (DG.xhold > 0){ ctx.fillStyle = '#8ff0ff'; ctx.fillRect(e.x, e.y + e.h + 28, e.w * Math.min(1, DG.xhold / 2), 5); }
+    }
   }
   drawPal();
   drawTextFx();
@@ -2208,7 +2223,7 @@ function update(dt){
   checkCards(dt);
   if (S.book){ listen(true); return; }
   if (S.state === 'map'){ listen(true); updateMap(dt); return; }
-  if (S.state === 'daruma'){ listen(DG.phase === 'over'); updatePal(dt); updateDaruma(dt); return; }
+  if (S.state === 'daruma'){ listen(true); updatePal(dt); updateDaruma(dt); return; }
   if (S.state === 'tower'){ listen(TW.phase === 'over'); updatePal(dt); updateTower(dt); return; }
   updatePal(dt);
   if (S.rightUp && S.mode === 'cam'){ S.listenUntil = S.now + 0.8; S.bookHint = S.now + 0.8; }
@@ -2861,7 +2876,7 @@ function buildPad(){
   if (S.state === 'daruma'){
     const add = (t, f, col) => { const b = document.createElement('button'); b.textContent = t; if (col) b.style.background = col; b.addEventListener('pointerdown', e => { e.preventDefault(); f(); }); box.appendChild(b); };
     if (DG.phase === 'over'){ add('🗾 ちずへ', endDaruma); add('🔁 もういちど', startDaruma); }
-    else DG_COL.forEach((c, i) => add(['あか', 'みどり', 'あお'][i], () => dgHit(i), c.c));
+    else { DG_COL.forEach((c, i) => add(['あか', 'みどり', 'あお'][i], () => dgHit(i), c.c)); add('🗾 ちず', endDaruma); }
     return;
   }
   ORDER.filter(learned).forEach(k => {
@@ -2892,7 +2907,7 @@ addEventListener('keydown', e => {
   if (KEYS[e.code]){ KEYS[e.code](true); e.preventDefault(); }
   if (S.book){ if (e.code === 'ArrowRight') turnPage(1); else if (e.code === 'ArrowLeft') turnPage(-1); else if (e.code === 'Escape') openBook(false); if (e.code !== 'KeyB') return; }
   if (S.state === 'tower'){ const d = { Digit1: 0, KeyZ: 0, ArrowLeft: 0, Digit3: 1, KeyC: 1, ArrowRight: 1 }[e.code]; if (d != null){ e.preventDefault(); twReach(d); } if (e.code === 'Escape' && TW.phase === 'over') endTower(); return; }
-  if (S.state === 'daruma'){ const d = { Digit1: 0, KeyZ: 0, ArrowLeft: 0, Digit2: 1, KeyX: 1, ArrowDown: 1, Space: 1, Digit3: 2, KeyC: 2, ArrowRight: 2 }[e.code]; if (d != null){ e.preventDefault(); dgHit(d); } if (e.code === 'Escape' && DG.phase === 'over') endDaruma(); return; }
+  if (S.state === 'daruma'){ const d = { Digit1: 0, KeyZ: 0, ArrowLeft: 0, Digit2: 1, KeyX: 1, ArrowDown: 1, Space: 1, Digit3: 2, KeyC: 2, ArrowRight: 2 }[e.code]; if (d != null){ e.preventDefault(); dgHit(d); } if (e.code === 'Escape') endDaruma(); return; }
   const k = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7'].indexOf(e.code); if (k >= 0) S.heard = { id: ORDER[k], t: S.now };
 });
 addEventListener('keyup', e => { if (KEYS[e.code]) KEYS[e.code](false); });
