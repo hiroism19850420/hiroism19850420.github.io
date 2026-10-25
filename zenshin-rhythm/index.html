@@ -244,8 +244,8 @@ const G = {};
 // ----- 1. はいチーズ！ -----
 G.cheese = {
   key: 'cheese', name: 'はいチーズ！', sub: 'しゃしんやさん', col: '#ffb84d', act: 'ジャンプ',
-  lines: ['「いち、にの、さん！」の さん で ジャンプ！', '「……」と ためたら まだ とばない', 'はやく かぞえたら はやく とぶ'],
-  bpm: 112, end: 92,
+  lines: ['わっかが ちぢんで 光ったら ジャンプ！', '「いち、にの、さん！」の「さん」が その とき', '「……」と ためたら まだ とばない'],
+  bpm: 112, end: 92, go: 'ジャンプ！',
   cues: {
     n: { len: 3, hits: [2], words: [[0, 'いち'], [1, 'にの'], [2, 'さん！']], snd: [[0, SND.ichi], [1, SND.nino], [2, SND.shutter]] },
     t: { len: 4, hits: [3], words: [[0, 'いち'], [1, 'にの'], [2, '……'], [3, 'さん！']], snd: [[0, SND.ichi], [1, SND.nino], [2, SND.umm], [3, SND.shutter]] },
@@ -336,8 +336,8 @@ function polaroid(x, y, ph, rot, s, p) {
 // ----- 2. ハ…ハ…ハックション！ -----
 G.sneeze = {
   key: 'sneeze', name: 'ハ…ハ…ハックション！', sub: 'くしゃみおじさん', col: '#6ccf6c', act: 'しゃがむ',
-  lines: ['「ハ、ハ…」のあと「ックション！」で しゃがむ', 'ハが 4つ なら 2かい しゃがむ', '「ズズッ」の ときは くしゃみ しないよ'],
-  bpm: 96, end: 90,
+  lines: ['「ックション！」の とき しゃがんで よける', 'わっかが ちぢんで 光ったら しゃがむ', '「✋ うごかない」の ときは じっと する'],
+  bpm: 96, end: 90, go: 'しゃがむ！', trapLabel: 'うごかない',
   cues: {
     h1: { len: 1, hits: [1], words: [[0, 'ハ'], [1, 'ックション！']] },
     h2: { len: 2, hits: [2], words: [[0, 'ハ'], [1, 'ハ'], [2, 'ックション！']] },
@@ -404,8 +404,9 @@ G.sneeze = {
     const afro = P.st.afro;
     let blown = -1;
     for (const ev of evs) for (const tg of ev.tgs) {
-      const d = tn - tg.t, r = tg.res[p];
-      if (d >= 0 && d < 1.0 && ((r && (r.kind === 'miss' || r.kind === 'bad')) || (!r && !(a && tn - a.at < 0.5)))) blown = Math.max(blown, d);
+      const r = tg.res[p]; if (!r || (r.kind !== 'miss' && r.kind !== 'bad')) continue;
+      const d = tn - (r.kind === 'miss' ? tg.t + 0.35 : Math.max(tg.t, r.t));
+      if (d >= 0 && d < 1.0) blown = Math.max(blown, d);
     }
     if (a && tn - a.at < 0.45) { pose = 'duck'; fc = 'squint'; }
     else if (blown >= 0) { pose = 'blown'; fc = 'shock'; xo = Math.sin(Math.min(blown, 0.5) / 0.5 * Math.PI / 2) * 40 * (1 - blown); rot = 0.15 * (1 - blown); }
@@ -429,8 +430,8 @@ G.sneeze = {
 const VEL = 210; // 1拍で すすむ はば
 G.stamp = {
   key: 'stamp', name: 'ドン！とハンコ', sub: 'ゆうびんきょく', col: '#4dbfa8', act: 'りょう手で ドン',
-  lines: ['てがみが まんなかに きたら ドン！', 'こづつみ（ピッピッ）は ドン・ドン！', 'ねこ（ニャー）は おさないでね'],
-  bpm: 124, end: 76,
+  lines: ['てがみが まんなかに きたら りょう手で ドン！', 'わっかが ちぢんで 光ったら ドン', 'ねこ（✋）は おさないでね'],
+  bpm: 124, end: 76, go: 'ドン！', trapLabel: 'ねこは おさない', lblDy: 185,
   cues: {
     L: { len: 3, hits: [2], words: [], snd: [[0, t => SND.blip(t)]] },
     P: { len: 3, hits: [2, 2.5], words: [], snd: [[0, t => SND.blip(t, 1320)], [0.5, t => SND.blip(t, 1320)]] },
@@ -439,7 +440,7 @@ G.stamp = {
   chart: null, remix: null,
   music: makeMusic({ prog: [[55, 0], [52, 1], [48, 0], [50, 0]], k: 'x.......x.......', sn: '....x.......x...', h: 'xxxxxxxxxxxxxxxx', hv: 0.04, bass: 'x.x.o.x.x.x.o.x.', st: '..x...x...x...x.', mel: ['1.3.5.3.8.5.3.5.', '6.8.0.8.6.3.1.3.', '4.6.8.6.4.6.8.6.', '5.7.9.7.5.4.3.2.'], root: 67, sc: MAJ, lead: 'square', lv: 0.03 }),
   actSnd: (t, k) => SND.stamp(t, k === 'great' || k === 'ok'),
-  cpos: w => [w / 2, 330],
+  cpos: w => [w / 2, 395],
   draw(w, h, p, cb, tn, seg) {
     const cx = w / 2, P = S.pl[p], bt = 470;
     c.fillStyle = '#dff3ea'; c.fillRect(0, 0, w, h);
@@ -514,7 +515,7 @@ function cat(x, bt, cb, stamped) {
 // ----- 4. ピタッ！とダンス -----
 G.freeze = {
   key: 'freeze', name: 'ピタッ！とダンス', sub: 'ダンスきょうしつ', col: '#9b6cff', act: 'とまる',
-  lines: ['おんがくの あいだは すきに おどって！', '「せー、の、ピタッ！」で ぴたっと とまる', '「OK！」まで うごいちゃ だめ'],
+  lines: ['おんがくが なっている あいだは おどる', '「ピタッ！」で ぴたっと とまる', '「OK！」が でるまで うごかない'],
   bpm: 120, end: 88,
   cues: {
     S: { len: 4, hits: [], frz: [2, 4], mute: [2, 4], words: [[0, 'せー'], [1, 'の'], [2, 'ピタッ！'], [4, 'OK！']], snd: [[0, t => SND.whistle(t, 0.1)], [1, t => SND.whistle(t, 0.1)], [2, SND.pita], [4, SND.ok]] },
@@ -573,11 +574,24 @@ G.freeze = {
     } else if (en < 0.12 && S.pl[p].isCam) fc = 'norm';
     shadow(cx + 140, gy, 60);
     drawChar(cx + 140, gy, 1, { col: PCOL[p], pose, face: fc, rot, ph: cb, en: clamp(en, 0, 1) });
-    if (!frz && !after && cb > 4 && Math.floor(cb / 2) % 4 === 0) txt('おどって！', cx + 140, 150, 34, '#fff', 'center', INK, 8);
+    let pre = null; for (const ev of evs) if (ev.fz && cb >= ev.b && cb < ev.fz.a) pre = ev.fz;
+    const lx = cx + 60;
+    if (frz) {
+      const k = clamp((frz.z - cb) / (frz.z - frz.a), 0, 1), mv = P.movingNow;
+      txt('ストップ！ うごかないで', lx, 64, 40, mv ? '#ff6b6b' : '#fff', 'center', INK, 10);
+      rr(lx - 170, 100, 340, 24, 12); fs('rgba(0,0,0,.4)', INK, 4); rr(lx - 170, 100, Math.max(24, 340 * k), 24, 12); fs(mv ? '#ff6b6b' : '#7cff7a', null);
+      if (mv) txt('うごいてる！', cx + 140, 260, 38, '#ff6b6b', 'center', INK, 8);
+    } else if (pre) {
+      const dt = (pre.a - cb) * S.spb, lead = 2 * S.spb, k = clamp(dt / lead, 0, 1);
+      circ(cx + 140, 400, 80 + 160 * k); c.strokeStyle = '#ffe65a'; c.lineWidth = 10; c.stroke();
+      txt('もうすぐ とまる！', lx, 64, 42, '#ffe65a', 'center', INK, 10);
+    } else if (after) {
+      const r = after.res[p]; if (r != null && r < 1) txt(r > 0 ? 'ちょっと うごいた' : 'うごいちゃった…', cx + 140, 150, 40, '#ff9b9b', 'center', INK, 9);
+    } else if (cb > 4) txt('♪ おどって！（すきに うごこう）', lx, 64, 34, '#7cff7a', 'center', INK, 9);
   },
 };
 
-G.remix = { key: 'remix', name: 'ごちゃまぜ リミックス', sub: 'ぜんぶ まぜた', col: '#ff6c9b', act: 'ぜんぶ', lines: ['4つの ゲームが つぎつぎ かわる', 'あわてず きいて うごこう', 'さいごまで ノリノリで！'] };
+G.remix = { key: 'remix', name: 'ごちゃまぜ リミックス', sub: 'ぜんぶ まぜた', col: '#ff6c9b', act: 'ぜんぶ', lines: ['4つの ゲームが つぎつぎ かわる', 'わっかが 光ったら うごく', 'ことばの とおりに うごこう'] };
 const REMIX = ['cheese', 'sneeze', 'stamp', 'freeze', 'cheese', 'stamp', 'sneeze', 'freeze'];
 const GLIST = ['cheese', 'sneeze', 'stamp', 'freeze', 'remix'];
 
@@ -632,23 +646,30 @@ function schedule() {
   while (true) {
     const t = S.t0 + S.step * S.spb / 4; if (t > ahead) break;
     const b = S.step / 4;
-    if (b < S.end && !muted(b) && t > clock() - 0.05) { const seg = segAt(b); seg.g.music(S.step - seg.b0 * 4, t, S.spb); }
+    if (b < S.end && !muted(b) && t > clock() - 0.05 && t >= 0) { const seg = segAt(b); seg.g.music(S.step - seg.b0 * 4, t, S.spb); }
     S.step++;
     if (b > S.end + 4) break;
   }
   DEST = OUT;
-  while (S.si < S.snds.length && S.snds[S.si].t < ahead) { const s = S.snds[S.si++]; if (s.t > clock() - 0.05) s.f(s.t, s.ev); }
+  while (S.si < S.snds.length && S.snds[S.si].t < ahead) { const s = S.snds[S.si++]; if (s.t > clock() - 0.05 && s.t >= 0.05) s.f(s.t, s.ev); }
 }
+// 判定の はば（秒）［はやい がわ, おそい がわ］。体で うごくと おくれやすいので おそい がわを ひろく
+const WIN = { great: [0.1, 0.13], ok: [0.2, 0.26], bad: [0.28, 0.34] };
+let GUIDE = true;
 function act(p, raw, type) {
   if (!S || S.done) return;
   const P = S.pl[p], tIn = raw - (type === 'cam' ? LAT.cam : LAT.key), now = clock();
   let best = null, bd = 1e9;
-  for (const x of S.tg) { if (x.t > tIn + 0.4) break; if (x.res[p]) continue; const d = tIn - x.t; if (Math.abs(d) < Math.abs(bd)) { bd = d; best = x; } }
+  for (const x of S.tg) { if (x.t > tIn + 0.5) break; if (x.res[p]) continue; const d = tIn - x.t; if (Math.abs(d) < Math.abs(bd)) { bd = d; best = x; } }
   let kind = 'stray';
-  if (best && Math.abs(bd) <= 0.2) { const ad = Math.abs(bd); kind = ad <= 0.085 ? 'great' : ad <= 0.15 ? 'ok' : 'bad'; best.res[p] = { kind, t: tIn, d: bd }; if (best.ev.g.onJudge) best.ev.g.onJudge(p, best, kind); }
+  const inW = (d, w) => d >= -w[0] && d <= w[1];
+  if (best && inW(bd, WIN.bad)) { kind = inW(bd, WIN.great) ? 'great' : inW(bd, WIN.ok) ? 'ok' : 'bad'; best.res[p] = { kind, t: tIn, d: bd }; if (best.ev.g.onJudge) best.ev.g.onJudge(p, best, kind); }
   const a = { t: tIn, at: now, kind, tg: kind === 'stray' ? null : best };
   if (kind === 'stray') {
-    for (const tr of S.traps) if (!tr.res[p] && Math.abs(tIn - tr.t) <= tr.win) { tr.res[p] = true; tr.ev.trapR[p] = true; a.cat = tr.ev.g === G.stamp; if (a.cat) P.st.cat++; }
+    let trapped = false;
+    for (const tr of S.traps) if (!tr.res[p] && Math.abs(tIn - tr.t) <= tr.win) { trapped = true; tr.res[p] = true; tr.ev.trapR[p] = true; a.cat = tr.ev.g === G.stamp; if (a.cat) P.st.cat++; }
+    // カメラは 合図の ないときの うごきを むしする（体の ゆれで ハンコが 動きつづけないように）
+    if (type === 'cam' && !trapped) return;
   }
   P.acts.push(a);
   if (type !== 'cam') { P.lastKey = now; const cbIn = (tIn - S.t0) / S.spb; for (const f of S.fz) if (cbIn >= f.a + 0.1 && cbIn < f.z) f.mv[p] += 1000; }
@@ -665,7 +686,7 @@ function update() {
     P.isCam = CAM.on;
   }
   // とりのがし
-  for (const x of S.tg) { if (x.t > tn - 0.21) break; for (let p = 0; p < S.np; p++) if (!x.res[p]) { x.res[p] = { kind: 'miss' }; if (x.ev.g.onJudge) x.ev.g.onJudge(p, x, 'miss'); } }
+  for (const x of S.tg) { if (x.t > tn - 0.35) break; for (let p = 0; p < S.np; p++) if (!x.res[p]) { x.res[p] = { kind: 'miss' }; if (x.ev.g.onJudge) x.ev.g.onJudge(p, x, 'miss'); } }
   // ピタッ
   const cbIn = (tn - S.t0 - (CAM.on ? LAT.cam : LAT.key)) / S.spb;
   for (const f of S.fz) {
@@ -735,7 +756,7 @@ function camFrame() {
   let c0 = 0, c1 = 0; CELL.fill(0);
   for (let y = 0, i = 0; y < PHh; y++) { const row = ((y / CH) | 0) * NCX; for (let x = 0; x < PW; x++, i++) {
     const j = i * 4, l = (d[j] * 77 + d[j + 1] * 150 + d[j + 2] * 29) >> 8;
-    if (Math.abs(l - prevL[i]) > 20) { CELL[row + ((x / CW) | 0)]++; if (!two) c0++; else if (x < a0) c0++; else if (x >= a1) c1++; }
+    if (Math.abs(l - prevL[i]) > 22) { CELL[row + ((x / CW) | 0)]++; if (!two) c0++; else if (x < a0) c0++; else if (x >= a1) c1++; }
     curL[i] = l;
   } }
   const tmp = prevL; prevL = curL; curL = tmp;
@@ -750,14 +771,14 @@ function camFrame() {
       if (f > b1) { b2 = b1; b1 = f; } else if (f > b2) b2 = f;
     }
     const g = p === 0 ? c0 / (two ? a0 * PHh : PW * PHh) : c1 / ((PW - a1) * PHh);
-    const loc = (b1 * 0.7 + b2 * 0.3) * 0.5;
+    const loc = (b1 * 0.7 + b2 * 0.3) * 0.45;
     updMot(p, Math.max(g, loc), g, now, loc > g * 1.6 ? 0.06 : 0);
   }
 }
 function updMot(p, e, g, now, late) {
   const m = MOT[p]; m.e = e; m.g = g; m.es += (e - m.es) * 0.3;
-  if (e < m.floor) m.floor += (e - m.floor) * 0.2; else m.floor += (e - m.floor) * 0.004;
-  const thr = Math.max(0.035 / CAM.sens, m.floor * 2.5 + 0.02 / CAM.sens); m.thr = thr;
+  if (e < m.floor) m.floor += (e - m.floor) * 0.2; else m.floor += (e - m.floor) * 0.008;
+  const thr = Math.max(0.045 / CAM.sens, m.floor * 3 + 0.025 / CAM.sens); m.thr = thr;
   // 手の うごきは 手が ぶつかる 少し前から 始まるので、そのぶん おそく あつかう
   if (m.armed) { if (e > thr && now - m.last > (m.peak > thr * 4 ? 0.4 : 0.18)) { m.armed = false; m.last = now; m.peak = e; onset(p, now + late); } }
   else { m.peak = Math.max(m.peak, e); if (e < Math.max(thr * 0.5, m.peak * 0.4)) m.armed = true; }
@@ -917,6 +938,7 @@ function drawSelect(tn) {
   });
   button(30, 640, 200, 60, '← もどる', () => go('title'), { size: 24 });
   if (CAM.on) button(W - 290, 640, 260, 60, 'カメラ チェック', () => go('cam'), { size: 24 });
+  button(W / 2 - 150, 640, 300, 60, GUIDE ? 'ガイドの わっか：あり' : 'ガイドの わっか：なし', () => { GUIDE = !GUIDE; }, { size: 22, col: GUIDE ? '#c8f7c5' : '#e0e0e0' });
 }
 function drawHowto(tn) {
   const g = G[HOW];
@@ -979,8 +1001,30 @@ function hud(w, p, cb, tn, seg) {
     c.fillStyle = 'rgba(0,0,0,.5)'; c.fillRect(x, y + th - 12, tw, 12); c.fillStyle = lv > 0.5 ? '#7cff7a' : '#ffe65a'; c.fillRect(x, y + th - 12, tw * lv, 12);
   }
   // ひょうか の キラキラ
-  const [hx, hy] = seg.g.cpos(w);
+  const [hx, hy] = seg.g.cpos(w), ly = hy + (seg.g.lblDy || 125);
+  if (GUIDE && seg.g.go) {
+    const lead = Math.min(1.1, S.spb * 1.6);
+    let nx = null; for (const x of S.tg) { if (x.t > tn + lead) break; if (x.ev.g !== seg.g || x.res[p]) continue; if (x.t >= tn - 0.3) { nx = x; break; } }
+    let trap = null; for (const tr of S.traps) { const dt = tr.t - tn; if (tr.ev.g === seg.g && dt < lead && dt > -0.3 && !tr.res[p]) { trap = tr; break; } }
+    if (nx && !(trap && trap.t < nx.t)) {
+      const dt = nx.t - tn, k = clamp(dt / lead, 0, 1), now = Math.abs(dt) < 0.13;
+      c.save(); circ(hx, hy, 72); c.fillStyle = now ? 'rgba(255,230,90,.55)' : 'rgba(255,255,255,.15)'; c.fill();
+      c.setLineDash([10, 8]); c.strokeStyle = '#fff'; c.lineWidth = 5; c.stroke(); c.setLineDash([]);
+      circ(hx, hy, 72 + 170 * k); c.strokeStyle = now ? '#ffe65a' : PCOL[p]; c.lineWidth = 10; c.stroke(); c.restore();
+      txt(seg.g.go, hx, ly, now ? 54 : 42, now ? '#ffe65a' : '#fff', 'center', INK, 10);
+    } else if (trap) txt('✋ ' + seg.g.trapLabel, hx, ly, 42, '#fff', 'center', '#e04848', 10);
+  }
   const a = lastAct(P, tn);
+  let msg = null, mcol = '#fff', mk = 0;
+  if (a && a.tg && tn - a.at < 0.8) {
+    const r = a.tg.res[p], d = r ? r.d : 0; mk = (tn - a.at) / 0.8;
+    if (a.kind === 'great') { msg = 'ばっちり！'; mcol = '#ffe65a'; }
+    else if (a.kind === 'ok') msg = d < 0 ? 'OK（はやめ）' : 'OK（おそめ）';
+    else if (a.kind === 'bad') { msg = d < 0 ? 'はやすぎ！' : 'おそすぎ！'; mcol = '#c8c8d8'; }
+  } else {
+    for (const x of S.tg) { if (x.t > tn) break; const r = x.res[p], k = tn - (x.t + 0.35); if (x.ev.g === seg.g && r && r.kind === 'miss' && k >= 0 && k < 0.8) { msg = 'のがした…'; mcol = '#c8c8d8'; mk = k / 0.8; } }
+  }
+  if (msg) { c.save(); c.globalAlpha = clamp(1.6 - mk * 1.6, 0, 1); txt(msg, hx, hy - 150 - mk * 30, 40, mcol, 'center', INK, 9); c.restore(); }
   if (a && a.tg && tn - a.at < 0.4) {
     const k = (tn - a.at) / 0.4;
     c.save(); c.globalAlpha = 1 - k;
