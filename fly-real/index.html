@@ -52,6 +52,8 @@ svg{display:block}
 .ib:active{transform:scale(.96)}
 .ib svg{width:62%;height:62%}
 #gate.off{opacity:0;pointer-events:none}
+#bCalm{font:13px/1 sans-serif;color:#fff;padding:9px 16px;border-radius:20px;border:1.5px solid #ffffff88;background:#ffffff14;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#bCalm.on{background:#ffffff40;border-color:#fff}
 #gmsg{min-height:1.6em;font-size:14px;max-width:80vw;text-align:center;line-height:1.6;text-shadow:0 1px 6px #0008}
 
 /* カメラの じゅんび（絵だけ） */
@@ -130,6 +132,7 @@ body:not([data-state="gate"]) #credit{opacity:0}
     <button class="ib" id="bNo" aria-label="カメラなしで とぶ"></button>
   </div>
   <div id="gmsg"></div>
+  <button id="bCalm" type="button"></button>
 </div>
 
 <div id="guide" class="off">
@@ -2960,6 +2963,11 @@ ZREAL.wall = {
 // =====================================================================
 //  とぶ（道すじの まわりを 自由に。ゆるく 道へ もどす）
 // =====================================================================
+// ゆれなし：画面の かたむき・ふるえ・ひろがりを とめる（よいやすい 人へ）。PC は はじめから ON
+const Calm = {
+  on: (() => { try { const v = localStorage.getItem('fly.calm'); if (v != null) return v === '1'; } catch (e) {} return !TOUCH; })(),
+  set(v) { this.on = !!v; try { localStorage.setItem('fly.calm', this.on ? '1' : '0'); } catch (e) {} const b = document.getElementById('bCalm'); if (b) { b.classList.toggle('on', this.on); b.textContent = this.on ? 'ゆれなし：ON' : 'ゆれなし：OFF'; } }
+};
 const SK = {};   // 今の 空の 値
 for (const k of SKYKEYS) SK[k] = typeof SKYDEF[k] === 'number' ? SKYDEF[k] : null;
 for (const k of ['zen', 'hor', 'sunCol', 'cloudCol', 'cloudShadow', 'hemiS', 'hemiG']) SK[k] = new THREE.Color();
@@ -3123,29 +3131,30 @@ const Fly = {
   cam(dt, inp) {
     const A = this.A;
     const tv = this.vel.lengthSq() > 1 ? this.vel.clone().normalize() : A.T.clone();
-    this.camF.lerp(tv, 1 - Math.exp(-dt / 0.09)).normalize();
+    const calm = Calm.on;
+    this.camF.lerp(tv, 1 - Math.exp(-dt / (calm ? 0.45 : 0.09))).normalize();
     // かたむき：まがりの 遠心力 ＋ 体の かたむき
     const vv = Math.max(this.v, 0);
-    const bank = clamp(A.k * vv * vv / 9.8 * 0.5, -0.5, 0.5) + inp.steer * 0.42 + this.vx * 0.004;
+    const bank = calm ? 0 : clamp(A.k * vv * vv / 9.8 * 0.5, -0.5, 0.5) + inp.steer * 0.42 + this.vx * 0.004;
     const up = A.U.clone().addScaledVector(A.R, bank).normalize();
     this.camU.lerp(up, 1 - Math.exp(-dt / 0.18)).normalize();
     // 視線（下を 見る など）
     const R = new V3().crossVectors(this.camF, this.camU).normalize();
     let gaze = A.gaze;
-    gaze += -inp.dive * 8 + inp.climb * 6;
+    if (!calm) gaze += -inp.dive * 8 + inp.climb * 6;
     const look = this.camF.clone().applyAxisAngle(R, gaze * D2R);
     const upL = this.camU.clone().applyAxisAngle(R, gaze * D2R);
     // ゆれ
     const t = performance.now() / 1000;
     const near = smooth(14, 2.5, this.agl) + Math.max(this.sideL, this.sideR) * 0.7;
-    const sh = (0.02 * smooth(35, 95, this.v) + 0.05 * near * smooth(20, 60, this.v)) * (this.flying ? 1 : 0);
+    const sh = calm ? 0 : (0.02 * smooth(35, 95, this.v) + 0.05 * near * smooth(20, 60, this.v)) * (this.flying ? 1 : 0);
     camera.position.copy(this.pos);
     camera.position.x += (Math.sin(t * 37) + Math.sin(t * 23.3)) * sh; camera.position.y += (Math.sin(t * 41.7) + Math.sin(t * 19.1)) * sh;
     camera.up.copy(upL);
     camera.lookAt(this.pos.clone().add(look));
     const port = innerHeight > innerWidth ? 10 : 0;
     const vTot = this.vel.length();
-    const fovT = 70 + port + 22 * smooth(30, 105, vTot) + this.kick;
+    const fovT = calm ? 72 + port : 70 + port + 22 * smooth(30, 105, vTot) + this.kick;
     this.fov = damp(this.fov, fovT, 0.35, dt);
     if (Math.abs(camera.fov - this.fov) > 0.01) { camera.fov = this.fov; camera.updateProjectionMatrix(); }
   },
@@ -3860,6 +3869,8 @@ function noCam() {
 $('bCam').onclick = () => { goFull(); keepAwake(); App.awake = true; startCam(); };
 $('bPhone').onclick = () => { keepAwake(); App.awake = true; startPhone(); };
 $('bNo').onclick = () => { goFull(); keepAwake(); App.awake = true; noCam(); };
+Calm.set(Calm.on); $('bCalm').onclick = () => Calm.set(!Calm.on);
+addEventListener('keydown', e => { if ((e.key === 'v' || e.key === 'V') && !e.repeat) Calm.set(!Calm.on); });
 $('guideBack').onclick = () => { Body.mode = 'off'; const v = $('camVideo'); if (v.srcObject && v.srcObject.getTracks) v.srcObject.getTracks().forEach(t => t.stop()); App.setState('gate'); };
 $('bAgain').onclick = () => { if (App.state === 'end') App.again(); };
 addEventListener('pointerdown', () => { if (Audio_.ctx && Audio_.ctx.state !== 'running') Audio_.ctx.resume(); }, { passive: true });
