@@ -214,7 +214,10 @@ import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometr
 const DBG = location.search.includes('dbg');
 const GOAL = 560, CHASE_D = 434, DR = 2.4;
 // マス：列は 左・中・右、段は 下(0)・上(1)
+// マスの間隔は 画面の縦横比で変わる（layout() で決める）。6マスが 画面の6分割に ぴったり重なるように
 const COLX = [-2.6, 0, 2.6], ROWY = [0, 2.8], MIDY = 1.4;
+let CAMS = 3.6;   // 自分のいる深さで、画面の上下 半分ぶんに 見える高さ
+let OBS_K = 1;    // マスが広いときに しょうがいぶつを 大きくする
 // かんたん＝1倍、ふつう＝1.5倍の速さ
 let MODE = 'easy', K = 1;
 const vNom = d => (15 + 6.5 * Math.min(1, Math.max(0, d) / GOAL)) * K;
@@ -415,14 +418,23 @@ function makeHotBalloon() {
   const A = new THREE.Color('#ff5a5f'), B = new THREE.Color('#ffd84a');
   for (let i = 0; i < pos.count; i++) { const k = Math.floor((Math.atan2(pos.getZ(i), pos.getX(i)) + Math.PI) / (Math.PI * 2) * 10) % 2 ? A : B; cols.set([k.r, k.g, k.b], i * 3); }
   env.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-  mesh(env, new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#552222', emissiveIntensity: .15 }), 0, ROWY[1] + .1, 0, g).scale.set(1, 1.15, 1);
-  mesh(new THREE.BoxGeometry(.75, .55, .75), M('#9a6a3e', { roughness: .9 }), 0, ROWY[0], 0, g);
-  for (const [x, z] of [[-.33, -.33], [.33, -.33], [-.33, .33], [.33, .33]]) {
-    const len = ROWY[1] - ROWY[0] - 1.2, r = mesh(new THREE.CylinderGeometry(.018, .018, len, 4), M('#5b4636'), x * 1.4, ROWY[0] + .27 + len / 2, z * 1.4, g);
-    r.castShadow = false;
+  const envM = mesh(env, new THREE.MeshLambertMaterial({ vertexColors: true, emissive: '#552222', emissiveIntensity: .15 }), 0, 0, 0, g); envM.scale.set(1, 1.15, 1);
+  const basket = mesh(new THREE.BoxGeometry(.75, .55, .75), M('#9a6a3e', { roughness: .9 }), 0, 0, 0, g);
+  const ropes = [[-.33, -.33], [.33, -.33], [-.33, .33], [.33, .33]].map(([x, z]) => {
+    const r = mesh(new THREE.CylinderGeometry(.018, .018, 1, 4), M('#5b4636'), x * 1.4, 0, z * 1.4, g); r.castShadow = false; return r;
+  });
+  const flame = mesh(new THREE.ConeGeometry(.12, .4, 8), new THREE.MeshBasicMaterial({ color: '#ffb02e' }), 0, 0, 0, g);
+  // 上下の段の高さに あわせて 組みなおす
+  function relayout() {
+    const k = OBS_K;
+    g.scale.setScalar(1);
+    envM.scale.set(k, 1.15 * k, k); basket.scale.setScalar(k); flame.scale.x = flame.scale.z = k;
+    envM.position.y = ROWY[1] + .1 * k; basket.position.y = ROWY[0]; flame.position.y = ROWY[0] + .55 * k;
+    const len = Math.max(.2, ROWY[1] - ROWY[0] - 1.2 * k);
+    for (const r of ropes) { r.scale.y = len; r.position.y = ROWY[0] + .27 * k + len / 2; r.position.x = Math.sign(r.position.x) * .46 * k; r.position.z = Math.sign(r.position.z) * .46 * k; }
   }
-  const flame = mesh(new THREE.ConeGeometry(.12, .4, 8), new THREE.MeshBasicMaterial({ color: '#ffb02e' }), 0, ROWY[0] + .55, 0, g);
-  return { g, anim(t) { flame.scale.y = .7 + Math.abs(Math.sin(t * 20)) * .6; g.rotation.y = Math.sin(t * .8) * .2; } };
+  relayout();
+  return { g, relayout, anim(t) { flame.scale.y = .7 + Math.abs(Math.sin(t * 20)) * .6; g.rotation.y = Math.sin(t * .8) * .2; } };
 }
 function makeUFO() {
   const g = new THREE.Group();
@@ -461,12 +473,13 @@ function makeJet() {
 const MAKERS = { C: makeStorm, B: makeBirds, A: makeHotBalloon, U: makeUFO, P: makeBalloons, J: makeJet };
 const LENS = { C: 1.6, B: 1.4, A: 1.8, U: 1.8, P: 1.2, J: 5.2 };
 for (const o of OBS) {
-  const m = MAKERS[o.t](); o.mesh = m.g; o.anim = m.anim; o.len = LENS[o.t];
+  const m = MAKERS[o.t](); o.mesh = m.g; o.anim = m.anim; o.relayout = m.relayout; o.len = LENS[o.t];
   scene.add(o.mesh);
 }
 function obsRange(o) {
-  if (o.t === 'J') return [o.td, o.td + o.len];
-  return [o.d - o.len / 2, o.d + o.len / 2];
+  const len = o.len * OBS_K;
+  if (o.t === 'J') return [o.td, o.td + len];
+  return [o.d - len / 2, o.d + len / 2];
 }
 function placeObs(o) {
   const [a, b] = obsRange(o), [c, r] = o.cells[0];
@@ -474,6 +487,8 @@ function placeObs(o) {
   o.mesh.position.set(o.bx, o.by, -(a + b) / 2);
   o.mesh.rotation.set(0, 0, 0);
   o.mesh.visible = true;
+  o.mesh.scale.setScalar(OBS_K);
+  if (o.relayout) o.relayout();
 }
 function resetObs(fromD) {
   for (const o of OBS) {
@@ -751,7 +766,7 @@ let state = 'title', lives = 3, runT = 0, misses = 0, hits = 0, canGot = 0, camS
 let resT = 0, resDone = false, goalT = 0, drumD = -999, drumV = 0, drumRot = 0, drumOn = false, trace = [], traceT = 0;
 let best = null, fovKick = 0;
 const MODE_NAME = { easy: 'かんたん', normal: 'ふつう' };
-const BEST_KEY = () => 'tomarenai-sora.best.' + MODE;
+const BEST_KEY = () => 'tomarenai-sora.best2.' + MODE;
 
 // ---------- HUD
 const $ = id => document.getElementById(id);
@@ -1028,9 +1043,9 @@ function stepGhost() {
   const f = runT / .1, i = Math.floor(f), tr = best.trace;
   if (i >= tr.length - 1) { ghost.root.visible = false; $('ghostDot').style.left = '100%'; return; }
   const a = tr[i], b = tr[i + 1], k = f - i;
-  const d = lerp(a[0], b[0], k), x = lerp(a[1], b[1], k), y = lerp(a[2], b[2], k);
+  const d = lerp(a[0], b[0], k), x = lerp(a[1], b[1], k) * COLX[2], y = MIDY + lerp(a[2], b[2], k) * (ROWY[1] - ROWY[0]);
   ghost.root.visible = a[3] !== 3 && Math.abs(d - P.d) > 1.5;
-  ghost.root.position.set(x, y - .3, -d + .95);
+  ghost.root.position.set(x, y - .2, -d + .95);
   $('ghostDot').hidden = false; $('ghostDot').style.left = clamp(d / GOAL * 100, 0, 100) + '%';
   applyPose(ghost, POSE.fly(clock), 1 / 60);
 }
@@ -1039,17 +1054,18 @@ function updateCam(dt) {
   camS = clamp(camS + (want ? dt / 1.3 : -dt / .5), 0, 1);
   const s = smooth(camS), ang = s * Math.PI;
   const portrait = innerWidth < innerHeight;
-  const dist = (portrait ? 10.6 : 7.6) - s * .4;
-  // 低めの ななめうしろから 見ると、水平に とんでいる形が よく見える
-  const h = MIDY + lerp(portrait ? 1.6 : 1.15, .9, s) + (P.y - MIDY) * .35;
+  fovKick *= Math.exp(-dt * 6);
+  // すこし望遠ぎみ：はしのマスでも ななめに ゆがまない
+  const fov = (portrait ? 60 : 44) + (state === 'run' ? clamp((P.v - 15) * .4, 0, 8) : 0) + fovKick;
+  if (Math.abs(cam.fov - fov) > .05) { cam.fov = lerp(cam.fov, fov, Math.min(1, dt * 8)); cam.updateProjectionMatrix(); }
+  // カメラは マスの まん中を まっすぐ見る。自分のいる深さで 6マスが 画面の6分割に重なる距離に置く
+  // （速くなって 画角が広がると そのぶん近づくので、マスの位置は ずれない）
+  const D = CAMS / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
   const fz = -P.d;
-  cam.position.set(P.x * .38 + Math.sin(ang) * dist * .7 + (1 - s) * .9, h, fz + Math.cos(ang) * dist);
-  cam.lookAt(P.x * .42, MIDY - .15 + (P.y - MIDY) * .45, fz + lerp(-12, 6, s));
+  cam.position.set(Math.sin(ang) * D, MIDY, fz + Math.cos(ang) * D);
+  cam.lookAt(0, MIDY, fz);
   if (DBG && window.dbg?.camOff) { const o = window.dbg.camOff; cam.position.set(P.x + o[0], P.y + o[1], fz + o[2]); cam.lookAt(P.x, P.y, fz); }
   if (shake > 0) { shake -= dt; const a = shake * .5; cam.position.x += (Math.random() - .5) * a; cam.position.y += (Math.random() - .5) * a; }
-  fovKick *= Math.exp(-dt * 6);
-  const fov = (portrait ? 74 : 62) + (state === 'run' ? clamp((P.v - 15) * .4, 0, 8) : 0) + fovKick;
-  if (Math.abs(cam.fov - fov) > .05) { cam.fov = lerp(cam.fov, fov, Math.min(1, dt * 8)); cam.updateProjectionMatrix(); }
   sun.position.set(P.x - 6, 18, -P.d + 8); sun.target.position.set(P.x, 0, -P.d - 4);
   sunDisc.position.set(cam.position.x + 60, cam.position.y + 70, cam.position.z - 260 * (s > .5 ? -1 : 1)); sunDisc.lookAt(cam.position);
   sunGlow.position.copy(sunDisc.position); sunGlow.lookAt(cam.position);
@@ -1087,7 +1103,7 @@ function poseRunner(dt) {
   const bob = Math.sin(clock * 3.2) * .08;
   // 体の まん中が マスの まん中に来るよう ずらす（立っているときと 水平のときで ちがう）
   const flat = clamp(-r.cur.bodyX / 1.4, 0, 1);
-  r.root.position.set(P.x, P.y + bob + lerp(-.85, -.3, flat), -P.d + lerp(0, .95, flat));
+  r.root.position.set(P.x, P.y + bob + lerp(-.85, -.2, flat), -P.d + lerp(0, .95, flat));
   // 横へ動くときは 体をかたむけ、上下へ動くときは 頭を上げ下げする
   r.root.rotation.set(clamp((ROWY[P.row] - P.y) * .16, -.4, .4), 0, clamp((P.x - COLX[P.col]) * .2, -.55, .55) + P.spin * Math.PI * 2);
   r.root.visible = !(P.inv > 0 && state === 'run' && Math.sin(clock * 34) > .2);
@@ -1098,7 +1114,8 @@ function recordTrace(dt) {
   traceT += dt;
   while (traceT >= .1) {
     traceT -= .1;
-    trace.push([+P.d.toFixed(2), +P.x.toFixed(2), +P.y.toFixed(2), state === 'respawn' ? 3 : 0]);
+    // 画面の形が変わっても 同じマスに出るよう、マス単位で おぼえる
+    trace.push([+P.d.toFixed(2), +(P.x / COLX[2]).toFixed(3), +((P.y - MIDY) / (ROWY[1] - ROWY[0])).toFixed(3), state === 'respawn' ? 3 : 0]);
   }
 }
 function finish() {
@@ -1157,9 +1174,23 @@ function frame(now) {
   renderer.render(scene, cam);
   requestAnimationFrame(frame);
 }
+// 画面の形から マスの間隔を決める：列は 画面の 左右1/6・まん中、段は 上下1/4 の位置に 来るように
+// 列の間は 2.6m、段の間は 3.6m より せまくしない（せまいと 自分が大きく見えすぎる）
+function layout() {
+  const aspect = innerWidth / innerHeight;
+  CAMS = Math.max(3.9, 2.6 / ((2 / 3) * aspect));
+  const sx = (2 / 3) * CAMS * aspect, sy = CAMS;
+  OBS_K = clamp(Math.min(sx / 2.6, sy / 2.8), 1, 1.4);
+  COLX[0] = -sx; COLX[1] = 0; COLX[2] = sx;
+  ROWY[0] = MIDY - sy / 2; ROWY[1] = MIDY + sy / 2;
+  for (const o of OBS) if (!o.fly) { const vis = o.mesh.visible; placeObs(o); o.mesh.visible = vis; }
+  for (const c of CANS) { c.x = COLX[c.c]; c.y = ROWY[c.r]; c.mesh.position.x = c.x; if (!c.got) c.mesh.position.y = c.y; }
+  P.x = COLX[P.col]; P.y = ROWY[P.row];
+}
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
   cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix();
+  layout();
 }
 addEventListener('resize', resize); resize();
 resetObs(-999);
