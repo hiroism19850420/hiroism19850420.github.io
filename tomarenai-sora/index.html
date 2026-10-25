@@ -49,11 +49,16 @@ html,body{height:100%;margin:0;overflow:hidden;background:var(--sky);color:var(-
 #sndBtn.off .w{display:none}
 #sndBtn:not(.off) .x{display:none}
 /* 6マスの目安。追いかけっこでは、あぶないマスに ✕ が出る */
-#grid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);opacity:0;transition:opacity .3s}
+#grid{--gl:rgba(255,255,255,.8);--gs:rgba(26,29,58,.3);position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);opacity:0;transition:opacity .3s;
+  /* 6分割の線：白い線の両がわに うすい影をつけて、白い雲の前でも見えるように */
+  background:
+    linear-gradient(90deg,transparent calc(100%/3 - 2.5px),var(--gs) calc(100%/3 - 2.5px) calc(100%/3 - 1.5px),var(--gl) calc(100%/3 - 1.5px) calc(100%/3 + 1.5px),var(--gs) calc(100%/3 + 1.5px) calc(100%/3 + 2.5px),transparent calc(100%/3 + 2.5px)),
+    linear-gradient(90deg,transparent calc(200%/3 - 2.5px),var(--gs) calc(200%/3 - 2.5px) calc(200%/3 - 1.5px),var(--gl) calc(200%/3 - 1.5px) calc(200%/3 + 1.5px),var(--gs) calc(200%/3 + 1.5px) calc(200%/3 + 2.5px),transparent calc(200%/3 + 2.5px)),
+    linear-gradient(180deg,transparent calc(50% - 2.5px),var(--gs) calc(50% - 2.5px) calc(50% - 1.5px),var(--gl) calc(50% - 1.5px) calc(50% + 1.5px),var(--gs) calc(50% + 1.5px) calc(50% + 2.5px),transparent calc(50% + 2.5px))}
 #grid.on{opacity:1}
-#grid div{position:relative;box-shadow:inset 0 0 0 1px rgba(255,255,255,.16);transition:background .12s}
+#grid div{position:relative;transition:background .12s}
 #grid div.me{background:rgba(255,255,255,.08)}
-#grid div > span{position:absolute;left:12px;bottom:10px;font:400 22px/1 var(--disp);color:rgba(255,255,255,.5);text-shadow:0 2px 0 rgba(26,29,58,.25)}
+#grid div > span{position:absolute;left:12px;bottom:10px;font:400 24px/1 var(--disp);color:rgba(255,255,255,.85);text-shadow:0 0 3px rgba(26,29,58,.55),0 2px 0 rgba(26,29,58,.35)}
 #grid div.me > span{color:rgba(255,255,255,.95)}
 #grid div > b{position:absolute;left:50%;top:50%;width:70px;height:70px;margin:-35px 0 0 -35px;border-radius:18px;background:var(--hot);box-shadow:0 0 0 3px var(--ink),0 4px 0 3px var(--ink);display:grid;place-items:center;opacity:0}
 #grid div > b svg{width:38px;height:38px;stroke:#fff;fill:none;stroke-width:5;stroke-linecap:round}
