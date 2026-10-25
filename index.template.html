@@ -107,11 +107,11 @@ footer{border-top:1px solid var(--line);padding:22px;font-size:11px;display:flex
 .clerk img{display:block;width:100%;height:auto;border-radius:14px;border:2px solid #fff;animation:clerk-bob 3.6s ease-in-out infinite}
 @keyframes clerk-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 @media(min-width:700px){.clerk{width:130px;right:18px;bottom:16px}}
-.clerk .say{position:absolute;right:calc(100% - 14px);top:2px;white-space:nowrap;background:#fff;color:#222;border:2px solid #333;border-radius:50%;padding:7px 13px;font-weight:700;font-size:9px;line-height:1.2;transform-origin:100% 100%;animation:say-pop 4s ease-in-out infinite}
-.clerk .say:before{content:"";position:absolute;right:-9px;top:55%;width:14px;height:12px;background:#333;clip-path:polygon(0 0,100% 100%,0 70%)}
-.clerk .say:after{content:"";position:absolute;right:-6px;top:55%;margin-top:1px;width:11px;height:9px;background:#fff;clip-path:polygon(0 0,100% 100%,0 70%);transform:translateX(-2px)}
+.clerk .say{position:absolute;right:0;bottom:calc(100% + 8px);white-space:nowrap;background:#fff;color:#222;border:2px solid #333;border-radius:50%;padding:7px 13px;font-weight:700;font-size:9px;line-height:1.2;transform-origin:30% 100%;animation:say-pop 4s ease-in-out infinite}
+.clerk .say:before{content:"";position:absolute;left:14px;bottom:-10px;width:12px;height:12px;background:#333;clip-path:polygon(0 0,100% 0,0 100%)}
+.clerk .say:after{content:"";position:absolute;left:16px;bottom:-6px;width:9px;height:8px;background:#fff;clip-path:polygon(0 0,100% 0,0 100%)}
 @keyframes say-pop{0%,100%{transform:scale(1)}8%{transform:scale(1.1)}16%{transform:scale(1)}}
-@media(min-width:700px){.clerk .say{font-size:11px;padding:9px 16px;right:calc(100% - 18px)}}
+@media(min-width:700px){.clerk .say{font-size:11px;padding:9px 16px}}
 </style>
 <script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
