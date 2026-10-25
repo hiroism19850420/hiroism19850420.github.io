@@ -660,7 +660,7 @@ function update() {
   const tn = clock(), cb = (tn - S.t0) / S.spb;
   for (let p = 0; p < S.np; p++) {
     const P = S.pl[p];
-    if (CAM.on) { const m = MOT[p]; P.energy = lerp(P.energy, clamp(m.es / Math.max(0.05, m.thr * 2.2), 0, 1.2), 0.15); P.movingNow = m.e > Math.max(0.03 / CAM.sens, m.floor * 2 + 0.015); }
+    if (CAM.on) { const m = MOT[p]; P.energy = lerp(P.energy, clamp(m.es / Math.max(0.05, m.thr * 2.2), 0, 1.2), 0.15); P.movingNow = m.g > Math.max(0.03 / CAM.sens, m.floor * 2 + 0.015); }
     else { P.energy = Math.max(0, P.energy - 0.02); P.movingNow = tn - P.lastKey < 0.25; }
     P.isCam = CAM.on;
   }
@@ -710,10 +710,11 @@ function finish() {
 //  カメラ（AIなし：前の絵との ちがいで「うごき」を見る）
 // ============================================================
 const CAM = { on: false, want: true, sens: 1, ready: false };
-const PW = 128; let PHh = 72;
+const PW = 224; let PHh = 126;
+const CW = 14, CH = 14; let NCX = 16, NCY = 9, CELL = null; // 小さな うごき（拍手）を 見るための ます目
 const pc = document.createElement('canvas'); let pctx = null, prevL = null, curL = null, lastVT = -1;
 const MOT = [mkMot(), mkMot()];
-function mkMot() { return { e: 0, es: 0, floor: 0.01, armed: true, last: -9, peak: 0, thr: 0.04, ons: [] }; }
+function mkMot() { return { e: 0, g: 0, es: 0, floor: 0.01, armed: true, last: -9, peak: 0, thr: 0.04, ons: [] }; }
 async function startCam() {
   if (CAM.on) return true;
   const st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 60 } }, audio: false });
@@ -722,6 +723,7 @@ async function startCam() {
   PHh = Math.round(PW * vid.videoHeight / vid.videoWidth);
   pc.width = PW; pc.height = PHh; pctx = pc.getContext('2d', { willReadFrequently: true });
   prevL = new Uint8Array(PW * PHh); curL = new Uint8Array(PW * PHh);
+  NCX = Math.ceil(PW / CW); NCY = Math.ceil(PHh / CH); CELL = new Uint16Array(NCX * NCY);
   CAM.on = true; return true;
 }
 function camFrame() {
@@ -730,23 +732,34 @@ function camFrame() {
   pctx.setTransform(-1, 0, 0, 1, PW, 0); pctx.drawImage(vid, 0, 0, PW, PHh);
   const d = pctx.getImageData(0, 0, PW, PHh).data, two = MODE.np === 2;
   const a0 = Math.floor(PW * 0.47), a1 = Math.ceil(PW * 0.53);
-  let c0 = 0, c1 = 0;
-  for (let y = 0, i = 0; y < PHh; y++) for (let x = 0; x < PW; x++, i++) {
+  let c0 = 0, c1 = 0; CELL.fill(0);
+  for (let y = 0, i = 0; y < PHh; y++) { const row = ((y / CH) | 0) * NCX; for (let x = 0; x < PW; x++, i++) {
     const j = i * 4, l = (d[j] * 77 + d[j + 1] * 150 + d[j + 2] * 29) >> 8;
-    if (Math.abs(l - prevL[i]) > 24) { if (!two) c0++; else if (x < a0) c0++; else if (x >= a1) c1++; }
+    if (Math.abs(l - prevL[i]) > 20) { CELL[row + ((x / CW) | 0)]++; if (!two) c0++; else if (x < a0) c0++; else if (x >= a1) c1++; }
     curL[i] = l;
-  }
+  } }
   const tmp = prevL; prevL = curL; curL = tmp;
   if (!CAM.ready) { CAM.ready = true; return; }
   const now = clock();
-  updMot(0, c0 / (two ? a0 * PHh : PW * PHh), now);
-  if (two) updMot(1, c1 / ((PW - a1) * PHh), now);
+  for (let p = 0; p < (two ? 2 : 1); p++) {
+    // いちばん よく うごいた ます目 2つの 平均（手だけの うごきでも 大きく出る）
+    let b1 = 0, b2 = 0;
+    for (let cy = 0; cy < NCY; cy++) for (let cx = 0; cx < NCX; cx++) {
+      const mx = (cx + 0.5) * CW; if (two && (p === 0 ? mx >= a0 : mx < a1)) continue;
+      const f = CELL[cy * NCX + cx] / (CW * Math.min(CH, PHh - cy * CH));
+      if (f > b1) { b2 = b1; b1 = f; } else if (f > b2) b2 = f;
+    }
+    const g = p === 0 ? c0 / (two ? a0 * PHh : PW * PHh) : c1 / ((PW - a1) * PHh);
+    const loc = (b1 * 0.7 + b2 * 0.3) * 0.5;
+    updMot(p, Math.max(g, loc), g, now, loc > g * 1.6 ? 0.06 : 0);
+  }
 }
-function updMot(p, e, now) {
-  const m = MOT[p]; m.e = e; m.es += (e - m.es) * 0.3;
+function updMot(p, e, g, now, late) {
+  const m = MOT[p]; m.e = e; m.g = g; m.es += (e - m.es) * 0.3;
   if (e < m.floor) m.floor += (e - m.floor) * 0.2; else m.floor += (e - m.floor) * 0.004;
   const thr = Math.max(0.035 / CAM.sens, m.floor * 2.5 + 0.02 / CAM.sens); m.thr = thr;
-  if (m.armed) { if (e > thr && now - m.last > 0.18) { m.armed = false; m.last = now; m.peak = e; onset(p, now); } }
+  // 手の うごきは 手が ぶつかる 少し前から 始まるので、そのぶん おそく あつかう
+  if (m.armed) { if (e > thr && now - m.last > (m.peak > thr * 4 ? 0.4 : 0.18)) { m.armed = false; m.last = now; m.peak = e; onset(p, now + late); } }
   else { m.peak = Math.max(m.peak, e); if (e < Math.max(thr * 0.5, m.peak * 0.4)) m.armed = true; }
 }
 function onset(p, raw) {
