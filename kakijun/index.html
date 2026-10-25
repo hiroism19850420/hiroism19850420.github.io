@@ -615,9 +615,9 @@ function buildModes(){
 function renderModeMinis(now){
   const ch=LEVEL_ICON[G.lv],g=geom(ch);
   for(const mm of modeMinis){const c=mm.c;c.setTransform(DPR*170/109,0,0,DPR*170/109,0,0);drawSheet(c);
+    const k=Math.floor(now/1600)%(g.strokes.length+1);
     if(mm.mode==='test'&&k===0){c.fillStyle='#c9b6f2';c.font='900 44px "Zen Maru Gothic",sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText('？',54.5,57)}
     if(mm.mode!=='hard'&&mm.mode!=='test')drawGuide(c,g);
-    const k=Math.floor(now/1600)%(g.strokes.length+1);
     for(let i=0;i<Math.min(k,g.strokes.length);i++)drawInk(c,g.strokes[i],1,INK);
     if(mm.mode==='easy'&&k<g.strokes.length)drawArrowGuide(c,g.strokes[k],now,k+1);
     if((mm.mode==='hard'||mm.mode==='test')&&k===g.strokes.length)drawHana(c,1,2.4);
@@ -871,11 +871,14 @@ function renderTitle(now){
 let last=performance.now();
 function loop(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;
-  drawBg(now);updFx(dt);drawFx();
-  if(curScreen==='s-play'&&PL)renderPlay(now);
-  else if(curScreen==='s-title')renderTitle(now);
-  else if(curScreen==='s-mode')renderModeMinis(now);
   requestAnimationFrame(loop);
+  // どこかで まちがいが おきても、つぎの フレームは かならず うごかす
+  try{
+    drawBg(now);updFx(dt);drawFx();
+    if(curScreen==='s-play'&&PL)renderPlay(now);
+    else if(curScreen==='s-title')renderTitle(now);
+    else if(curScreen==='s-mode')renderModeMinis(now);
+  }catch(e){console.error(e)}
 }
 sizeBg();sizeFx();
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{});
