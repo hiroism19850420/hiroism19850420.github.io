@@ -182,7 +182,8 @@ export const Input = {
     if ((B.banzaiT > 0.02 || (B.handUp[0] && B.handUp[1])) && M.lock <= 0) M.holdOk = Math.min(1, M.holdOk + dt / MN.OK_HOLD);
     else M.holdOk = Math.max(0, M.holdOk - dt * 1.5);
     if (M.holdOk >= 1) { M.holdOk = 0; M.lock = 0.8; this.queue.push('ok'); this.queue.push('bodyOk'); }
-    if (B.crouch && M.lock <= 0) M.holdBack = Math.min(1, M.holdBack + dt / MN.BACK_HOLD);
+    // しゃがみ 1回で もどるは 1回だけ（しゃがみっぱなしで くりかえし もどらない）
+    if (B.crouch && B.now - B.crouchT < MN.BACK_HOLD + 0.9 && M.lock <= 0) M.holdBack = Math.min(1, M.holdBack + dt / MN.BACK_HOLD);
     else M.holdBack = Math.max(0, M.holdBack - dt * 1.5);
     if (M.holdBack >= 1) { M.holdBack = 0; M.lock = 0.8; this.queue.push('back'); }
   }

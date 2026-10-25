@@ -20,7 +20,7 @@ export class BodyState {
   reset() {
     Object.assign(this, {
       seen: false, isLost: false, lostT: 0, seenT: 0, lm: null, events: [], legs: false, full: false, headOk: false, anklesOk: false, handsOk: false,
-      baseY: null, prevBodyY: null, vUpAvg: 0, lastJump: -9, maskT: -9, rawPrev: 0, lastSide: '', yMean: null, yState: 'up', lastPeakT: -9,
+      baseY: null, prevBodyY: null, hipOffU: null, lowT: 0, crouchT: 0, vUpAvg: 0, lastJump: -9, maskT: -9, rawPrev: 0, lastSide: '', yMean: null, yState: 'up', lastPeakT: -9,
       throttle: 0, cadence: 0, stepRate: 0, legPhase: 0, lift: 0, air: false, crouch: false,
       baseX: null, baseXAcc: null, shiftRaw: 0, shift: 0, shiftNorm: 0,
       handT: [0, 0], handUp: [false, false], handArmed: [true, true],
@@ -41,6 +41,12 @@ export class BodyState {
   }
   // 基準の 立ち位置を 決めなおす（れんしゅう、ゲート、縦横が 変わったとき）
   recenter() { this.baseX = null; this.baseXAcc = { sum: 0, n: 0, t: 0 }; }
+  // 立ちの 高さの 基準を 決めなおす（人が 入れかわった・見うしなった・1人⇔2人）
+  rebaseY() {
+    this.baseY = null; this.prevBodyY = null; this.hipOffU = null; this.lowT = 0; this.vUpAvg = 0;
+    if (this.crouch) { this.crouch = false; this.emit('stand'); }
+    this.air = false;
+  }
   takeEvents() { const e = this.events; this.events = []; return e; }
 
   // 見えないとき
@@ -83,11 +89,20 @@ export class BodyState {
     this.hipX = hip.x / asp;
 
     // ---- ジャンプ・しゃがみ（グランプリと 同じ） ----
-    const bodyY = hipsOk ? (sc.y + hip.y) / 2 : sc.y;
+    // 腰が 見えたり 見えなかったりしても 高さが とばないように、腰が 見えないときは 肩から 腰の 中ほどを おしはかる
+    let bodyY;
+    if (hipsOk) {
+      const off = (hip.y - sc.y) / 2 / u;
+      if (this.hipOffU == null) { if (this.baseY != null) this.baseY += off * u; this.hipOffU = off; }
+      else this.hipOffU = damp(this.hipOffU, off, 0.5, dt);
+      bodyY = (sc.y + hip.y) / 2;
+    } else bodyY = sc.y + (this.hipOffU ?? 0) * u;
     if (this.baseY == null) { this.baseY = bodyY; this.prevBodyY = bodyY; }
     const lift = (this.baseY - bodyY) / u;
-    if (lift > C.BASE_FREEZE) {
-      const tau = Math.abs(lift) < C.BASE_STILL ? C.BASE_FAST : C.BASE_SLOW;
+    // 低いまま 長く つづいたら（しゃがみっぱなしは ない）、基準の ほうが ずれたので 合わせなおす
+    this.lowT = lift > C.BASE_FREEZE ? 0 : this.lowT + dt;
+    if (lift > C.BASE_FREEZE || this.lowT > C.SQUAT_MAX) {
+      const tau = this.lowT > C.SQUAT_MAX ? C.BASE_UNSTICK : Math.abs(lift) < C.BASE_STILL ? C.BASE_FAST : C.BASE_SLOW;
       this.baseY += (bodyY - this.baseY) * Math.min(1, dt / tau);
     }
     const vUp = (this.prevBodyY - bodyY) / u / dt;
@@ -97,7 +112,7 @@ export class BodyState {
     if (!this.air && !this.crouch && lift > C.JUMP_H && this.vUpAvg > C.JUMP_VEL && t - this.lastJump > C.JUMP_GAP) {
       this.air = true; this.lastJump = t; this.maskT = t; if (this.counting) this.jumps++; this.emit('jump');
     } else if (this.air && lift < C.JUMP_H * C.LAND_K) { this.air = false; this.maskT = t; this.emit('land'); }
-    if (!this.crouch && lift < -C.SQUAT_H) { this.crouch = true; this.maskT = t; if (this.counting) this.squats++; this.emit('squat'); }
+    if (!this.crouch && lift < -C.SQUAT_H) { this.crouch = true; this.crouchT = t; this.maskT = t; if (this.counting) this.squats++; this.emit('squat'); }
     else if (this.crouch && lift > -C.SQUAT_H * C.STAND_K) { this.crouch = false; this.maskT = t; this.emit('stand'); }
 
     // ---- 足ぶみ（しゃがんでいる間は 数えない） ----
@@ -219,7 +234,7 @@ export class BodyState {
   step(t) { this.stepTimes.push(t, 1); if (this.counting) this.steps++; this.emit('step'); }
   lostClock(dt) {
     this.seenT = 0; this.lostT += dt;
-    if (!this.isLost && this.lostT >= C.LOST_T) { this.isLost = true; this.emit('lost'); }
+    if (!this.isLost && this.lostT >= C.LOST_T) { this.isLost = true; this.rebaseY(); this.emit('lost'); }
   }
   foundClock(dt) {
     this.lostT = 0; this.seenT += dt;
@@ -256,6 +271,7 @@ export const Detector = {
     return true;
   },
   async setNum(n) {
+    if (n !== this.numPoses) this.players.forEach(p => p.rebaseY());
     if (n === this.numPoses || !this.pose) { this.numPoses = n; return; }
     this.numPoses = n; this.lastX = [null, null];
     try { await this.pose.setOptions({ numPoses: n }); } catch (e) { console.warn(e); }
@@ -281,6 +297,8 @@ export const Detector = {
     const assigned = this.assign(L);
     for (let i = 0; i < this.numPoses; i++) {
       const P = this.players[i]; P.asp = asp;
+      // 前の コマと 腰の 位置が 大きく ちがう ＝ 別の 人に 入れかわった
+      if (assigned[i] && P.lm && P.seen) { const hx = lm => (lm[23].x + lm[24].x) / 2; if (Math.abs(hx(assigned[i]) - hx(P.lm)) > C.SWAP_JUMP) P.rebaseY(); }
       if (assigned[i]) P.feed(assigned[i], dt, now); else P.feedNone(dt);
     }
   },

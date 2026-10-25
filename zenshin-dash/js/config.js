@@ -18,6 +18,8 @@ export const CFG = {
     JUMP_H: 0.26, JUMP_VEL: 1.0, JUMP_GAP: 0.45, LAND_K: 0.4,
     BASE_FAST: 0.8, BASE_SLOW: 6.0, BASE_STILL: 0.12, BASE_FREEZE: -0.3,
     SQUAT_H: 0.42, STAND_K: 0.55,
+    SQUAT_MAX: 2.0, BASE_UNSTICK: 0.3,   // 2026-10-25 しゃがみっぱなしの 誤判定：低いまま これだけ つづいたら 基準を 合わせなおす
+    SWAP_JUMP: 0.2,                      // 1コマで 腰が これだけ（画像の はば）とんだら 別の人
 
     // 横にずれる（4.5）
     SHIFT_DEAD: 0.30,                                   // ここまでは まっすぐ（u）
