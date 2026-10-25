@@ -791,8 +791,8 @@ function renderPlay(now){
   if(PL.done){const p=(now-PL.finT)/900;if(p<1){c.save();c.strokeStyle=`rgba(255,200,61,${.75*(1-p)})`;c.lineWidth=6.6+10*p;c.lineCap='round';c.lineJoin='round';S.forEach(st=>c.stroke(st.p2));c.restore()}}
   // かいた線
   for(let i=0;i<PL.cur;i++){
-    const age=now-PL.ink[i].t;const end=drawInk(c,S[i],age/200,INK);
-    if(age<420){const P=S[i].pts,q=P[Math.min(P.length-1,Math.floor(P.length*age/260))],a=1-age/420;
+    const age=Math.max(0,now-PL.ink[i].t);const end=drawInk(c,S[i],age/200,INK);
+    if(age>=0&&age<420){const P=S[i].pts,q=P[Math.max(0,Math.min(P.length-1,Math.floor(P.length*age/260)))],a=1-age/420;
       c.save();c.globalCompositeOperation='lighter';
       c.fillStyle=`rgba(255,215,90,${.55*a})`;circle(c,q[0],q[1],7+age/40);c.fill();
       c.fillStyle=`rgba(255,255,255,${.9*a})`;circle(c,q[0],q[1],2.6);c.fill();c.restore()}
@@ -970,12 +970,16 @@ function renderTitle(now){
 
 /* ================= loop ================= */
 let last=performance.now();
-function loop(now){
-  const dt=Math.min(.05,(now-last)/1000);last=now;
+function loop(){
+  // 時計は performance.now() に そろえる。Android では rAF の時刻が 指の時刻より 前に なることがあり、
+  // 「書いてからの時間」が マイナスになって 描画が とまっていた
+  const now=performance.now();
+  const dt=Math.max(0,Math.min(.05,(now-last)/1000));last=now;
   requestAnimationFrame(loop);
-  // どこかで まちがいが おきても、つぎの フレームは かならず うごかす
+  // どこかで まちがいが おきても、ほかの 描画と つぎの フレームは かならず うごかす
+  try{drawBg(now)}catch(e){console.error(e)}
+  try{updFx(dt);drawFx()}catch(e){console.error(e);parts.length=0}
   try{
-    drawBg(now);updFx(dt);drawFx();
     if(curScreen==='s-play'&&PL)renderPlay(now);
     else if(curScreen==='s-title')renderTitle(now);
     else if(curScreen==='s-mode')renderModeMinis(now);
