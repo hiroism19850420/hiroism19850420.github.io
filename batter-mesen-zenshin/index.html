@@ -344,7 +344,7 @@ function update(){
   else if(game.state==="ready"&&el>READY) setState("windup");
   else if(game.state==="windup"&&el>WINDUP){
     const p=game.pitch; p.tRelease=t; p.tArrive=t+p.T; setState("flight");
-    if(dbgAuto!=null) setTimeout(()=>dbg.swingNow(),Math.max(0,p.T+dbgAuto));
+    if(dbgAuto!=null) setTimeout(()=>BMD.swingNow(),Math.max(0,p.T+dbgAuto));
   }else if(game.state==="flight"&&!game.swing&&t>game.pitch.tArrive+J.LOOK){
     finish("miss",0,"見逃し！",{note:"ボールが きたら よこに ふろう"});
   }else if(game.state==="result"){
@@ -603,7 +603,7 @@ showOffset();
 
 /* ---------- 確認用：?dbg ---------- */
 let dbgAuto=null;
-const dbg={
+const BMD={
   get game(){return game}, get state(){return game.state},
   start(lv){if(lv!=null) game.level=lv; startGame()},
   pitch(){if(game.state==="title"||game.state==="final") startGame(); else newPitch()},
@@ -624,7 +624,7 @@ window.__bmz=game;
 /* ---------- 入口 ---------- */
 function loop(){update();draw();requestAnimationFrame(loop)}
 if(DBG){
-  window.dbg=dbg; Body.mode="nocam"; showTitle();
+  window.dbg=BMD; Body.mode="nocam"; showTitle();
 }else{
   Body.gate({title:"⚾ バッター目線 ぜんしん版",corner:"tr",lines:[
     "りょう手で バットを にぎるように <b>右か左の 肩の前</b>で かまえる（右打ち・左打ちは かまえた手で きまる）",
