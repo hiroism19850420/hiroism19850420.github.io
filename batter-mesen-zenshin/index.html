@@ -539,7 +539,7 @@ function showTitle(){
 
 /* ---------- カメラ：かまえ と スイング ---------- */
 // かまえ：手が 肩より 少し下までの 高さで、体の まん中から 右か左に よっている（りょう手が 見えるときは 近くに ある）
-const FAR=0.6, FRONT=0.3, FAR_MEMORY=0.8, SWING_V=1.0;   // 手が 体の まん中から FAR より はなれた＝かまえ／FRONT より 内に 入った＝ふった（肩はば＝1）。かまえてから FAR_MEMORY 秒いない、SWING_V（肩はば／秒）より 速く 近づいたときだけ
+const FAR=0.8, FRONT=0.0, FAR_MEMORY=0.7, SWING_V=2.2, HOLD=300, COOL_MS=700;   // 肩はば＝1。手が 体の まん中から FAR より はなれて HOLD ミリ秒 じっとして＝かまえ／かまえてから FAR_MEMORY 秒いない、SWING_V（肩はば／秒）より 速く、まん中（FRONT）を こえたら＝ふり
 function handPos(){        // りょう手の まん中の 位置。体の まん中から 右が ＋（鏡うつし）
   if(!Body.ok) return null;
   const hs=Body.hands.filter(h=>h.vis); if(!hs.length) return null;
@@ -551,16 +551,17 @@ function readStance(){
   const p=handPos(); if(!p||p.my>1.4||Math.abs(p.mx)<FAR) return null;
   return p.mx>0?"R":"L";      // 鏡うつしなので、画面の右に 手が ある＝右打ち
 }
-// ふり：よこ向きに かまえた 手が、体の 前（まん中）まで 来たときに 1回。ちょっと 手を うごかしただけでは ふらない
-let farT=-9, prevD=null, prevT=0;
+// ふり：よこ向きに じっと かまえた 手が、体の 前（まん中）を こえるまで 一気に 来たときに 1回。ちょっと 手を うごかしただけでは ふらない
+let farT=-9, farSince=0, prevD=null, prevT=0, lastBody=-9;
 function swingFromBody(){
   const p=handPos(), t=now();
-  if(!p||!game.side||p.my>1.6){prevD=null;return}
+  if(!p||!game.side||p.my>1.6){prevD=null;farSince=0;return}
   const d=(game.side==="R"?1:-1)*p.mx;
-  if(d>FAR) farT=t;
-  if(prevD!=null&&d<FRONT&&prevD>=FRONT&&t-farT<FAR_MEMORY*1000){
-    const v=(prevD-d)/Math.max(0.001,(t-prevT)/1000);
-    if(v>SWING_V){farT=-9; bodySwing(clamp((v-1)/6,0.25,1))}
+  if(d>FAR){if(!farSince) farSince=t; if(t-farSince>HOLD) farT=t}
+  else farSince=0;
+  if(prevD!=null&&d<FRONT&&prevD>=FRONT&&t-farT<FAR_MEMORY*1000&&t-lastBody>COOL_MS){
+    const v=(prevD-d)/Math.max(0.001,(t-prevT)/1000), dist=FAR+0.0;
+    if(v>SWING_V){farT=-9; lastBody=t; bodySwing(clamp((v-2)/6,0.25,1))}
   }
   prevD=d; prevT=t;
 }
