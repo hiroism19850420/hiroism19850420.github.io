@@ -1208,8 +1208,9 @@ function hoverTick(dt){
     if(HOV.el&&HOV.lost<.4){HOV.lost+=dt;el=HOV.el}
     else{clearHov();HOV.el=el;if(el){el.classList.add('hov');tone({f:880,d:.06,v:.05,type:'triangle'})}}
   }else HOV.lost=0;
-  if(el&&HOV.cool<=0){HOV.t+=dt;el.style.setProperty('--hp',Math.min(1,HOV.t/HOV_T).toFixed(3));
-    if(HOV.t>=HOV_T||BODY.lupEdge){BODY.lupEdge=false;const e=el;clearHov();HOV.cool=1;sfx.pop();
+  // けっていは 左手を あげた ときだけ（じっと まっても おさない）
+  if(el&&HOV.cool<=0){
+    if(BODY.lupEdge){BODY.lupEdge=false;const e=el;clearHov();HOV.cool=1;sfx.pop();
       const r=e.getBoundingClientRect();starBurst(r.left+r.width/2,r.top+r.height/2,26,460);e.click()}}
 }
 
@@ -1274,14 +1275,14 @@ function drawPen(now){
   if(BODY.on){
     if(!BODY.vis){pill(c,'からだ と みぎて が カメラに うつるように してね',FW/2,FH*.92,Math.round(fs*1.2),'#ffc83d');return}
     // えらぶ がめんでは つかいかたを 下に 出しておく
-    if(curScreen==='s-level'||curScreen==='s-mode'||!$('#result').hidden)pill(c,'ペンを ボタンに あわせて ✋ひだりてを あげると けってい（じっと まっても OK）',FW/2,FH-fs*1.6,fs,'#ffe9a8');
+    if(curScreen==='s-level'||curScreen==='s-mode'||!$('#result').hidden)pill(c,'ペンを ボタンに あわせて ✋ひだりてを あげると けってい',FW/2,FH-fs*1.6,fs,'#ffe9a8');
     let x=BODY.x,y=BODY.y;
     // かいている あいだは ペン先が レールに すいつく
     if(BP.down&&BP.rail){const [rx,ry]=paperToScreen(BP.rail.P[BP.rail.k]);x=rx*.8+x*.2;y=ry*.8+y*.2;
       c.save();c.strokeStyle='rgba(124,220,255,.35)';c.lineWidth=3;c.setLineDash([6,8]);c.beginPath();c.moveTo(x,y);c.lineTo(BODY.x,BODY.y);c.stroke();c.restore()}
     const dl=Math.hypot(BODY.dx,BODY.dy)||1;
     // ゆびさしの わ（ボタン・かきはじめ）
-    const pr=HOV.el?HOV.t/HOV_T:BP.ring;
+    const pr=HOV.el?0:BP.ring;
     if(pr>0&&!BP.down){
       c.save();c.lineCap='round';c.lineWidth=S*.04;c.strokeStyle='rgba(255,255,255,.3)';circle(c,x,y,S*.14);c.stroke();
       c.strokeStyle=HOV.el?'#ffc83d':'#22c27a';c.beginPath();c.arc(x,y,S*.14,-Math.PI/2,-Math.PI/2+6.283*Math.min(1,pr));c.stroke();c.restore();
