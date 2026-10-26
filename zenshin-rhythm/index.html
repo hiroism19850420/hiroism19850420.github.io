@@ -430,8 +430,8 @@ G.sneeze = {
 const VEL = 210; // 1拍で すすむ はば
 G.stamp = {
   key: 'stamp', name: 'ドン！とハンコ', sub: 'ゆうびんきょく', col: '#4dbfa8', act: 'りょう手で ドン',
-  lines: ['てがみが まんなかに きたら りょう手で ドン！', 'わっかが ちぢんで 光ったら ドン', 'ねこ（✋）は おさないでね'],
-  bpm: 124, end: 76, go: 'ドン！', trapLabel: 'ねこは おさない', lblDy: 185,
+  lines: ['てがみが きたら りょう手を 大きく ふりおろして ドン！', 'わっかが ちぢんで 光ったら ドン', 'ねこ（✋）は おさないでね'],
+  bpm: 124, end: 76, need: 'arms', go: 'ドン！', trapLabel: 'ねこは おさない', lblDy: 185,
   cues: {
     L: { len: 3, hits: [2], words: [], snd: [[0, t => SND.blip(t)]] },
     P: { len: 3, hits: [2, 2.5], words: [], snd: [[0, t => SND.blip(t, 1320)], [0.5, t => SND.blip(t, 1320)]] },
@@ -771,14 +771,17 @@ function camFrame() {
       if (f > b1) { b2 = b1; b1 = f; } else if (f > b2) b2 = f;
     }
     const g = p === 0 ? c0 / (two ? a0 * PHh : PW * PHh) : c1 / ((PW - a1) * PHh);
-    const loc = (b1 * 0.7 + b2 * 0.3) * 0.45;
-    updMot(p, Math.max(g, loc), g, now, loc > g * 1.6 ? 0.06 : 0);
+    // ジャンプ・しゃがむ は 体ぜんたいの うごき（g）だけを 見る。手を ちょっと うごかしても 反応しない。
+    // ハンコ（りょう手で ドン）だけ、うでの 大きな ふりおろしも 少し 足す
+    const loc = (b1 * 0.7 + b2 * 0.3) * 0.12, arms = needNow() === 'arms';
+    updMot(p, arms ? Math.max(g, loc) : g, g, now, 0);
   }
 }
+function needNow() { if (scr !== 'play' || !S) return 'big'; return segAt((clock() - S.t0) / S.spb).g.need || 'big'; }
 function updMot(p, e, g, now, late) {
   const m = MOT[p]; m.e = e; m.g = g; m.es += (e - m.es) * 0.3;
   if (e < m.floor) m.floor += (e - m.floor) * 0.2; else m.floor += (e - m.floor) * 0.008;
-  const thr = Math.max(0.045 / CAM.sens, m.floor * 3 + 0.025 / CAM.sens); m.thr = thr;
+  const thr = Math.max(0.045 / CAM.sens, m.floor * 3 + 0.03 / CAM.sens); m.thr = thr;
   // 手の うごきは 手が ぶつかる 少し前から 始まるので、そのぶん おそく あつかう
   if (m.armed) { if (e > thr && now - m.last > (m.peak > thr * 4 ? 0.4 : 0.18)) { m.armed = false; m.last = now; m.peak = e; onset(p, now + late); } }
   else { m.peak = Math.max(m.peak, e); if (e < Math.max(thr * 0.5, m.peak * 0.4)) m.armed = true; }
@@ -866,7 +869,7 @@ function drawCam(tn) {
   }
   if (two) { c.setLineDash([16, 12]); line(vx + vw / 2, vy, vx + vw / 2, vy + vh, '#fff', 5); c.setLineDash([]); }
   txt(two ? '左と右に ひとりずつ。からだ ぜんぶ うつるまで はなれてね（2〜3m）' : 'からだ ぜんぶ うつるまで はなれてね（2〜3m）', W / 2, 560, 26, '#fff', 'center', INK, 6);
-  txt('ジャンプや 手を パン！で「ドン！」が出れば OK', W / 2, 596, 24, '#ffe65a', 'center', INK, 6);
+  txt('ジャンプして「ドン！」が出れば OK（手を ちょっと うごかすだけでは 出ません）', W / 2, 596, 24, '#ffe65a', 'center', INK, 6);
   button(40, 630, 200, 66, '← もどる', () => go('title'), { size: 26 });
   button(270, 630, 120, 66, 'かんど −', () => { CAM.sens = Math.max(0.5, CAM.sens - 0.25); }, { size: 22 });
   txt('かんど ' + CAM.sens.toFixed(2), 455, 663, 22, '#fff');
@@ -886,7 +889,7 @@ function drawCalib(tn) {
   txt('タイミング あわせ', W / 2, 60, 46, '#fff', 'center', INK, 10);
   const k = (tn - CAL.t0) / CAL.spb;
   if (!CAL.res) {
-    txt(k < 4 ? 'きいてね… ' + (k < 0 ? '' : Math.floor(k) + 1) : 'カッ に あわせて ジャンプ か 手を パン！', W / 2, 160, 38, '#ffe65a', 'center', INK, 8);
+    txt(k < 4 ? 'きいてね… ' + (k < 0 ? '' : Math.floor(k) + 1) : 'カッ に あわせて ジャンプ！', W / 2, 160, 38, '#ffe65a', 'center', INK, 8);
     const ph = k - Math.floor(k), r = 110 + (k >= 0 ? Math.max(0, 1 - ph * 3) * 40 : 0);
     circ(W / 2, 380, r); fs(k >= 4 ? '#ff7a45' : '#6a56a8', INK, 8);
     txt(k < 0 ? '…' : String(Math.min(12, Math.floor(k) + 1)), W / 2, 384, 90, '#fff', 'center', INK, 10);
