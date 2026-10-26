@@ -48,7 +48,7 @@
         <div id="stanceIcon">🧍</div>
         <div style="text-align:left">
           <div id="stanceTxt">かまえ：まだ</div>
-          <div class="note" id="stanceNote">りょう手を 右か左の 肩の前で にぎると、右打ち・左打ちが きまるよ</div>
+          <div class="note" id="stanceNote">りょう手を 右か左の 肩の よこで にぎると、右打ち・左打ちが きまるよ</div>
         </div>
       </div>
       <div class="row" id="levels">
@@ -539,17 +539,36 @@ function showTitle(){
 
 /* ---------- カメラ：かまえ と スイング ---------- */
 // かまえ：手が 肩より 少し下までの 高さで、体の まん中から 右か左に よっている（りょう手が 見えるときは 近くに ある）
-function readStance(){
+const FAR=0.6, FRONT=0.3, FAR_MEMORY=0.8, SWING_V=1.0;   // 手が 体の まん中から FAR より はなれた＝かまえ／FRONT より 内に 入った＝ふった（肩はば＝1）。かまえてから FAR_MEMORY 秒いない、SWING_V（肩はば／秒）より 速く 近づいたときだけ
+function handPos(){        // りょう手の まん中の 位置。体の まん中から 右が ＋（鏡うつし）
   if(!Body.ok) return null;
   const hs=Body.hands.filter(h=>h.vis); if(!hs.length) return null;
   if(Body.both&&Body.gap>1.5) return null;
   let mx=0,my=0; hs.forEach(h=>{mx+=(h.x-Body.cx)*Body.asp/Body.unit; my+=(h.y-Body.cy)/Body.unit}); mx/=hs.length; my/=hs.length;
-  if(my>1.4||Math.abs(mx)<0.2) return null;
-  return mx>0?"R":"L";      // 鏡うつしなので、画面の右に 手が ある＝右打ち
+  return {mx,my};
 }
+function readStance(){
+  const p=handPos(); if(!p||p.my>1.4||Math.abs(p.mx)<FAR) return null;
+  return p.mx>0?"R":"L";      // 鏡うつしなので、画面の右に 手が ある＝右打ち
+}
+// ふり：よこ向きに かまえた 手が、体の 前（まん中）まで 来たときに 1回。ちょっと 手を うごかしただけでは ふらない
+let farT=-9, prevD=null, prevT=0;
+function swingFromBody(){
+  const p=handPos(), t=now();
+  if(!p||!game.side||p.my>1.6){prevD=null;return}
+  const d=(game.side==="R"?1:-1)*p.mx;
+  if(d>FAR) farT=t;
+  if(prevD!=null&&d<FRONT&&prevD>=FRONT&&t-farT<FAR_MEMORY*1000){
+    const v=(prevD-d)/Math.max(0.001,(t-prevT)/1000);
+    if(v>SWING_V){farT=-9; bodySwing(clamp((v-1)/6,0.25,1))}
+  }
+  prevD=d; prevT=t;
+}
+function bodySwing(power){onSwing(power,now()-SWING_LAG+game.offset)}
 let stCand=null, stSince=0;
 Body.on("pose",()=>{
   if(!cam()) return;
+  swingFromBody();
   const s=readStance(), t=now();
   if(s!==stCand){stCand=s; stSince=t}
   game.stance=s&&t-stSince>200?s:null;
@@ -562,13 +581,6 @@ Body.on("pose",()=>{
     el.classList.toggle("ok",!!game.side);
     $("stanceIcon").textContent=game.stance?"🏏":"🧍";
   }
-});
-Body.on("swing",e=>{
-  if(!cam()) return;
-  if(e.dy<-0.75) return;                                  // 手を 上に あげる 動き（かまえ なおし）は ふりに しない
-  if(!game.side&&game.state==="flight") game.side=e.dx<0?"R":"L";   // かまえずに 打ったら、ふった向きで きめる
-  const power=clamp((e.speed-2.2)/5,0.25,1);
-  onSwing(power,now()-SWING_LAG+game.offset);
 });
 Body.on("clap",e=>{
   if(!cam()) return;
@@ -617,7 +629,7 @@ const BMD={
   stance(side){game.side=side; game.stance=side},
   cam(v=true){Body.mode=v?"cam":"nocam"},          // カメラの 処理（swing・clap）を カメラなしで ためす
   clap(){Body.emit("clap",{})},
-  fakeSwing(dx=-1,speed=6){Body.emit("swing",{dx,dy:0,speed,i:1,side:"R"})}
+  fakeSwing(power=0.8){bodySwing(power)}
 };
 window.__bmz=game;
 
@@ -627,8 +639,8 @@ if(DBG){
   window.dbg=BMD; Body.mode="nocam"; showTitle();
 }else{
   Body.gate({title:"⚾ バッター目線 ぜんしん版",corner:"tr",lines:[
-    "りょう手で バットを にぎるように <b>右か左の 肩の前</b>で かまえる（右打ち・左打ちは かまえた手で きまる）",
-    "ボールが きたら、<b>うでを よこに ふる</b>。向きは だいたいで OK",
+    "りょう手で バットを にぎるように <b>よこ向き</b>に、右か左の 肩の よこで かまえる（右打ち・左打ちは かまえた手で きまる）",
+    "かまえた手を、<b>体の 前まで ふりぬく</b>と 打つ。ちょっと 動かしただけでは ふらない",
     "<b>ひきつけて</b> ふるほど 遠くへ とぶ。はやすぎ・おそすぎは ファウルや 空振り（罰なし）",
     "手を もどさなくても、つづけて ふれる",
     "👏 手を たたく … はじめる・もういちど"],
