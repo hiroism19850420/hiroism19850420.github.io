@@ -70,7 +70,7 @@ body.playing #bSound{left:120px}
   </div>
   <button class="wbtn red" id="bStart">はじめる</button>
   <div id="choices"></div>
-  <div id="resBtns"><button class="wbtn red" id="bRetry">もういちど</button><button class="wbtn" id="bTitle">タイトルへ</button></div>
+  <div id="resBtns"><button class="wbtn" id="bPrev">◀ まえ</button><button class="wbtn" id="bNext">つぎ ▶</button><button class="wbtn red" id="bRetry">もういちど</button><button class="wbtn" id="bShare">📤 しゃしんを シェア</button><button class="wbtn" id="bTitle">タイトルへ</button></div>
   <button class="sbtn" id="bQuit">✕ やめる</button>
   <button class="sbtn" id="bSound">🔊 おと</button>
 </div>
@@ -1055,7 +1055,7 @@ function retry() {
 }
 function toResult() {
   G.rounds.forEach(releaseTex);
-  BGM.stop(); setState('result'); G.resT0 = G.rt; G.holdT = 0; G.resSound = {};
+  BGM.stop(); setState('result'); G.resT0 = G.rt; G.holdT = 0; G.resSound = {}; G.resPage = 0; G.resPageT = G.rt; G.navT = 0; G.navArm = false;
   setTimeout(() => { if (G.state === 'result') $('resBtns').classList.add('on'); }, 2600);
 }
 
@@ -1176,6 +1176,14 @@ function step(dtR) {
     G.holdT = ok ? G.holdT + dtR : Math.max(0, G.holdT - dtR * 2);
     if (st === 'title' && G.holdT > .6) startIntro();
     if (st === 'result' && G.holdT > .9 && G.rt - G.resT0 > 2.6) retry();
+    if (st === 'result' && G.mode === 'cam') {
+      const lm = DET.lm, seen = PL.seen && G.rt - PL.lastSeen < .3 && lm;
+      const R = seen && lm[16].y < lm[12].y - .02, L = seen && lm[15].y < lm[11].y - .02;
+      const dir = R && !L ? 1 : L && !R ? -1 : 0;
+      if (!R && !L) { G.navArm = true; G.navT = 0; }
+      else if (dir && G.navArm && G.rt - G.resT0 > 1.2) { G.navT += dtR; if (G.navT > .35) { G.navArm = false; G.navT = 0; resGo(dir); } }
+      else if (!dir) G.navT = 0;
+    }
   }
   // ふすまの はんてい
   const all = G.rounds.concat(G.titleR ? [G.titleR] : []);
@@ -1432,55 +1440,64 @@ function drawCard(g, r, x, y, w, h) {
   g.restore();
   g.strokeStyle = 'rgba(0,0,0,.8)'; g.lineWidth = 2; rr(g, x, y, w, h, 6); g.stroke();
 }
+function resGo(d) {
+  const n = G.rounds.length + 1, p = clamp(G.resPage + d, 0, n - 1);
+  if (p === G.resPage) return;
+  G.resPage = p; G.resPageT = G.rt; AU.init(); AU.pluck(SCALE[3 + (p % 6)], AU.t, .25);
+}
 function drawResult(g) {
   const t = G.rt - G.resT0;
-  g.fillStyle = `rgba(10,6,4,${Math.min(.78, t * 2)})`; g.fillRect(0, 0, W, H);
-  const N = G.rounds.length, big = N <= 10, S = SPEEDS[SET.lvl];
+  g.fillStyle = `rgba(10,6,4,${Math.min(.82, t * 2)})`; g.fillRect(0, 0, W, H);
+  const N = G.rounds.length, S = SPEEDS[SET.lvl], pg = G.resPage;
   brush(g, 'けっか', 640, 52, 58, '#fff3d8', '#1d0f07', 8);
   g.font = `700 20px ${FONT_M}`; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = '#e8d4b0'; g.fillText(`${N}まい・${S.icon} ${S.name}`, 730, 58);
-  const cols = big ? 5 : 10, cw = big ? 204 : 112, gap = big ? 22 : 10, ch = Math.round(cw * TH / TW), rowH = ch + (big ? 50 : 26), y0 = big ? 96 : 92, stg = big ? .13 : .045, sc = cw / 204;
-  const x0 = (W - (cols * cw + (cols - 1) * gap)) / 2;
-  G.rounds.forEach((r, i) => {
-    const ti = t - .35 - i * stg; if (ti < 0) return;
-    if (!G.resSound[i]) { G.resSound[i] = 1; if (big) r.res && r.res.pass ? AU.pluck(SCALE[Math.min(8, 3 + (i % 6))], AU.t, .3) : AU.tear(AU.t, false); else AU.pluck(r.res && r.res.pass ? SCALE[3 + (i % 6)] : -12, AU.t, .14); }
-    const k = backOut(clamp(ti / .35, 0, 1)), cx = x0 + (i % cols) * (cw + gap), cy = y0 + Math.floor(i / cols) * rowH;
-    g.save(); g.translate(cx + cw / 2, cy + ch / 2); g.scale(k, k); g.translate(-cw / 2, -ch / 2);
-    drawCard(g, r, 0, 0, cw, ch);
-    if (r.res) {
-      if (r.res.pass) {
-        g.save(); g.translate(cw - 32 * sc, ch - 30 * sc); g.scale(sc, sc); g.strokeStyle = '#d03a2c'; g.lineCap = 'round'; g.lineWidth = 6; g.beginPath(); g.arc(0, 0, 24, -1.2, 4.9); g.stroke();
-        if (r.res.excellent) { g.lineWidth = 4; g.beginPath(); g.arc(0, 0, 12, -1.1, 5.0); g.stroke(); }
-        g.restore();
-      } else { g.save(); g.translate(cw - 46 * sc, ch - 22 * sc); g.scale(sc, sc); g.rotate(-.12); brush(g, 'ビリッ', 0, 0, 30, '#ff6a50', '#1d0f07', 5); g.restore(); }
-    }
-    g.font = `700 ${big ? 19 : 13}px ${FONT_M}`; g.fillStyle = '#f3e2c2'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(big ? `${i + 1}. ${r.name}` : r.name, cw / 2, ch + (big ? 18 : 11));
-    g.restore();
-  });
-  const tTot = .35 + N * stg + .2;
-  if (t > tTot) {
-    if (!G.resSound.total) { G.resSound.total = 1; AU.fanfare(); }
-    const k = backOut(clamp((t - tTot) / .35, 0, 1)), n = G.score, torn = G.rounds.filter(r => r.res && !r.res.pass), ratio = n / N;
-    const yL = big ? 590 : 500;
-    g.save(); g.translate(500, yL); g.scale(k, k);
-    g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 16 * RS;
-    brush(g, `${N}まい ちゅう ${n}まい ぬけた！`, 0, 0, 56, 'gold', '#1d0f07', 8);
-    g.restore();
-    const dance = SET.lvl === SPEEDS.length - 1;
-    const rank = ratio >= 1 ? (dance ? 'ふすまダンスの かみさま' : 'ふすまの かみさま') : ratio >= .8 ? (dance ? 'ふすまの ダンサー' : 'ふすま めいじん') : ratio >= .6 ? 'なかなかの うでまえ' : ratio >= .3 ? 'ふすま やぶり みならい' : 'ふすま こわし だいおう';
-    if (t > tTot + .45) {
-      if (!G.resSound.rank) { G.resSound.rank = 1; AU.don(AU.t, .7); }
-      let y = yL + 60;
-      if (!big) { g.font = `900 26px ${FONT_M}`; g.textAlign = 'center'; g.fillStyle = '#ffe9a8'; g.fillText(n === N ? 'ぜんぶ れんぞく！ フルコンボ！' : `さいだい れんぞく ${G.maxCombo || 0}`, 500, y); y += 50; }
-      g.font = `900 30px ${FONT_M}`; g.textAlign = 'center'; g.fillStyle = '#fff3d8'; g.fillText(`しょうごう：${rank}`, 500, y);
-      if (torn.length) {
-        const yen = torn.reduce((s, r) => s + 3800 + r.res.torn * 300, 0);
-        g.font = `700 19px ${FONT_M}`; g.fillStyle = '#e8c8a8'; g.fillText(`やぶれた ふすまの はりかえ代 …… ${yen.toLocaleString('ja-JP')}えん`, 500, y + 40);
+  if (pg === 0) {
+    const tTot = .4;
+    if (t > tTot) {
+      if (!G.resSound.total) { G.resSound.total = 1; AU.fanfare(); }
+      const k = backOut(clamp((t - tTot) / .35, 0, 1)), n = G.score, torn = G.rounds.filter(r => r.res && !r.res.pass), ratio = n / N, big = N <= 10;
+      g.save(); g.translate(640, 230); g.scale(k, k);
+      g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 16 * RS;
+      brush(g, `${N}まい ちゅう ${n}まい ぬけた！`, 0, 0, 72, 'gold', '#1d0f07', 10);
+      g.restore();
+      const dance = SET.lvl === SPEEDS.length - 1;
+      const rank = ratio >= 1 ? (dance ? 'ふすまダンスの かみさま' : 'ふすまの かみさま') : ratio >= .8 ? (dance ? 'ふすまの ダンサー' : 'ふすま めいじん') : ratio >= .6 ? 'なかなかの うでまえ' : ratio >= .3 ? 'ふすま やぶり みならい' : 'ふすま こわし だいおう';
+      if (t > tTot + .45) {
+        if (!G.resSound.rank) { G.resSound.rank = 1; AU.don(AU.t, .7); }
+        let y = 310; g.textAlign = 'center';
+        if (!big) { g.font = `900 28px ${FONT_M}`; g.fillStyle = '#ffe9a8'; g.fillText(n === N ? 'ぜんぶ れんぞく！ フルコンボ！' : `さいだい れんぞく ${G.maxCombo || 0}`, 640, y); y += 56; }
+        g.font = `900 36px ${FONT_M}`; g.fillStyle = '#fff3d8'; g.fillText(`しょうごう：${rank}`, 640, y);
+        if (torn.length) {
+          const yen = torn.reduce((s, r) => s + 3800 + r.res.torn * 300, 0);
+          g.font = `700 22px ${FONT_M}`; g.fillStyle = '#e8c8a8'; g.fillText(`やぶれた ふすまの はりかえ代 …… ${yen.toLocaleString('ja-JP')}えん`, 640, y + 50);
+        }
+        if (t > 1.2) { g.font = `700 24px ${FONT_M}`; g.fillStyle = '#f6e7c8'; g.fillText(G.mode === 'cam' ? '▶ みぎてを あげると、しゃしんを 1まいずつ みられるよ' : '▶ 「つぎ」で、しゃしんを 1まいずつ みられるよ', 640, y + 120); }
       }
     }
-    if (G.mode === 'cam' && t > 2.6) {
-      g.font = `700 17px ${FONT_M}`; g.textAlign = 'right'; g.fillStyle = '#f6e7c8'; g.fillText('りょうてを あげても もういちど', 1240, 610);
-      if (G.holdT > 0) { g.fillStyle = '#ffd55e'; g.fillRect(1040, 620, 200 * clamp(G.holdT / .9, 0, 1), 5); }
+  } else {
+    const r = G.rounds[pg - 1], k = backOut(clamp((G.rt - G.resPageT) / .3, 0, 1));
+    const cw = 600, ch = Math.round(cw * TH / TW), cx = 70, cy = 110;
+    g.save(); g.translate(cx + cw / 2, cy + ch / 2); g.scale(k, k); g.translate(-cw / 2, -ch / 2);
+    g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 20 * RS;
+    drawCard(g, r, 0, 0, cw, ch);
+    g.restore();
+    g.textAlign = 'left'; g.textBaseline = 'middle';
+    g.font = `900 64px ${FONT_M}`; g.fillStyle = '#fff3d8'; g.fillText(`${pg} / ${N}`, 730, 250);
+    g.font = `700 28px ${FONT_M}`; g.fillStyle = '#f3e2c2'; g.fillText(r.name, 730, 310);
+    if (r.res) {
+      if (r.res.pass) {
+        g.save(); g.translate(790, 410); g.scale(2, 2); g.strokeStyle = '#d03a2c'; g.lineCap = 'round'; g.lineWidth = 6; g.beginPath(); g.arc(0, 0, 24, -1.2, 4.9); g.stroke();
+        if (r.res.excellent) { g.lineWidth = 4; g.beginPath(); g.arc(0, 0, 12, -1.1, 5.0); g.stroke(); }
+        g.restore();
+        brush(g, r.res.excellent ? 'かんぺき！' : 'ピッタリ！', 1010, 410, 60, 'gold', '#1d0f07', 8);
+      } else brush(g, 'ビリッ！', 900, 410, 80, '#ff6a50', '#1d0f07', 8);
     }
+  }
+  if (t > 1.2 && G.mode === 'cam') {
+    g.font = `700 18px ${FONT_M}`; g.textAlign = 'right'; g.fillStyle = '#f6e7c8';
+    g.fillText('🙋 みぎてを あげる＝つぎ ／ ひだりてを あげる＝まえ', 1240, 560);
+    g.fillText('りょうてを あげると もういちど', 1240, 590);
+    if (G.holdT > 0) { g.fillStyle = '#ffd55e'; g.fillRect(1040, 600, 200 * clamp(G.holdT / .9, 0, 1), 5); }
   }
 }
 function draw() {
@@ -1593,7 +1610,37 @@ $('bPhone').onclick = () => startPhone();
 $('bNoCam').onclick = () => startNoCam();
 $('bStart').onclick = () => startIntro();
 $('bRetry').onclick = () => retry();
+$('bPrev').onclick = () => resGo(-1);
+$('bNext').onclick = () => resGo(1);
 $('bTitle').onclick = () => { AU.pop(); enterTitle(); };
+// さいごの 1まい（ポーズの しゃしん入り）を がぞうにして シェア
+function makeShareImage() {
+  const r = G.resPage > 0 ? G.rounds[G.resPage - 1] : [...G.rounds].reverse().find(x => x.res && x.res.body); if (!r || !r.res) return null;
+  const cw = 720, ch = Math.round(cw * TH / TW), pad = 40, Wd = cw + pad * 2, Hd = ch + 190;
+  const c = mk(Wd, Hd), g = c.getContext('2d');
+  g.fillStyle = '#1a100a'; g.fillRect(0, 0, Wd, Hd);
+  g.textBaseline = 'middle';
+  brush(g, 'ふすま ぬけ！', Wd / 2, 52, 56, '#fff4dc', '#1d0f07', 8);
+  drawCard(g, r, pad, 100, cw, ch);
+  const res = r.res, N = G.rounds.length;
+  g.textAlign = 'center';
+  brush(g, res.pass ? (res.excellent ? 'かんぺき！' : 'ピッタリ！') : 'ビリッ！', Wd / 2, 100 + ch + 44, 56, res.pass ? 'gold' : '#ff5b45', '#1d0f07', 8);
+  g.font = `700 24px ${FONT_M}`; g.fillStyle = '#e8d4b0';
+  g.fillText(`${N}まい ちゅう ${G.score}まい ぬけた！`, Wd / 2, 100 + ch + 112);
+  return c;
+}
+$('bShare').onclick = async () => {
+  AU.init(); AU.pop();
+  const c = makeShareImage(); if (!c) return;
+  const blob = await new Promise(ok => c.toBlob(ok, 'image/png')); if (!blob) return;
+  const file = new File([blob], 'fusuma-nuke.png', { type: 'image/png' });
+  const data = { files: [file], title: 'ふすま ぬけ！', text: 'ふすま ぬけ！ #ふすまぬけ' };
+  try {
+    if (navigator.canShare && navigator.canShare(data)) { await navigator.share(data); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'fusuma-nuke.png';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+};
 $('bQuit').onclick = () => { AU.pop(); enterTitle(); };
 $('bSound').onclick = () => { AU.init(); AU.setOn(!AU.on); $('bSound').textContent = AU.on ? '🔊 おと' : '🔇 おと'; };
 addEventListener('keydown', e => {
@@ -1603,6 +1650,7 @@ addEventListener('keydown', e => {
   else if ((k === ' ' || k === 'Enter') && G.state === 'result' && $('resBtns').classList.contains('on')) { e.preventDefault(); retry(); }
   else if (k === 'Escape' && G.state !== 'gate') enterTitle();
   else if (/^[1-4]$/.test(k) && G.mode === 'choice' && G.state !== 'title') CH.choose(+k - 1);
+  else if ((k === 'ArrowLeft' || k === 'ArrowRight') && G.state === 'result') { e.preventDefault(); resGo(k === 'ArrowLeft' ? -1 : 1); }
   else if ((k === 'ArrowLeft' || k === 'ArrowRight') && G.state === 'title') { e.preventDefault(); setLvl(SET.lvl + (k === 'ArrowLeft' ? -1 : 1)); }
   else if ((k === 'ArrowUp' || k === 'ArrowDown') && G.state === 'title') { e.preventDefault(); setMode(SET.mode === 10 ? 30 : 10); }
   else if (k === 'm') $('bSound').click();
