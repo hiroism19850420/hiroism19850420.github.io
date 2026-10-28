@@ -4,6 +4,10 @@ import { Save } from './save.js';
 import { drawDoodle } from './three-view.js';
 import { buildArt, isUsable, autoName, packStrokes, unpackStrokes, drawCustomDoodle } from './custom-monster.js';
 
+// 結果画面の「→ ○○で」：1つ上の むずかしさ（いちばん上なら やさしいへ）
+const DIFF_ORDER = ['easy', 'normal', 'hard', 'oni'];
+const nextDiff = d => DIFF_ORDER[(DIFF_ORDER.indexOf(d) + 1) % DIFF_ORDER.length];
+
 const $ = (id) => document.getElementById(id);
 const fmtTime = (ms) => { const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 const pct = (x) => `${Math.round(x * 100)}%`;
@@ -86,7 +90,7 @@ export class UI {
     // 結果
     this.btn('btnAgain', () => this.scene.retry());
     this.btn('btnDiff', () => {
-      const next = Save.data.lastDiff === 'easy' ? 'normal' : 'easy';
+      const next = nextDiff(Save.data.lastDiff);
       this.confirm('難易度を変えますか？', `「${DIFF[next].name}」で もう一度あそびます。`, `${DIFF[next].name}にする`, () => {
         Save.data.lastDiff = next; Save.write(); this.scene.retry();
       });
@@ -364,7 +368,7 @@ export class UI {
     $('resStats').innerHTML = rows.map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join('');
     $('resAdvice').hidden = win || !s.topFail;
     $('resAdvice').textContent = !win && s.topFail ? `ヒント：${ADVICE[s.topFail]}` : '';
-    $('btnDiff').textContent = `→ ${DIFF[s.diff === 'easy' ? 'normal' : 'easy'].name}で`;
+    $('btnDiff').textContent = `→ ${DIFF[nextDiff(s.diff)].name}で`;
     if (s.saveFailed) this.toast('記録を保存できませんでした');
   }
 

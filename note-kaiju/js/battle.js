@@ -322,7 +322,7 @@ export class Battle {
     // 攻撃
     for (const a of this.attacks) this.stepAttack(a, h);
     this.attacks = this.attacks.filter(a => {
-      if (a.done) { this.emit('attackEnd', a); if (this.mode === 'battle') this.nextAttackIn = Math.max(this.nextAttackIn, a.rest); return false; }
+      if (a.done) { this.emit('attackEnd', a); if (this.mode === 'battle') this.nextAttackIn = Math.max(this.nextAttackIn, a.rest * (this.diff.restMul || 1)); return false; }
       return true;
     });
 
@@ -339,10 +339,12 @@ export class Battle {
     }
 
     // 次の攻撃
-    if (this.mode === 'battle' && this.attacks.length === 0 && !this.boss.pending) {
+    // げきむずは 攻撃を 重ねて出す（concurrent こまで、gap 秒おき）
+    if (this.mode === 'battle' && this.attacks.length < (this.diff.concurrent || 1) && !this.boss.pending) {
       this.nextAttackIn -= h;
       if (this.nextAttackIn <= 0 && this.suppress <= 0 && this.boss.hp > 0) {
         this.spawnAttack(this.pickAttack());
+        if (this.diff.concurrent > 1) this.nextAttackIn = this.diff.gap;
       }
     }
 
@@ -362,8 +364,8 @@ export class Battle {
         if (this.state !== 'over' && this.mode !== 'practice') {
           this.stats.triHits++;
           this.score += Math.round(SHAPES.tri.score * this.multiplier());
-          this.suppress = Math.max(this.suppress, BAL.triSuppress);
-          this.nextAttackIn = Math.max(this.nextAttackIn, BAL.triMinRest);
+          this.suppress = Math.max(this.suppress, BAL.triSuppress * (this.diff.restMul || 1));
+          this.nextAttackIn = Math.max(this.nextAttackIn, BAL.triMinRest * (this.diff.restMul || 1));
           this.hitStop = this.reduceFx ? BAL.hitStop * 0.5 : BAL.hitStop;
           this.damageBoss(SHAPES.tri.dmg, true);
           this.emit('triHit', tr);

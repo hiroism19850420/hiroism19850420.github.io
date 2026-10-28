@@ -13,7 +13,7 @@ export function defaultSave() {
     shapeGuide: true,       // 推奨図形アイコン（ふつう難易度）
     damageNumbers: true,
     lastDiff: 'easy',
-    best: { easy: { score: 0, timeMs: 0 }, normal: { score: 0, timeMs: 0 } },
+    best: { easy: { score: 0, timeMs: 0 }, normal: { score: 0, timeMs: 0 }, hard: { score: 0, timeMs: 0 }, oni: { score: 0, timeMs: 0 } },
     plays: 0,
     wins: 0,
     custom: null,           // 描いた怪獣（点は0〜1000の整数）
@@ -38,8 +38,8 @@ function sanitize(d) {
   out.reduceFx = !!d.reduceFx;
   out.shapeGuide = d.shapeGuide !== false;
   out.damageNumbers = d.damageNumbers !== false;
-  out.lastDiff = d.lastDiff === 'normal' ? 'normal' : 'easy';
-  for (const k of ['easy', 'normal']) {
+  out.lastDiff = ['normal', 'hard', 'oni'].includes(d.lastDiff) ? d.lastDiff : 'easy';
+  for (const k of ['easy', 'normal', 'hard', 'oni']) {
     const b = d.best && d.best[k];
     if (b) { out.best[k].score = num(b.score, 0, 1e9, 0) | 0; out.best[k].timeMs = num(b.timeMs, 0, 1e9, 0) | 0; }
   }

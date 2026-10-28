@@ -55,6 +55,9 @@ export const PHASES = [
 export const DIFF = {
   easy:   { key: 'easy',   name: 'やさしい', bossHp: 540, playerHp: 100, dmgMul: 0.70, previewMul: 1.25, inkRegen: 10, guide: 'always', shapeIcon: 'always' },
   normal: { key: 'normal', name: 'ふつう',   bossHp: 720, playerHp: 100, dmgMul: 1.00, previewMul: 1.00, inkRegen: 8,  guide: 'first',  shapeIcon: 'setting' },
+  // 敵が どんどん攻撃してくる 2段階。restMul：攻撃のあとの 休みの倍率。concurrent：同時に出す 攻撃の数、gap：重ねて出す 間かく（秒）
+  hard:   { key: 'hard',   name: 'むずかしい', bossHp: 840, playerHp: 100, dmgMul: 1.10, previewMul: 0.95, inkRegen: 9,  guide: 'first', shapeIcon: 'setting', restMul: 0.3, concurrent: 2, gap: 1.6 },
+  oni:    { key: 'oni',    name: 'げきむず',   bossHp: 960, playerHp: 100, dmgMul: 1.20, previewMul: 0.90, inkRegen: 10, guide: 'first', shapeIcon: 'setting', restMul: 0.15, concurrent: 3, gap: 0.9 },
 };
 
 export const QUALITY = {
