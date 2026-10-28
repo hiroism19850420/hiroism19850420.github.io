@@ -191,12 +191,19 @@ const KB={l:0,r:0,d:0,rl:0,rr:0};
 const KMAP={ArrowLeft:'l',KeyA:'l',ArrowRight:'r',KeyD:'r',ArrowDown:'d',KeyS:'d',KeyZ:'rl',KeyJ:'rl',KeyX:'rr',KeyK:'rr',ArrowUp:'rr',KeyW:'rr'};
 let usingTouch=IS_TOUCH;
 const TP={pad:null,a:null,b:null,dir:0};
+// ふたりで：1P は A D 移動・S 落下・Z X（Q W）回転、2P は ← → 移動・↓ 落下・J K（↑）回転
+const KB2=[{l:0,r:0,d:0,rl:0,rr:0},{l:0,r:0,d:0,rl:0,rr:0}];
+const KMAP2={KeyA:[0,'l'],KeyD:[0,'r'],KeyS:[0,'d'],KeyZ:[0,'rl'],KeyQ:[0,'rl'],KeyX:[0,'rr'],KeyW:[0,'rr'],
+  ArrowLeft:[1,'l'],ArrowRight:[1,'r'],ArrowDown:[1,'d'],KeyJ:[1,'rl'],KeyK:[1,'rr'],KeyL:[1,'rr'],ArrowUp:[1,'rr']};
+const PCOL=['#2cb','#f6c'];
+const TP2=[{dir:0,a:0},{dir:0,a:0}];
 addEventListener('keydown',e=>{
+  if(KMAP2[e.code]){const [i,k]=KMAP2[e.code];KB2[i][k]=1}
   if(KMAP[e.code]){KB[KMAP[e.code]]=1;e.preventDefault()}
   if(e.code==='Space')e.preventDefault();
   if(!e.repeat)onKey(e.code);
 });
-addEventListener('keyup',e=>{if(KMAP[e.code])KB[KMAP[e.code]]=0});
+addEventListener('keyup',e=>{if(KMAP[e.code])KB[KMAP[e.code]]=0;if(KMAP2[e.code]){const [i,k]=KMAP2[e.code];KB2[i][k]=0}});
 function toL(e){return[e.clientX*dpr/S,e.clientY*dpr/S-OY_]}
 const pointers=new Map();
 function padDir(x,y){
@@ -220,6 +227,7 @@ cv.addEventListener('pointerdown',e=>{
   const [x,y]=toL(e);
   if(G.scene==='match'||G.scene==='toko'){
     if(!G.paused&&Math.hypot(x-LAY.cx,y-22)<22){pause();return}
+    if(!G.paused&&G.two){const t=classify2(x,y);if(t){const [i,k]=t;pointers.set(e.pointerId,t);if(k==='pad')TP2[i].dir=padDir2(i,x,y);else TP2[i].a=1;try{cv.setPointerCapture(e.pointerId)}catch(_){}}return}
     if(!G.paused){const k=classify(x,y);if(k){pointers.set(e.pointerId,k);if(k==='pad')TP.dir=padDir(x,y);else TP[k]=1;try{cv.setPointerCapture(e.pointerId)}catch(_){}
       if(k==='a'||k==='b')G.btnFx[k]=1;return}}
   }
@@ -227,15 +235,18 @@ cv.addEventListener('pointerdown',e=>{
   if(G.tapAny)G.tapAny();
 },{passive:false});
 cv.addEventListener('pointermove',e=>{
-  const k=pointers.get(e.pointerId);if(k!=='pad')return;const [x,y]=toL(e);TP.dir=padDir(x,y);
+  const k=pointers.get(e.pointerId);if(Array.isArray(k)){if(k[1]==='pad'){const [x,y]=toL(e);TP2[k[0]].dir=padDir2(k[0],x,y)}return}
+  if(k!=='pad')return;const [x,y]=toL(e);TP.dir=padDir(x,y);
 });
-const pend=e=>{const k=pointers.get(e.pointerId);if(!k)return;pointers.delete(e.pointerId);if(k==='pad')TP.dir=0;else TP[k]=0};
+const pend=e=>{const k=pointers.get(e.pointerId);if(!k)return;pointers.delete(e.pointerId);if(Array.isArray(k)){if(k[1]==='pad')TP2[k[0]].dir=0;else TP2[k[0]].a=0;return}if(k==='pad')TP.dir=0;else TP[k]=0};
 cv.addEventListener('pointerup',pend);cv.addEventListener('pointercancel',pend);
 addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pause()});
 let BTN=[],sel=0;
 function onKey(code){
   usingTouch=false;
+  if(G.scene==='title'&&code==='Digit2'){audioInit();goVS2();return}
+  if((G.scene==='result2'||G.scene==='credits')&&code==='Escape'){toTitle();return}
   if((G.scene==='match'||G.scene==='toko')&&!G.paused){if(code==='Escape'||code==='KeyP')pause();return}
   if(G.paused&&(code==='Escape'||code==='KeyP')){resume();return}
   const nav=BTN.filter(b=>!b.noNav);
@@ -248,6 +259,7 @@ function onKey(code){
   }
 }
 function humanInput(p){
+  if(G.two){const k=KB2[p.side],t=TP2[p.side];p.in.l=!!(k.l||t.dir===1);p.in.r=!!(k.r||t.dir===2);p.in.d=!!(k.d||t.dir===3);p.in.rl=!!k.rl;p.in.rr=!!(k.rr||t.a);return}
   p.in.l=!!(KB.l||TP.dir===1);p.in.r=!!(KB.r||TP.dir===2);p.in.d=!!(KB.d||TP.dir===3);
   p.in.rl=!!(KB.rl||TP.b);p.in.rr=!!(KB.rr||TP.a);
 }
@@ -552,7 +564,7 @@ function updatePlayer(p){
   switch(p.state){
     case 'spawn':if(--p.t<=0)spawnPiece(p);break;
     case 'control':
-      if(p.cpu)cpuInput(p);else (cam()?bodyInput:humanInput)(p);
+      if(p.cpu)cpuInput(p);else if(cam())(p.bi||BI[0]).input(p);else humanInput(p);
       control(p);break;
     case 'fall':stepFall(p);break;
     case 'pop':stepPop(p);break;
@@ -592,7 +604,7 @@ function updFX(){
 // ======================================================================
 //  ゲーム全体
 // ======================================================================
-const G={scene:'splash',t:0,st:0,paused:false,players:[],seq:[],mode:'vs',stage:0,over:false,overT:0,winner:null,tp:70,shake:0,flash:0,
+const G={two:false,scene:'splash',t:0,st:0,paused:false,players:[],seq:[],mode:'vs',stage:0,over:false,overT:0,winner:null,tp:70,shake:0,flash:0,
   progress:store.get('stage',0),best:store.get('toko',{score:0,chain:0}),btnFx:{a:0,b:0},tapAny:null,loaded:0,loadTotal:1,matchT:0,pinch:false,clearAll:store.get('cleared',false)};
 function makeSeq(n){
   const s=[];for(let i=0;i<n;i++){const k=i<2?3:4;s.push([1+((Math.random()*k)|0),1+((Math.random()*k)|0)])}return s;
@@ -601,9 +613,11 @@ function startMatch(stage){
   G.mode='vs';G.stage=stage;G.scene='match';G.over=false;G.overT=0;G.winner=null;G.matchT=0;G.tp=70;G.pinch=false;
   G.seq=makeSeq(256);FX.length=0;TXT.length=0;SHOTS.length=0;
   const st=STAGES[stage];
-  const me=makePlayer({side:0,ch:'luka',cpu:DBG.cpuvs,bx:LAY.p1x,speed:1/40});
+  const me=makePlayer({side:0,ch:'luka',cpu:DBG.cpuvs&&!G.two,bx:LAY.p1x,speed:1/40,bi:G.two?BI[1]:BI[0]});
   if(DBG.cpuvs)me.ai=STAGES[3].ai;
-  const op=makePlayer({side:1,ch:st.opp,cpu:true,ai:st.ai,bx:LAY.p2x,speed:1/40});
+  const op=G.two?makePlayer({side:1,ch:st.opp,cpu:false,bx:LAY.p2x,speed:1/40,bi:BI[2]})   // ふたりで：右がわも 人
+    :makePlayer({side:1,ch:st.opp,cpu:true,ai:st.ai,bx:LAY.p2x,speed:1/40});
+  if(G.two)BI.forEach(b=>b.reset());
   G.players=[me,op];G.readyT=0;
   bgm(st.bgm,.4);
   voice('luka','start',0);setTimeout(()=>voice(st.opp,'start',1),1100);
@@ -633,7 +647,8 @@ function updateMatch(){
     else if(safe&&G.pinch){G.pinch=false;bgm(G.mode==='toko'?'tokoton':STAGES[G.stage].bgm,.8)}}
   if(G.over){G.overT++;
     if(G.overT===200){
-      if(G.mode==='toko'){const me=G.players[0];if(me.score>G.best.score||me.maxChain>G.best.chain){G.best={score:Math.max(me.score,G.best.score),chain:Math.max(me.maxChain,G.best.chain)};store.set('toko',G.best)}G.scene='tokoResult';G.st=0;sel=0}
+      if(G.two){G.wins[G.winner.side]++;G.scene='result2';G.st=0;sel=0}
+      else if(G.mode==='toko'){const me=G.players[0];if(me.score>G.best.score||me.maxChain>G.best.chain){G.best={score:Math.max(me.score,G.best.score),chain:Math.max(me.maxChain,G.best.chain)};store.set('toko',G.best)}G.scene='tokoResult';G.st=0;sel=0}
       else if(G.winner.side===0){
         if(G.stage>=3){G.clearAll=true;store.set('cleared',true);store.set('stage',0);G.progress=0;G.scene='ending';G.st=0;jingle('clear')}
         else{G.progress=Math.max(G.progress,G.stage+1);store.set('stage',G.progress);G.scene='result';G.st=0;sel=0}
@@ -641,17 +656,24 @@ function updateMatch(){
     }}
   if(G.shake>0)G.shake*=.88;if(G.shake<.3)G.shake=0;
 }
-function pause(){if((G.scene==='match'||G.scene==='toko')&&!G.paused){G.paused=true;sel=0;KB.l=KB.r=KB.d=KB.rl=KB.rr=0;TP.dir=0;TP.a=TP.b=0;pointers.clear();if(AU.ctx&&AU.ctx.state==='running')AU.ctx.suspend()}}
+function pause(){if((G.scene==='match'||G.scene==='toko')&&!G.paused){G.paused=true;sel=0;KB.l=KB.r=KB.d=KB.rl=KB.rr=0;for(const k of KB2)k.l=k.r=k.d=k.rl=k.rr=0;for(const t of TP2)t.dir=t.a=0;TP.dir=0;TP.a=TP.b=0;pointers.clear();if(AU.ctx&&AU.ctx.state==='running')AU.ctx.suspend()}}
 function resume(){G.paused=false;if(AU.ctx)AU.ctx.resume()}
-function toTitle(){G.paused=false;if(AU.ctx&&AU.ctx.state==='suspended')AU.ctx.resume();G.scene='title';G.st=0;sel=0;G.players=[];bgm('title',.6)}
+function toTitle(){G.two=false;G.paused=false;if(AU.ctx&&AU.ctx.state==='suspended')AU.ctx.resume();G.scene='title';G.st=0;sel=0;G.players=[];bgm('title',.6)}
 async function goVS(stage){
-  G.scene='vs';G.st=0;G.vsStage=stage;G.vsReady=false;bgmStop(.4);sfx('cutin');
+  G.two=false;G.scene='vs';G.st=0;G.vsStage=stage;G.vsReady=false;bgmStop(.4);sfx('cutin');
   const st=STAGES[stage];
   await Promise.all([loadBuf('bgm/'+st.bgm+'.ogg'),loadBuf('bgm/'+st.bgm+'_pinch.ogg')]);
   G.vsReady=true;
 }
+async function goVS2(){   // ふたりで たいせん（1面の ステージ・BGM を つかう）
+  if(G.scene!=='result2')G.wins=[0,0];
+  G.two=true;G.scene='vs';G.st=0;G.vsStage=0;G.vsReady=false;bgmStop(.4);sfx('cutin');
+  const st=STAGES[0];
+  await Promise.all([loadBuf('bgm/'+st.bgm+'.ogg'),loadBuf('bgm/'+st.bgm+'_pinch.ogg')]);
+  G.vsReady=true;
+}
 async function goToko(){
-  G.scene='vs';G.st=0;G.vsStage=-1;G.vsReady=false;bgmStop(.4);
+  G.two=false;G.scene='vs';G.st=0;G.vsStage=-1;G.vsReady=false;bgmStop(.4);
   await Promise.all([loadBuf('bgm/tokoton.ogg'),loadBuf('bgm/tokoton_pinch.ogg')]);G.vsReady=true;
 }
 async function loadInitial(){
@@ -916,8 +938,10 @@ function drawMatch(){
     const bob=Math.sin(G.t*.06)*2;
     drawPortrait(a.ch,exprOf(a),cx-44,LAY.by+252,92,false,bob);drawPortrait(b.ch,exprOf(b),cx+44,LAY.by+252,92,true,-bob);
     txt(CH[a.ch].name,cx-44,LAY.by+322,14,'#fff',{stroke:CH[a.ch].rc,sw:5});txt(CH[b.ch].name,cx+44,LAY.by+322,14,'#fff',{stroke:CH[b.ch].rc,sw:5});
+    if(G.two)G.players.forEach(p=>{txt((p.side+1)+'P',p.bx+(p.side?COLS*CELL+30:-30),LAY.by+14,26,PCOL[p.side],{stroke:'#2a1840',sw:7});
+      txt('★'.repeat(G.wins[p.side]),p.bx+(p.side?COLS*CELL+30:-30),LAY.by+44,16,'#ffe14a',{stroke:'#2a1840',sw:5})});
     txt('VS',cx,LAY.by+200,22,'#fff',{stroke:'#ff5fa2',sw:6});
-    txt('STAGE '+(G.stage+1),cx,LAY.by+356,13,'#fff',{stroke:'rgba(40,20,60,.6)',sw:4});
+    txt(G.two?'ふたりで':'STAGE '+(G.stage+1),cx,LAY.by+356,13,'#fff',{stroke:'rgba(40,20,60,.6)',sw:4});
     for(const p of G.players){drawBoard(p);drawHands(p);drawNotice(p);
       txt(String(p.shownScore).padStart(8,'0'),p.bx+COLS*CELL/2,LAY.by+(ROWS-1)*CELL+26,20,'#fff',{stroke:'rgba(40,20,60,.75)',sw:5});}
   }else{
@@ -938,11 +962,12 @@ function drawMatch(){
   if(G.over&&G.overT>30){
     const k=easeBack(Math.min(1,(G.overT-30)/16));ctx.save();ctx.translate(cx,250);ctx.scale(k,k);
     const win=G.mode==='vs'&&G.winner.side===0;
-    txt(G.mode==='toko'?'GAME OVER':win?'YOU WIN!':'YOU LOSE…',0,0,46,win?'#ffe14a':'#ffffff',{stroke:win?'#ff5fa2':'#5a3a8a',sw:11});ctx.restore()}
+    if(G.two)txt((G.winner.side+1)+'P の勝ち!',0,0,46,PCOL[G.winner.side],{stroke:'#2a1840',sw:11});
+    else txt(G.mode==='toko'?'GAME OVER':win?'YOU WIN!':'YOU LOSE…',0,0,46,win?'#ffe14a':'#ffffff',{stroke:win?'#ff5fa2':'#5a3a8a',sw:11});ctx.restore()}
   // 一時停止ボタン
   ctx.globalAlpha=.85;ctx.fillStyle='rgba(255,255,255,.85)';ctx.beginPath();ctx.arc(cx,22,16,0,TAU);ctx.fill();ctx.fillStyle='#7a4fb0';ctx.fillRect(cx-6,14,4,16);ctx.fillRect(cx+2,14,4,16);ctx.globalAlpha=1;
-  drawTouch();
-  if(!usingTouch&&G.matchT<600){ctx.globalAlpha=Math.min(1,(600-G.matchT)/60)*.9;txt('← → 移動 / ↓ 落下 / Z・X 回転 / P 一時停止',cx,530,12,'#fff',{stroke:'rgba(40,20,60,.6)',sw:4});ctx.globalAlpha=1}
+  if(G.two)drawTouch2();else drawTouch();
+  if(!usingTouch&&G.matchT<600&&!cam()){ctx.globalAlpha=Math.min(1,(600-G.matchT)/60)*.9;txt(G.two?'1P: A D 移動・S 落下・Z X 回転 ／ 2P: ← → 移動・↓ 落下・J K 回転':'← → 移動 / ↓ 落下 / Z・X 回転 / P 一時停止',cx,530,12,'#fff',{stroke:'rgba(40,20,60,.6)',sw:4});ctx.globalAlpha=1}
   if(G.flash>0){ctx.fillStyle=`rgba(255,255,255,${G.flash})`;ctx.fillRect(0,0,LW,540);G.flash*=.85;if(G.flash<.02)G.flash=0}
   if(G.paused)drawPause();
 }
@@ -994,6 +1019,9 @@ function drawTitle(){
   button(cx-130,y,260,46,'ストーリー',()=>{store.set('stage',0);G.progress=0;goVS(0)});y+=56;
   if(hasCont){button(cx-130,y,260,46,'つづきから(STAGE '+(G.progress+1)+')',()=>goVS(G.progress),{size:16});y+=56}
   button(cx-130,y,260,46,'とことんモード',()=>goToko());y+=56;
+  button(cx-130,y,260,46,'ふたりで たいせん',()=>goVS2(),{col:PCOL[1]});y+=56;
+  if(cam()){const two=people()>=2;txt(two?'👏 手をたたくと ふたりで スタート':'👏 手をたたくと えらんだ ものを スタート（2人 うつれば ふたりで）',cx,522,two?18:13,two?PCOL[1]:'#fff',{stroke:'#4a2a70',sw:5})}
+  else txt('キー 2 で ふたりで たいせん（1P: A S D Z X ／ 2P: ← ↓ → J K）',cx,522,12,'#fff',{stroke:'#4a2a70',sw:4});
   button(cx-130,y,124,38,'クレジット',()=>{G.scene='credits';G.st=0;sel=0},{size:14});
   button(cx+6,y,124,38,soundOn?'おと:ON':'おと:OFF',()=>{audioInit();setSound(!soundOn)},{size:14});
 }
@@ -1009,8 +1037,9 @@ function drawVS(){
     drawPortrait('luka','normal',lerp(-200,cx-200,k),290,260,false);
     drawPortrait(st.opp,'normal',lerp(LW+200,cx+200,k),290,260,true);
     const vk=easeBack(clamp((t-20)/14,0,1));ctx.save();ctx.translate(cx,260);ctx.scale(vk,vk);txt('VS',0,0,80,'#fff',{stroke:'#ff5fa2',sw:14});ctx.restore();
-    txt('STAGE '+(G.vsStage+1),cx,60,26,'#fff',{stroke:'#4a2a70',sw:8});
-    txt(st.title,cx,96,18,'#ffe14a',{stroke:'#4a2a70',sw:6});
+    txt(G.two?'ふたりで たいせん':'STAGE '+(G.vsStage+1),cx,60,26,'#fff',{stroke:'#4a2a70',sw:8});
+    if(G.two){txt('1P',cx-200,140,40,PCOL[0],{stroke:'#2a1840',sw:9});txt('2P',cx+200,140,40,PCOL[1],{stroke:'#2a1840',sw:9})}
+    else txt(st.title,cx,96,18,'#ffe14a',{stroke:'#4a2a70',sw:6});
     txt(CH.luka.name,cx-200,480,30,'#fff',{stroke:CH.luka.rc,sw:9});txt(CH[st.opp].name,cx+200,480,30,'#fff',{stroke:CH[st.opp].rc,sw:9});
   }else{
     drawPortrait('luka','happy',cx,300,240,false);
@@ -1063,6 +1092,39 @@ function drawCredits(){
   lines.forEach((l,i)=>txt(l,cx,124+i*24,l.startsWith('VOICEVOX')?15:16,'#4a2a70',{w:l.startsWith('VOICEVOX')?500:800}));
   button(cx-90,430,180,42,'もどる',toTitle,{size:16});
 }
+function drawResult2(){   // ふたりで：勝ち負け
+  drawBG(STAGES[0].bg);ctx.fillStyle='rgba(20,10,40,.5)';ctx.fillRect(0,0,LW,540);
+  const cx=LAY.cx,k=easeBack(Math.min(1,G.st/20)),w=G.winner?G.winner.side:0,[a,b]=G.players;
+  if(a&&b){
+    drawPortrait(a.ch,w===0?'happy':'pinch',cx-230,330,200,false,w===0?Math.sin(G.t*.08)*4:0);
+    drawPortrait(b.ch,w===1?'happy':'pinch',cx+230,330,200,true,w===1?Math.sin(G.t*.08)*4:0);
+    for(const p of [a,b]){const x=cx+(p.side?230:-230);
+      txt((p.side+1)+'P',x,180,40,PCOL[p.side],{stroke:'#2a1840',sw:9});
+      txt('スコア '+p.score,x,470,16,'#fff',{stroke:'#4a2a70',sw:5});txt('さいだい '+p.maxChain+' れんさ',x,494,16,'#fff',{stroke:'#4a2a70',sw:5})}
+  }
+  ctx.save();ctx.translate(cx,90);ctx.scale(k,k);txt((w+1)+'P の勝ち!',0,0,48,PCOL[w],{stroke:'#2a1840',sw:12});ctx.restore();
+  txt(G.wins[0]+' － '+G.wins[1],cx,150,30,'#fff',{stroke:'#4a2a70',sw:8});
+  if(G.st>40){button(cx-120,250,240,52,'もういちど!',()=>goVS2());button(cx-120,316,240,46,'タイトルへ',toTitle,{size:16});
+    txt(cam()?'👏 手を たたくと もういちど':'Enter もういちど ／ Esc タイトルへ',cx,390,14,'#fff',{stroke:'#4a2a70',sw:4})}
+}
+// ふたりで タッチ：左はしに 1P、右はしに 2P の 十字（← → ↓）と 回転ボタン
+function lay2(i){const m=i?LW-LAY.p1x/2:LAY.p1x/2,R=clamp(LAY.p1x*.3,44,70);return{x:m,py:540-R-40,R,bx:m,by:540-R*2-40-R*.9-26,br:R*.75}}
+function classify2(x,y){const i=x<LAY.cx?0:1,L=lay2(i);
+  if(Math.hypot(x-L.x,y-L.py)<L.R+40)return[i,'pad'];if(Math.hypot(x-L.bx,y-L.by)<L.br+24)return[i,'a'];return null}
+function padDir2(i,x,y){const L=lay2(i),dx=x-L.x,dy=y-L.py;if(Math.hypot(dx,dy)<14)return 0;const a=Math.atan2(dy,dx);
+  if(a>Math.PI*.25&&a<Math.PI*.75)return 3;if(Math.abs(a)<=Math.PI*.4)return 2;if(Math.abs(a)>=Math.PI*.6)return 1;return 0}
+function drawTouch2(){
+  if(!usingTouch)return;
+  ctx.globalAlpha=.85;
+  for(let i=0;i<2;i++){const L=lay2(i),t=TP2[i],R=L.R;
+    ctx.fillStyle='rgba(255,255,255,.22)';ctx.beginPath();ctx.arc(L.x,L.py,R+12,0,TAU);ctx.fill();
+    const arm=(ang,on)=>{ctx.save();ctx.translate(L.x,L.py);ctx.rotate(ang);rr(R*.18,-R*.32,R*.86,R*.64,10);ctx.fillStyle=on?PCOL[i]:'rgba(255,255,255,.9)';ctx.fill();ctx.restore()};
+    arm(Math.PI,t.dir===1);arm(0,t.dir===2);arm(Math.PI/2,t.dir===3);
+    ctx.fillStyle=t.a?'#fff':PCOL[i];ctx.beginPath();ctx.arc(L.bx,L.by,L.br,0,TAU);ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.stroke();
+    txt('↻',L.bx,L.by+1,L.br*.95,'#fff',{stroke:'rgba(40,20,60,.5)',sw:4});
+  }
+  ctx.globalAlpha=1;
+}
 function drawLoading(){
   drawBG('title');const cx=LAY.cx;drawLogo(cx,170,.9);
   const k=G.loaded/G.loadTotal;rr(cx-160,330,320,18,9);ctx.fillStyle='rgba(255,255,255,.7)';ctx.fill();rr(cx-160,330,320*k,18,9);ctx.fillStyle='#ff8fc8';ctx.fill();
@@ -1101,6 +1163,7 @@ function render(){
     case 'tokoResult':drawTokoResult();break;
     case 'ending':drawEnding();break;
     case 'credits':drawCredits();break;
+    case 'result2':drawResult2();break;
   }
   const n=BTN.filter(b=>!b.noNav).length;if(n&&sel>=n)sel=n-1;
 }
@@ -1124,31 +1187,53 @@ const BODY={
   GAP_MIN:.5,        // りょう手の間が これより はなれていると「つかんでいる」
   SLOW:.5            // 落ちる速さの倍率（体は指より おそい）
 };
-const bz={col:2,armed:true,grab:false};
-function cam(){return typeof Body!=='undefined'&&Body.mode==='cam'}
-function bodyInput(p){
+// 体の入力。B は Body（ひとり）か Body.players[i]（ふたりで）。rel：列を 画面の位置ではなく 自分の 肩からの 手の位置で きめる
+BODY.REL=1.5;      // ふたりで：りょう手のまん中が 肩のまん中から 左右に これ（肩はば単位）で 左はし〜右はしの列
+function makeBI(B,rel){
+  const bz={col:2,armed:true,grab:false};
+  return{bz,B,reset(){bz.col=2;bz.armed=true;bz.grab=false},input(p){
   const inp=p.in;inp.l=inp.r=inp.d=inp.rl=inp.rr=0;
-  bz.grab=Body.ok&&Body.both&&Body.gap>BODY.GAP_MIN;
+  bz.grab=B.ok&&B.both&&B.gap>BODY.GAP_MIN;
   if(!bz.grab||p.state!=='control'||!p.piece){bz.armed=true;return}
-  const pc=p.piece,fc=clamp((Body.gx-BODY.COL0)/(BODY.COL1-BODY.COL0),0,1)*(COLS-1);
+  const u=rel?((B.hands[0].px+B.hands[1].px)/2/BODY.REL+1)/2:(B.gx-BODY.COL0)/(BODY.COL1-BODY.COL0);
+  const pc=p.piece,fc=clamp(u,0,1)*(COLS-1);
   if(Math.abs(fc-bz.col)>.65)bz.col=Math.round(fc);          // となりの列との さかい目で ふらつかないように
   if(G.t%4<2){if(pc.x<bz.col)inp.r=1;else if(pc.x>bz.col)inp.l=1}
   // 下に おとすのは りょう手を 大きく ひろげた ときだけ（手を下げる・しゃがむ では おちない）
-  if(Body.gap>BODY.WIDE){inp.d=1;return}
-  const deg=Body.angle*180/Math.PI;
+  if(B.gap>BODY.WIDE){inp.d=1;return}
+  const deg=B.angle*180/Math.PI;
   if(Math.abs(deg)<BODY.ROT_BACK)bz.armed=true;
   else if(bz.armed&&Math.abs(deg)>BODY.ROT){bz.armed=false;rotate(p,deg>0?1:-1)}
+  }};
 }
+const hasBody=typeof Body!=='undefined';
+if(hasBody)Body.people=2;   // 2人まで 読む（ひとりのときは 大きくうつる人が 主役）
+// BI[0]＝ひとり（Body）、BI[1]＝1P（画面の左の人）、BI[2]＝2P（右の人）
+const BI=hasBody?[makeBI(Body,false),makeBI(Body.players[0],true),makeBI(Body.players[1],true)]:[];
+const bz=BI.length?BI[0].bz:{col:2,armed:true,grab:false};
+const bodyInput=p=>BI[0].input(p);
+function cam(){return hasBody&&Body.mode==='cam'}
+let seen2At=-9;
+function people(){return performance.now()/1000-seen2At<1?2:1}
 function drawHands(p){
   if(!cam()||p.cpu)return;
+  const bz=(p.bi||BI[0]).bz;
   const x=p.bx+bz.col*CELL+CELL/2,y=LAY.by-4;
   ctx.fillStyle=bz.grab?'#ffd84a':'rgba(255,255,255,.35)';
   ctx.beginPath();ctx.moveTo(x-12,y-16);ctx.lineTo(x+12,y-16);ctx.lineTo(x,y);ctx.closePath();ctx.fill();
   if(!bz.grab&&p.state==='control')txt('りょう手を 前に出して つかもう',p.bx+COLS*CELL/2,LAY.by+40,14,'#fff',{});
 }
 if(typeof Body!=='undefined'){
-  Body.on('clap',()=>{if(cam()&&!((G.scene==='match'||G.scene==='toko')&&!G.paused))onKey('Enter')});
-  Body.gate({title:'ぷるもち☆バトル',corner:'tr',lines:['🤲 <b>りょう手を 前に出す</b> … おちてくる ぷるもちを つかむ','↔ つかんだまま <b>左右に 動かす</b> … 置きたい列へ','🔄 りょう手を <b>ハンドルのように かたむける</b> … 1回 まわる（もどして もう一度で さらに まわる）','⬇ <b>りょう手を 大きく ひろげる</b> … 下に おとす','👏 手を たたく … けってい','はじめは「とことんモード」が おすすめ']});
+  let clapAt=0;
+  const onClap=()=>{
+    if(!cam()||((G.scene==='match'||G.scene==='toko')&&!G.paused)||performance.now()-clapAt<800)return;
+    clapAt=performance.now();
+    if(G.scene==='title'&&people()>=2){audioInit();goVS2();return}   // 2人 うつっていれば ふたりで
+    onKey('Enter');
+  };
+  Body.on('clap',onClap);Body.players.forEach(P=>P.on('clap',onClap));
+  Body.on('poses',()=>{if(Body.count>=2)seen2At=performance.now()/1000});
+  Body.gate({title:'ぷるもち☆バトル',corner:'tr',lines:['🤲 <b>りょう手を 前に出す</b> … おちてくる ぷるもちを つかむ','↔ つかんだまま <b>左右に 動かす</b> … 置きたい列へ','🔄 りょう手を <b>ハンドルのように かたむける</b> … 1回 まわる（もどして もう一度で さらに まわる）','⬇ <b>りょう手を 大きく ひろげる</b> … 下に おとす','👏 手を たたく … けってい','👥 <b>2人</b> うつると ふたりで たいせん（左の人が 1P）','はじめは「とことんモード」が おすすめ']});
 }
-window.__P={bz,bodyInput,G,STAGES,startMatch,startToko,goVS,goToko,step(n){for(let i=0;i<n;i++)update();render()},heights,AU};
+window.__P={bz,bodyInput,BI,goVS2,people,G,STAGES,startMatch,startToko,goVS,goToko,step(n){for(let i=0;i<n;i++)update();render()},heights,AU};
 })();

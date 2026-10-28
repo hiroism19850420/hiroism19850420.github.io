@@ -62,6 +62,7 @@ body.playing #bSound{left:120px}
     <div class="hint">からだ ぜんぶが うつるように、カメラから 2〜3m はなれて あそんでね</div>
   </div>
   <div id="setup">
+    <div class="lab">あそぶ人数</div><div class="row" id="plRow"><button data-p="1" class="on">1にん</button><button data-p="2">2にん たいけつ</button></div>
     <div class="lab">まいすう</div>
     <div class="row" id="modeRow"><button data-m="10">10まい</button><button data-m="30">30まい れんぞく</button></div>
     <div class="lab">はやさ（← → キーでも かえられる）</div>
@@ -871,7 +872,7 @@ const DET = {
         where = 'プログラム'; const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
         where = 'wasm'; const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
         where = 'モデル';
-        const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1, minPoseDetectionConfidence: .5, minPosePresenceConfidence: .5, minTrackingConfidence: .5 });
+        const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 2, minPoseDetectionConfidence: .5, minPosePresenceConfidence: .5, minTrackingConfidence: .5 });
         try { this.pose = await make('GPU'); } catch (e) { this.pose = await make('CPU'); }
       } catch (e) { err = e; console.error(e); if (n === 0) say('よみこみに しっぱい。もういちど ためしています…'); }
     }
@@ -887,13 +888,57 @@ const DET = {
     this.cost += (performance.now() - t0 - this.cost) * .2;
     this.nextAt = ts + Math.min(60, this.cost * .6);
     this.asp = (v.videoWidth || 640) / (v.videoHeight || 480);
-    this.lm = (res && res.landmarks && res.landmarks[0]) || null;
+    const lms = (res && res.landmarks) || [];
     const now = ts / 1000, dt = this.lastT ? clamp(now - this.lastT, .005, .2) : .033; this.lastT = now;
-    PL.feed(this.lm, this.asp, G.rt, dt);
+    if (G.people === 2) {
+      let lm1 = null, lm2 = null;
+      if (lms.length === 1) {
+        if (lms[0][0].x > 0.5) lm1 = lms[0]; else lm2 = lms[0];
+      } else if (lms.length >= 2) {
+        if (lms[0][0].x > lms[1][0].x) { lm1 = lms[0]; lm2 = lms[1]; }
+        else { lm1 = lms[1]; lm2 = lms[0]; }
+      }
+      this.lm = lm1;
+      PL.feed(lm1, this.asp, G.rt, dt);
+      if (window.PL2) PL2.feed(lm2, this.asp, G.rt, dt);
+    } else {
+      this.lm = lms[0] || null;
+      PL.feed(this.lm, this.asp, G.rt, dt);
+    }
   },
 };
 const LMSEG = { uaL: [11, 13], faL: [13, 15], uaR: [12, 14], faR: [14, 16], thL: [23, 25], shL: [25, 27], thR: [24, 26], shR: [26, 28] };
 // プレイヤーの ポーズ（カメラ／えらぶ／ボット）
+const PL2 = {
+  ang: { ...STAND }, camAng: { ...STAND }, vec: {}, seen: false, legs: false, lastSeen: -9, hist: [], from: null, to: null, t0: 0,
+  score: 0, clearCount: 0, ripRate: 0, passed: false,
+  reset() { this.ang = { ...STAND }; this.camAng = { ...STAND }; this.vec = {}; this.hist = []; this.to = null; this.score = 0; this.clearCount = 0; },
+  feed(lm, asp, rt, dt) {
+    if (!lm) { this.seen = false; return; }
+    const vis = i => lm[i].visibility == null ? 1 : lm[i].visibility;
+    const pt = i => [(1 - lm[i].x) * asp, lm[i].y];
+    if (!(vis(11) > .5 && vis(12) > .5 && (vis(23) > .35 || vis(24) > .35))) { this.seen = false; return; }
+    this.seen = true; this.lastSeen = rt;
+    this.legs = [25, 26, 27, 28].every(i => vis(i) > .35);
+    const k = 1 - Math.exp(-dt / .07);
+    for (const s of SEGS) {
+      let a, b;
+      if (s === 'T') { const l = pt(23), r = pt(24), L = pt(11), R = pt(12); a = [(l[0] + r[0]) / 2, (l[1] + r[1]) / 2]; b = [(L[0] + R[0]) / 2, (L[1] + R[1]) / 2]; }
+      else { const [i, j] = LMSEG[s], th = s[0] === 't' || s[0] === 's' ? .35 : .4; if (vis(i) < th || vis(j) < th) continue; a = pt(i); b = pt(j); }
+      let dx = b[0] - a[0], dy = -(b[1] - a[1]); const n = Math.hypot(dx, dy); if (n < 1e-4) continue; dx /= n; dy /= n;
+      const v = this.vec[s] || [dx, dy], vx = v[0] + (dx - v[0]) * k, vy = v[1] + (dy - v[1]) * k, m = Math.hypot(vx, vy) || 1;
+      this.vec[s] = [vx / m, vy / m];
+      this.camAng[s] = Math.atan2(vy / m, vx / m) / D2R;
+    }
+    const c = this.camAng;
+    if (c.uaL != null && c.faL == null) c.faL = c.uaL;
+    if (c.uaR != null && c.faR == null) c.faR = c.uaR;
+    if (c.thL != null && c.shL == null) c.shL = c.thL;
+    if (c.thR != null && c.shR == null) c.shR = c.thR;
+    this.ang = { ...c };
+  }
+};
+
 const PL = {
   ang: { ...STAND }, camAng: { ...STAND }, vec: {}, seen: false, legs: false, lastSeen: -9, hist: [], from: null, to: null, t0: 0,
   reset() { this.ang = { ...STAND }; this.camAng = { ...STAND }; this.vec = {}; this.hist = []; this.to = null; },
@@ -933,6 +978,7 @@ const PL = {
 
 // ===================== ゲームの 状態 =====================
 const G = {
+  people: 1, p1Score: 0, p2Score: 0,
   state: 'gate', mode: null, rt: 0, gt: 0, speed: 1, rounds: [], titleR: null, cur: 0, score: 0, combo: 0,
   parts: [], texts: [], shake: 0, flash: 0, flashC: '255,240,200', slowUntil: -9, frz: null, glow: 0, failT: -9,
   holdT: 0, countT0: 0, endT: 0, resT0: 0, bot: null, msgT: 0, said: {},
