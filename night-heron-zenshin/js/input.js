@@ -16,8 +16,15 @@
     debug: ['F1']
   };
 
+  // ふたりで（キーボード）：1P は W A S D で 移動だけ、2P は J アクション・K 撃つ・L 箱・I ほふく
+  const BIND2 = {
+    up: ['KeyW'], down: ['KeyS'], left: ['KeyA'], right: ['KeyD'],
+    crawl: ['KeyI'], action: ['KeyJ'], weapon: ['KeyK'], item: ['KeyL'],
+    radio: ['Space', 'Enter'], pause: ['Escape'], debug: ['F1']
+  };
+  const bind = () => (NH.twoP ? BIND2 : BIND);
   const codeToAction = {};
-  for (const a in BIND) for (const code of BIND[a]) codeToAction[code] = a;
+  for (const B of [BIND, BIND2]) for (const a in B) for (const code of B[a]) if (!codeToAction[code]) codeToAction[code] = a;
 
   const downCodes = new Set();   // 押されているキー
   const virtual = {};            // 画面ボタンで押されているアクション
@@ -26,13 +33,13 @@
 
   function isHeld(a) {
     if (virtual[a]) return true;
-    for (const code of BIND[a]) if (downCodes.has(code)) return true;
+    for (const code of bind()[a]) if (downCodes.has(code)) return true;
     return false;
   }
 
   window.addEventListener('keydown', (e) => {
     const a = codeToAction[e.code];
-    if (!a) return;
+    if (!a || !bind()[a].includes(e.code)) return;
     e.preventDefault();
     if (e.repeat) return;
     if (!isHeld(a)) pressed[a] = true;
