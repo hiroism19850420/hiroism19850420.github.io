@@ -14,21 +14,33 @@ canvas{max-width:100vw;max-height:100vh;touch-action:none}
 <script src="body.js"></script>
 <script>
 const cv=document.getElementById('c'),ctx=cv.getContext('2d');
-const W=480,H=720,BTN_Y=600,MAT_Y=560,CX=W/2,GAP=80,START_H=170;
+const W=480,H=720,BTN_Y=600,MAT_Y=560,CX=W/2,GAP=80,START_H=170;   // W は1人ぶんの幅
 const TYPES=[
   {c:'#e33',d:'#a11',l:'#f99',keys:['1','z','j']},
   {c:'#3b3',d:'#172',l:'#9e9',keys:['2','x','k']},
   {c:'#36e',d:'#138',l:'#9bf',keys:['3','c','l']}
 ];
+const KEYS2=[[['1','z'],['2','x'],['3','c']],[['8','j'],['9','k'],['0','l']]];  // ふたりで：1P / 2P
+const PCOL=[{c:'#2cb',shirt:'#2a9',band:'#fc3'},{c:'#f6c',shirt:'#c4c',band:'#fff'}];
+const WIN=3;                                                        // ふたりで：先に3勝
 const GOLD={c:'#fb2',d:'#c80',l:'#fe9'},GRAY={c:'#ddd',d:'#999',l:'#fff'};
 const ICON_PTS=[1,0.8,1.1,0.9,1.05,0.85,1,0.9];
-let state='title',stage=1,lives=3,score=0,best=0,overAt=0;
-let route=[],cur=0,camH=0,effects=[],chalk=[];
-let timeLeft=0,timeMax=1,stun=0,phaseT=0,pressed=[0,0,0];
-let charge=0,fallD=0,fallV=0,landed=false,shakeT=0;
-let hands=[{x:0,h:0,tx:0,th:0},{x:0,h:0,tx:0,th:0}];   // 0=左手 1=右手
+let state='title',mode=1,FW=W,stage=1,round=1,lives=3,score=0,best=0,overAt=0;
+let route=[],gfx=[],pl=[],cp=null;                                  // pl=プレイヤー、cp=いま描いている人
+let timeLeft=0,timeMax=1,phaseT=0,btns=[];
 
-function sy(h){return MAT_Y-(h-camH);}                  // 壁の高さ → 画面のY座標
+function mkPlayer(i){
+  return {i,cur:0,camH:0,charge:0,fallD:0,fallV:0,falling:false,landed:false,done:false,
+    stun:0,shakeT:0,pressed:[0,0,0],chalk:[],effects:[],wins:0,
+    hands:[{x:0,h:0,tx:0,th:0},{x:0,h:0,tx:0,th:0}]};             // 0=左手 1=右手
+}
+function setMode(m){
+  mode=m;FW=W*m;
+  if(cv.width!==FW)cv.width=FW;
+  pl=[];for(let i=0;i<m;i++)pl.push(mkPlayer(i));
+}
+
+function sy(h){return MAT_Y-(h-cp.camH);}                          // 壁の高さ → 画面のY座標
 
 // ---------- ルート（ホールドの配置） ----------
 function lungeNeed(){return Math.min(25,8+stage);}
@@ -56,16 +68,20 @@ function makeRoute(n){
 
 function startStage(){
   const n=8+stage*4;                                      // ホールド数は上限なしで増える
-  route=makeRoute(n);cur=0;
+  route=makeRoute(n);                                     // ふたりでも 同じルートで競争
   const lunges=route.filter(o=>o.type==='lunge').length;
   const rate=Math.min(5,1.2+stage*0.3);                   // 1秒あたりに必要なホールド数（上限5）
   timeMax=timeLeft=Math.ceil(((n-1)/rate+lunges*lungeNeed()/6)*10)/10;
   const s=route[0];
-  hands=[{x:s.x-14,h:s.h,tx:s.x-14,th:s.h},{x:s.x+14,h:s.h,tx:s.x+14,th:s.h}];
-  camH=0;charge=0;fallD=0;fallV=0;landed=false;stun=0;shakeT=0;chalk=[];
+  pl.forEach(p=>{
+    p.hands=[{x:s.x-14,h:s.h,tx:s.x-14,th:s.h},{x:s.x+14,h:s.h,tx:s.x+14,th:s.h}];
+    p.cur=0;p.camH=0;p.charge=0;p.fallD=0;p.fallV=0;p.falling=false;p.landed=false;p.done=false;
+    p.stun=0;p.shakeT=0;p.chalk=[];
+  });
   state='ready';readyT=0;cdStep=0;
 }
-function newGame(){stage=1;lives=3;score=0;effects=[];startStage();}
+function newGame(){stage=1;round=1;lives=3;score=0;gfx=[];pl.forEach(p=>{p.effects=[];p.wins=0;});startStage();}
+function toTitle(){setMode(1);gfx=[];startStage();state='title';}
 
 // ---------- 効果音 ----------
 let actx=null,noiseBuf=null;
@@ -182,12 +198,23 @@ function bigText(t,x,y,size,color,rot=0,sc=1){
   ctx.fillStyle=color;ctx.fillText(t,0,0);
   ctx.restore();
 }
-function fx(x,y,text,color,size,life=0.7){
+function fx(p,x,y,text,color,size,life=0.7){                       // その人のレーンに出す文字
   x=Math.max(100,Math.min(W-100,x));
-  effects.push({x,y,text,color,size,life,max:life,rot:(Math.random()-0.5)*0.3});
+  p.effects.push({x,y,text,color,size,life,max:life,rot:(Math.random()-0.5)*0.3});
 }
-function puff(x,h){               // チョークの粉
-  for(let k=0;k<10;k++)chalk.push({x,h,vx:(Math.random()-0.5)*120,vh:20+Math.random()*60,r:3+Math.random()*3,t:0});
+function gfxAdd(x,y,text,color,size,life=0.7){                     // 画面全体に出す文字
+  gfx.push({x,y,text,color,size,life,max:life,rot:(Math.random()-0.5)*0.3});
+}
+function drawFx(list){
+  for(const f of list){
+    const a=f.max-f.life,sc=a<0.08?0.5+a/0.08*0.8:Math.max(1,1.3-(a-0.08));
+    ctx.globalAlpha=Math.min(1,f.life/0.2);
+    bigText(f.text,f.x,f.y,f.size,f.color,f.rot,sc);
+    ctx.globalAlpha=1;
+  }
+}
+function puff(p,x,h){             // チョークの粉
+  for(let k=0;k<10;k++)p.chalk.push({x,h,vx:(Math.random()-0.5)*120,vh:20+Math.random()*60,r:3+Math.random()*3,t:0});
 }
 
 // ---------- ホールド ----------
@@ -207,7 +234,7 @@ function drawHolds(now){
     if(y<-50||y>BTN_Y+50)return;
     const col=o.type==='lunge'?GOLD:o.type==='start'?GRAY:TYPES[o.c];
     const r=o.type==='normal'?17:22;
-    if(i===cur+1&&(state==='play'||state==='ready')){
+    if(i===cp.cur+1&&!cp.done&&(state==='play'||state==='ready')){
       ctx.strokeStyle='rgba(255,255,255,'+(0.5+0.5*Math.sin(now/90))+')';
       ctx.lineWidth=4;ctx.beginPath();ctx.arc(o.x,y,r+10,0,Math.PI*2);ctx.stroke();
     }
@@ -223,14 +250,14 @@ function drawHolds(now){
 // ---------- 壁とマット ----------
 function drawWall(){
   ctx.fillStyle='#9aa3b2';ctx.fillRect(0,0,W,BTN_Y);
-  const top=camH+MAT_Y;
+  const top=cp.camH+MAT_Y;
   ctx.strokeStyle='#838c9b';ctx.lineWidth=2;
-  for(let hh=Math.floor(camH/160)*160;hh<=top+160;hh+=160){
+  for(let hh=Math.floor(cp.camH/160)*160;hh<=top+160;hh+=160){
     const y=sy(hh);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
   }
   for(const x of [160,320]){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,BTN_Y);ctx.stroke();}
   ctx.fillStyle='#6f7888';
-  for(let hh=Math.floor(camH/40)*40;hh<=top+40;hh+=40){
+  for(let hh=Math.floor(cp.camH/40)*40;hh<=top+40;hh+=40){
     const y=sy(hh);for(let x=20;x<W;x+=40)circle(x,y,2);
   }
 }
@@ -244,18 +271,18 @@ function drawMat(){
 }
 
 // ---------- クライマー（後ろ姿） ----------
-function drawClimber(){
-  const L={x:hands[0].x,h:hands[0].h-fallD},R={x:hands[1].x,h:hands[1].h-fallD};
-  const avg=(L.h+R.h)/2;
+function drawClimber(p){
+  const L={x:p.hands[0].x,h:p.hands[0].h-p.fallD},R={x:p.hands[1].x,h:p.hands[1].h-p.fallD};
+  const avg=(L.h+R.h)/2,col=PCOL[p.i];
   let bx=(L.x+R.x)/2;
-  if(shakeT>0&&state!=='fail')bx+=Math.sin(shakeT*70)*5;
+  if(p.shakeT>0&&!p.falling)bx+=Math.sin(p.shakeT*70)*5;
   const shY=sy(avg-55),hipY=sy(avg-110),ftY=sy(avg-165),knY=(hipY+ftY)/2;
   ctx.lineCap='round';ctx.lineJoin='round';
   ctx.strokeStyle='#345';ctx.lineWidth=11;                          // 脚
   ctx.beginPath();ctx.moveTo(bx-7,hipY);ctx.lineTo(bx-24,knY);ctx.lineTo(bx-16,ftY);
   ctx.moveTo(bx+7,hipY);ctx.lineTo(bx+24,knY);ctx.lineTo(bx+16,ftY);ctx.stroke();
   ctx.fillStyle='#e60';oval(bx-19,ftY+2,10,5);oval(bx+19,ftY+2,10,5);  // クライミングシューズ
-  ctx.strokeStyle='#2a9';ctx.lineWidth=24;                          // 胴体
+  ctx.strokeStyle=col.shirt;ctx.lineWidth=24;                       // 胴体
   ctx.beginPath();ctx.moveTo(bx,shY+6);ctx.lineTo(bx,hipY-4);ctx.stroke();
   ctx.fillStyle='#d33';rr(bx+8,hipY-8,12,14,3);ctx.fill();           // チョークバッグ
   ctx.fillStyle='#fff';ctx.fillRect(bx+8,hipY-8,12,3);
@@ -266,20 +293,20 @@ function drawClimber(){
   const hy=shY-20;                                                  // 頭（後ろ姿）
   ctx.fillStyle='#fc9';circle(bx-16,hy+2,4);circle(bx+16,hy+2,4);
   ctx.fillStyle='#432';circle(bx,hy,16);
-  ctx.fillStyle='#fc3';ctx.fillRect(bx-16,hy-6,32,5);
+  ctx.fillStyle=col.band;ctx.fillRect(bx-16,hy-6,32,5);
   ctx.fillStyle='#432';oval(bx,hy+17,5,7);
 }
 
 // ---------- ボタン（元コードと同じ大きさ・位置） ----------
-function drawButtons(){
+function drawButtons(p){
   ctx.fillStyle='#6b4226';ctx.fillRect(0,BTN_Y,W,H-BTN_Y);
   ctx.fillStyle='#4e2f1a';ctx.fillRect(0,BTN_Y,W,6);
-  const nx=route[cur+1],lunge=state==='play'&&nx&&nx.type==='lunge';
+  const nx=route[p.cur+1],lunge=state==='play'&&!p.done&&nx&&nx.type==='lunge';
   TYPES.forEach((t,i)=>{
-    const x=W/6+i*W/3,y=BTN_Y+62,p=pressed[i]>0,dy=p?6:0;
-    ctx.globalAlpha=stun>0?0.5:1;
+    const x=W/6+i*W/3,y=BTN_Y+62,pr=p.pressed[i]>0,dy=pr?6:0;
+    ctx.globalAlpha=p.stun>0?0.5:1;
     ctx.fillStyle='#2a1a0e';circle(x,y+8,46);
-    ctx.fillStyle=p?t.d:t.c;circle(x,y+dy,46);
+    ctx.fillStyle=pr?t.d:t.c;circle(x,y+dy,46);
     ctx.fillStyle='rgba(255,255,255,0.85)';circle(x,y+dy,30);
     holdShape(x,y+dy,20,t,ICON_PTS,0);
     if(lunge){ctx.strokeStyle=GOLD.c;ctx.lineWidth=5;ctx.beginPath();ctx.arc(x,y+dy,50,0,Math.PI*2);ctx.stroke();}
@@ -288,74 +315,99 @@ function drawButtons(){
 }
 
 // ---------- ゲーム処理 ----------
-function press(i){
-  pressed[i]=0.12;
-  if(state!=='play'||stun>0)return;
-  const nx=route[cur+1];
+function fall(p){p.falling=true;p.done=true;p.fallV=0;p.fallD=0;p.landed=false;}
+function holdTop(p,nx){p.hands[0].tx=nx.x-14;p.hands[0].th=nx.h;p.hands[1].tx=nx.x+14;p.hands[1].th=nx.h;}
+function press(p,i){
+  p.pressed[i]=0.12;
+  if(state!=='play'||p.stun>0||p.done)return;
+  const nx=route[p.cur+1];
   if(!nx)return;
   if(nx.type==='lunge'){                                            // どのボタンでも連打でため
-    charge+=1;playTick(charge/lungeNeed());
-    if(charge>=lungeNeed()){
-      charge=0;cur++;
-      hands[0].tx=nx.x-14;hands[0].th=nx.h;hands[1].tx=nx.x+14;hands[1].th=nx.h;
-      playLunge();score+=5;puff(nx.x,nx.h);
-      fx(CX,250,'ランジ成功!','#fb2',40,0.8);
+    p.charge+=1;playTick(p.charge/lungeNeed());
+    if(p.charge>=lungeNeed()){
+      p.charge=0;p.cur++;holdTop(p,nx);
+      playLunge();score+=5;puff(p,nx.x,nx.h);
+      fx(p,CX,250,'ランジ成功!','#fb2',40,0.8);
     }
     return;
   }
   if(nx.c===i){
-    cur++;score++;playGrab();puff(nx.x,nx.h);
+    p.cur++;score++;playGrab();puff(p,nx.x,nx.h);
     if(nx.type==='top'){                                            // TOPは両手で保持
-      hands[0].tx=nx.x-14;hands[0].th=nx.h;hands[1].tx=nx.x+14;hands[1].th=nx.h;
-      const bonus=Math.ceil(timeLeft)*5;score+=bonus;
-      state='clear';phaseT=2.4;playClear();
-      fx(CX,230,'完登!','#fc3',64,1.8);
-      fx(CX,300,'タイムボーナス +'+bonus,'#fff',26,1.8);
+      holdTop(p,nx);playClear();
+      if(mode===1){
+        const bonus=Math.ceil(timeLeft)*5;score+=bonus;
+        state='clear';phaseT=2.4;
+        fx(p,CX,230,'完登!','#fc3',64,1.8);
+        fx(p,CX,300,'タイムボーナス +'+bonus,'#fff',26,1.8);
+      }else{                                                        // ふたりで：先に登った人の勝ち、相手は落ちる
+        p.done=true;p.wins++;
+        pl.forEach(o=>{if(o!==p)fall(o);});
+        state='round';phaseT=2.8;
+        fx(p,CX,230,'完登!','#fc3',64,1.8);
+        gfxAdd(FW/2,330,(p.i+1)+'P の勝ち!',PCOL[p.i].c,60,2.2);
+      }
     }else{
-      const hd=hands[nx.side];hd.tx=nx.x;hd.th=nx.h;
-      fx(nx.x,sy(nx.h)-34,'ガシッ!',TYPES[i].c,24,0.4);
+      const hd=p.hands[nx.side];hd.tx=nx.x;hd.th=nx.h;
+      fx(p,nx.x,sy0(p,nx.h)-34,'ガシッ!',TYPES[i].c,24,0.4);
     }
   }else{
-    stun=0.4;shakeT=0.4;playBuzz();
-    fx(CX,420,'ズルッ!','#999',32,0.5);
+    p.stun=0.4;p.shakeT=0.4;playBuzz();
+    fx(p,CX,420,'ズルッ!','#999',32,0.5);
+  }
+}
+function sy0(p,h){return MAT_Y-(h-p.camH);}
+
+function updatePlayer(p,dt){
+  for(let i=0;i<3;i++)p.pressed[i]=Math.max(0,p.pressed[i]-dt);
+  p.stun=Math.max(0,p.stun-dt);p.shakeT=Math.max(0,p.shakeT-dt);
+  p.effects.forEach(f=>{f.life-=dt;f.y-=30*dt;});
+  p.effects=p.effects.filter(f=>f.life>0);
+  p.chalk.forEach(c=>{c.t+=dt;c.x+=c.vx*dt;c.h+=c.vh*dt;c.vh-=60*dt;});
+  p.chalk=p.chalk.filter(c=>c.t<0.6);
+  const k=Math.min(1,dt*18);
+  p.hands.forEach(hd=>{hd.x+=(hd.tx-hd.x)*k;hd.h+=(hd.th-hd.h)*k;});
+
+  if(p.falling&&!p.landed){                                         // マットへ落下
+    const feet=(p.hands[0].h+p.hands[1].h)/2-165;
+    p.fallV+=1800*dt;p.fallD+=p.fallV*dt;
+    if(p.fallD>=feet){p.fallD=Math.max(0,feet);p.landed=true;playThud();p.shakeT=0.3;}
+  }
+  const avgH=(p.hands[0].h+p.hands[1].h)/2-p.fallD;
+  const topH=Math.max(p.hands[0].h,p.hands[1].h)-p.fallD;
+  const target=Math.max(0,(p.falling?avgH:topH)-250);
+  p.camH+=(target-p.camH)*Math.min(1,dt*(p.falling?10:6));
+  if(state==='play'){
+    const nx=route[p.cur+1];
+    if(nx&&nx.type==='lunge')p.charge=Math.max(0,p.charge-dt*4);    // 手を止めるとためが減る
   }
 }
 
 function update(dt){
-  for(let i=0;i<3;i++)pressed[i]=Math.max(0,pressed[i]-dt);
-  stun=Math.max(0,stun-dt);shakeT=Math.max(0,shakeT-dt);
-  effects.forEach(f=>{f.life-=dt;f.y-=30*dt;});
-  effects=effects.filter(f=>f.life>0);
-  chalk.forEach(p=>{p.t+=dt;p.x+=p.vx*dt;p.h+=p.vh*dt;p.vh-=60*dt;});
-  chalk=chalk.filter(p=>p.t<0.6);
-  const k=Math.min(1,dt*18);
-  hands.forEach(hd=>{hd.x+=(hd.tx-hd.x)*k;hd.h+=(hd.th-hd.h)*k;});
-
-  if(state==='fail'&&!landed){                                      // マットへ落下
-    const feet=(hands[0].h+hands[1].h)/2-165;
-    fallV+=1800*dt;fallD+=fallV*dt;
-    if(fallD>=feet){fallD=Math.max(0,feet);landed=true;playThud();shakeT=0.3;}
-  }
-  const avgH=(hands[0].h+hands[1].h)/2-fallD;
-  const topH=Math.max(hands[0].h,hands[1].h)-fallD;
-  const target=Math.max(0,(state==='fail'?avgH:topH)-250);
-  camH+=(target-camH)*Math.min(1,dt*(state==='fail'?10:6));
+  pl.forEach(p=>updatePlayer(p,dt));
+  gfx.forEach(f=>{f.life-=dt;f.y-=30*dt;});
+  gfx=gfx.filter(f=>f.life>0);
 
   if(state==='ready'){
     readyT+=dt;
     const step=Math.floor((readyT-CD_INTRO)/CD_STEP)+1;
     if(readyT>=CD_INTRO&&step>cdStep){
       cdStep=step;
-      if(cdStep>=4){state='play';playCount(true);fx(CX,320,'スタート!','#fff',52,0.7);}
+      if(cdStep>=4){state='play';playCount(true);gfxAdd(FW/2,320,'スタート!','#fff',52,0.7);}
       else playCount(false);
     }
   }else if(state==='play'){
-    const nx=route[cur+1];
-    if(nx&&nx.type==='lunge')charge=Math.max(0,charge-dt*4);        // 手を止めるとためが減る
     timeLeft-=dt;
     if(timeLeft<=0){
-      timeLeft=0;state='fail';phaseT=2.4;lives--;fallV=0;fallD=0;landed=false;playFail();
-      fx(CX,250,'時間切れ…','#aaa',44,1.4);
+      timeLeft=0;playFail();
+      if(mode===1){
+        state='fail';phaseT=2.4;lives--;fall(pl[0]);
+        fx(pl[0],CX,250,'時間切れ…','#aaa',44,1.4);
+      }else{                                                        // ふたりで：どちらも登れず → ひきわけ
+        state='round';phaseT=2.6;pl.forEach(fall);
+        gfxAdd(FW/2,250,'時間切れ…','#aaa',44,1.6);
+        gfxAdd(FW/2,320,'ひきわけ','#fff',40,1.6);
+      }
     }
   }else if(state==='clear'||state==='fail'){
     phaseT-=dt;
@@ -364,76 +416,124 @@ function update(dt){
       else if(lives<=0){state='over';best=Math.max(best,score);overAt=performance.now();}
       else startStage();
     }
+  }else if(state==='round'){
+    phaseT-=dt;
+    if(phaseT<=0){
+      if(pl.some(p=>p.wins>=WIN)){state='over';overAt=performance.now();}
+      else{
+        if(pl.some(p=>p.done&&!p.falling))stage++;                  // 勝負がついたら 次は少しむずかしく
+        round++;startStage();
+      }
+    }
   }
+}
+
+function drawLane(p,now){
+  cp=p;
+  ctx.save();
+  if(p.falling&&p.shakeT>0)ctx.translate((Math.random()-0.5)*10,(Math.random()-0.5)*10);
+  drawWall();drawMat();drawHolds(now);drawClimber(p);
+  p.chalk.forEach(c=>{ctx.globalAlpha=Math.max(0,1-c.t/0.6)*0.8;ctx.fillStyle='#fff';circle(c.x,sy(c.h),c.r*(1+c.t*2));});
+  ctx.globalAlpha=1;
+  ctx.restore();
+  drawButtons(p);
+  drawFx(p.effects);
+
+  if(mode===1){
+    bigText('点数 '+score,80,30,22,'#fc3');
+    bigText('♥'.repeat(Math.max(0,lives)),W-60,30,24,'#f45');
+  }else{
+    bigText((p.i+1)+'P',36,30,28,PCOL[p.i].c);
+    bigText('★'.repeat(p.wins)+'☆'.repeat(Math.max(0,WIN-p.wins)),W-70,30,24,'#fc3');
+  }
+  if(state!=='title'&&state!=='over'){
+    bigText(mode===1?'ステージ '+stage:'ラウンド '+round,W/2,30,20,'#fff');
+    ctx.fillStyle='#555';rr(40,54,400,14,7);ctx.fill();
+    const ratio=timeLeft/timeMax;
+    if(ratio>0.02){ctx.fillStyle=ratio<0.3?'#f44':'#4c4';rr(40,54,400*ratio,14,7);ctx.fill();}
+    bigText('のこり '+(route.length-1-p.cur),80,98,22,'#fff');
+    bigText(timeLeft.toFixed(1)+'秒',W-70,98,22,'#fff');
+    const m=(Math.max(p.hands[0].th,p.hands[1].th)-START_H)/200;
+    bigText('高さ '+m.toFixed(1)+'m',W/2,98,20,'#fff');
+  }
+  const nx=route[p.cur+1];
+  if(state==='play'&&!p.done&&nx&&nx.type==='lunge'){
+    const r=p.charge/lungeNeed();
+    bigText('ランジ! 連打!',CX,140,30,'#fb2',0,1+Math.sin(now/60)*0.05);
+    ctx.fillStyle='#555';rr(140,165,200,14,7);ctx.fill();
+    if(r>0.02){ctx.fillStyle='#fb2';rr(140,165,200*r,14,7);ctx.fill();}
+  }
+  drawHint(p);
+  if(mode===2&&state==='ready'&&!cam())bigText('キー '+KEYS2[p.i].map(k=>k[1].toUpperCase()).join(' '),W/2,450,26,PCOL[p.i].c);
+}
+
+function menuBtn(x,y,w,h,label,sub,col,act){
+  ctx.fillStyle='#222';rr(x-w/2,y+5,w,h,16);ctx.fill();
+  ctx.fillStyle=col;rr(x-w/2,y,w,h,16);ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=3;rr(x-w/2,y,w,h,16);ctx.stroke();
+  bigText(label,x,y+h/2-7,26,'#fff');
+  ctx.fillStyle='#fff';ctx.font='bold 13px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(sub,x,y+h-12);
+  btns.push({x:x-w/2,y,w,h,act});
 }
 
 function draw(){
   const now=performance.now();
-  ctx.save();
-  if(state==='fail'&&shakeT>0)ctx.translate((Math.random()-0.5)*10,(Math.random()-0.5)*10);
-  drawWall();drawMat();drawHolds(now);drawClimber();
-  chalk.forEach(p=>{ctx.globalAlpha=Math.max(0,1-p.t/0.6)*0.8;ctx.fillStyle='#fff';circle(p.x,sy(p.h),p.r*(1+p.t*2));});
-  ctx.globalAlpha=1;
-  ctx.restore();
-  drawButtons();
+  btns=[];
+  pl.forEach((p,li)=>{
+    ctx.save();ctx.translate(li*W,0);
+    ctx.beginPath();ctx.rect(0,0,W,H);ctx.clip();
+    drawLane(p,now);
+    ctx.restore();
+  });
+  if(mode===2){ctx.fillStyle='#222';ctx.fillRect(W-3,0,6,H);}       // 1P と 2P のしきり
+  drawFx(gfx);
 
-  for(const f of effects){
-    const a=f.max-f.life,sc=a<0.08?0.5+a/0.08*0.8:Math.max(1,1.3-(a-0.08));
-    ctx.globalAlpha=Math.min(1,f.life/0.2);
-    bigText(f.text,f.x,f.y,f.size,f.color,f.rot,sc);
-    ctx.globalAlpha=1;
-  }
-
-  bigText('点数 '+score,80,30,22,'#fc3');
-  bigText('♥'.repeat(Math.max(0,lives)),W-60,30,24,'#f45');
-  if(state!=='title'&&state!=='over'){
-    bigText('ステージ '+stage,W/2,30,20,'#fff');
-    ctx.fillStyle='#555';rr(40,54,400,14,7);ctx.fill();
-    const ratio=timeLeft/timeMax;
-    if(ratio>0.02){ctx.fillStyle=ratio<0.3?'#f44':'#4c4';rr(40,54,400*ratio,14,7);ctx.fill();}
-    bigText('のこり '+(route.length-1-cur),80,98,22,'#fff');
-    bigText(timeLeft.toFixed(1)+'秒',W-70,98,22,'#fff');
-    const m=(Math.max(hands[0].th,hands[1].th)-START_H)/200;
-    bigText('高さ '+m.toFixed(1)+'m',W/2,98,20,'#fff');
-  }
-  const nx=route[cur+1];
-  if(state==='play'&&nx&&nx.type==='lunge'){
-    const p=charge/lungeNeed();
-    bigText('ランジ! 連打!',CX,140,30,'#fb2',0,1+Math.sin(now/60)*0.05);
-    ctx.fillStyle='#555';rr(140,165,200,14,7);ctx.fill();
-    if(p>0.02){ctx.fillStyle='#fb2';rr(140,165,200*p,14,7);ctx.fill();}
-  }
+  const C=FW/2;
   if(state==='ready'){
+    const name=mode===1?'ステージ '+stage:'ラウンド '+round;
     if(cdStep===0){
-      bigText('ステージ '+stage,W/2,250,48,'#fc3');
-      bigText('よーい…',W/2,320,40,'#fff');
+      bigText(name,C,250,48,'#fc3');
+      bigText('よーい…',C,320,40,'#fff');
     }else{
       const a=(readyT-CD_INTRO)-(cdStep-1)*CD_STEP;
       const sc=a<0.1?1.6-a*6:1;
-      bigText('ステージ '+stage,W/2,190,30,'#fff');
-      bigText(String(4-cdStep),W/2,300,120,['#f44','#fc3','#4c4'][cdStep-1],0,sc);
+      bigText(name,C,190,30,'#fff');
+      bigText(String(4-cdStep),C,300,120,['#f44','#fc3','#4c4'][cdStep-1],0,sc);
     }
   }
 
   if(state==='title'||state==='over'){
-    ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(0,0,FW,H);
     const wob=Math.sin(now/200)*0.05;
     if(state==='title'){
-      bigText('つかめ！',W/2,150,56,'#e33',-0.08+wob);
-      bigText('ホールド！',W/2,225,56,'#3b3',0.06-wob);
-      bigText('てっぺんだ！',W/2,305,58,'#36e',-0.04+wob);
+      bigText('つかめ！',C,150,56,'#e33',-0.08+wob);
+      bigText('ホールド！',C,225,56,'#3b3',0.06-wob);
+      bigText('てっぺんだ！',C,305,58,'#36e',-0.04+wob);
+    }else if(mode===1){
+      bigText('マットに ドスン…',C,170,40,'#fc3',wob);
+      bigText('ステージ '+stage+' まで到達',C,235,28,'#fff');
+      bigText('点数 '+score,C,280,36,'#fff');
+      bigText('ベスト '+best,C,325,26,'#fff');
     }else{
-      bigText('マットに ドスン…',W/2,170,40,'#fc3',wob);
-      bigText('ステージ '+stage+' まで到達',W/2,235,28,'#fff');
-      bigText('点数 '+score,W/2,280,36,'#fff');
-      bigText('ベスト '+best,W/2,325,26,'#fff');
+      const w=pl[0].wins>=WIN?0:1;
+      bigText((w+1)+'P の勝ち!',C,170,64,PCOL[w].c,wob);
+      bigText(pl[0].wins+' － '+pl[1].wins,C,260,48,'#fff');
     }
     ctx.fillStyle='#fff';ctx.font='18px sans-serif';ctx.textAlign='center';ctx.textBaseline='alphabetic';
-    const camT=Body.mode==='cam';
-    ctx.fillText(camT?'光るホールドが 左なら左手、右なら右手を 上へ のばせ！':'光るホールドと同じ色のボタンでつかめ！',W/2,380);
-    ctx.fillText(camT?'金色のホールドは ジャンプで ランジ！':'金色のホールドはどのボタンでも連打でランジ！',W/2,408);
-    ctx.fillText(camT?'てっぺんは どちらの手でも OK':'キー: 1 2 3 / Z X C / J K L',W/2,436);
-    bigText(camT?'手を たたいて スタート':'スペース か タップでスタート',W/2,485,24,'#fff');
+    const camT=cam();
+    ctx.fillText(camT?'光るホールドが 左なら左手、右なら右手を 上へ のばせ！':'光るホールドと同じ色のボタンでつかめ！',C,380);
+    ctx.fillText(camT?'金色のホールドは ジャンプで ランジ！':'金色のホールドはどのボタンでも連打でランジ！',C,408);
+    if(camT)bigText(people()>=2?'👏 手をたたくと ふたりで スタート':'👏 手をたたいて スタート（2人 うつれば ふたりで）',C,650,people()>=2?24:19,people()>=2?'#f6c':'#fff');
+    if(state==='title'){
+      ctx.fillText('ふたりで：同じ壁で競争、先に'+WIN+'回てっぺんで勝ち',C,436);
+      menuBtn(C,462,280,64,'ひとりで','キー 1 か スペース','#2a9',()=>{setMode(1);newGame();});
+      menuBtn(C,542,280,64,'ふたりで','1P は Z X C ／ 2P は J K L','#c4c',()=>{setMode(2);newGame();});
+    }else{
+      ctx.fillText(camT?(mode===1?'てっぺんは どちらの手でも OK':'カメラの 左に立つ人が 1P、右の人が 2P'):mode===1?'キー: 1 2 3 / Z X C / J K L':'1P: Z X C ／ 2P: J K L',C,436);
+      menuBtn(C,462,280,64,'もういちど','スペース','#e70',()=>newGame());
+      menuBtn(C,542,280,64,'タイトルへ','Esc','#567',toTitle);
+    }
   }
 }
 
@@ -442,23 +542,39 @@ function canStart(){return state==='title'||(state==='over'&&performance.now()-o
 addEventListener('keydown',e=>{
   initAudio();
   if(state==='title'||state==='over'){
-    if((e.key===' '||e.key==='Enter')&&canStart()){e.preventDefault();newGame();}
+    if(!canStart())return;
+    if(state==='title'){
+      if(e.key===' '||e.key==='Enter'||e.key==='1'){e.preventDefault();setMode(1);newGame();}
+      else if(e.key==='2'){setMode(2);newGame();}
+    }else{
+      if(e.key===' '||e.key==='Enter'){e.preventDefault();newGame();}
+      else if(e.key==='Escape')toTitle();
+    }
     return;
   }
   if(e.repeat)return;                                               // 長押しでの自動連打を防止
   const k=e.key.toLowerCase();
-  TYPES.forEach((t,i)=>{if(t.keys.includes(k))press(i);});
+  if(mode===1)TYPES.forEach((t,i)=>{if(t.keys.includes(k))press(pl[0],i);});
+  else KEYS2.forEach((ks,pi)=>ks.forEach((kk,i)=>{if(kk.includes(k))press(pl[pi],i);}));
 });
 
 cv.addEventListener('pointerdown',ev=>{
   initAudio();
-  if(state==='title'||state==='over'){if(canStart())newGame();return;}
   const r=cv.getBoundingClientRect();
-  const x=(ev.clientX-r.left)*W/r.width,y=(ev.clientY-r.top)*H/r.height;
-  if(y>BTN_Y)press(Math.min(2,Math.floor(x/(W/3))));
+  const x=(ev.clientX-r.left)*FW/r.width,y=(ev.clientY-r.top)*H/r.height;
+  if(state==='title'||state==='over'){
+    if(!canStart())return;
+    const b=btns.find(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);
+    if(b)b.act();
+    return;
+  }
+  if(y>BTN_Y){
+    const li=Math.min(mode-1,Math.floor(x/W)),lx=x-li*W;
+    press(pl[li],Math.min(2,Math.floor(lx/(W/3))));
+  }
 });
 
-startStage();state='title';                                          // タイトル画面の背景用
+setMode(1);startStage();state='title';                               // タイトル画面の背景用
 let last=performance.now();
 function loop(now){
   const dt=Math.min(0.05,(now-last)/1000);last=now;
@@ -467,31 +583,44 @@ function loop(now){
 requestAnimationFrame(loop);
 
 // ---------- ぜんしん版：ホールドのある がわの手を 上へ のばす＝つかむ、ジャンプ＝ランジ ----------
+// ふたりで：カメラに 2人 うつす。画面の左に立つ人が 1P、右の人が 2P（それぞれ 自分の関節で 動きを見る）
 const TIME_X=1.6;                                                    // 体は指より おそいので、時間を のばす
+Body.people=2;                                                       // 2人まで 読む（ひとりのときは 大きくうつる人が 主役）
 const cam=()=>Body.mode==='cam';
-function reach(hand){                                                // hand: 0=左手 1=右手
-  if(state!=='play')return;
-  const nx=route[cur+1];if(!nx||nx.type==='lunge')return;
-  press(nx.type==='top'||nx.side===hand?nx.c:(nx.c+1)%3);
+let seen2At=-9;                                                      // 最後に 2人 うつっていた時刻
+function people(){return performance.now()/1000-seen2At<1?2:1;}
+function reach(p,hand){                                              // hand: 0=左手 1=右手
+  if(state!=='play'||p.done)return;
+  const nx=route[p.cur+1];if(!nx||nx.type==='lunge')return;
+  press(p,nx.type==='top'||nx.side===hand?nx.c:(nx.c+1)%3);
 }
-Body.on('swing',e=>{if(cam()&&e.dy<-0.3)reach(e.i);});
-Body.on('jump',()=>{
-  if(!cam()||state!=='play'||stun>0)return;
-  const nx=route[cur+1];if(nx&&nx.type==='lunge'){charge=lungeNeed()-1;press(0);}
+function lunge(p){
+  if(state!=='play'||p.stun>0||p.done)return;
+  const nx=route[p.cur+1];if(nx&&nx.type==='lunge'){p.charge=lungeNeed()-1;press(p,0);}
+}
+function camStart(){if(cam()&&(state==='title'||state==='over')&&canStart()){initAudio();setMode(people());newGame();}}
+Body.on('swing',e=>{if(cam()&&mode===1&&e.dy<-0.3)reach(pl[0],e.i);});
+Body.on('jump',()=>{if(cam()&&mode===1)lunge(pl[0]);});
+Body.on('clap',camStart);
+
+// ふたりで：Body.players[0]（画面の左の人）が 1P、[1]（右の人）が 2P
+Body.players.forEach((P,i)=>{
+  P.on('swing',e=>{if(cam()&&mode===2&&e.dy<-0.3)reach(pl[i],e.i);});
+  P.on('jump',()=>{if(cam()&&mode===2)lunge(pl[i]);});
+  P.on('clap',camStart);
 });
-Body.on('clap',()=>{if(cam()&&(state==='title'||state==='over')&&canStart()){initAudio();newGame();}});
+Body.on('poses',()=>{if(Body.count>=2)seen2At=performance.now()/1000;});
+
 const startStage0=startStage;
 startStage=function(){startStage0();if(cam())timeMax=timeLeft=timeMax*TIME_X;};
-const draw0=draw;
-draw=function(){
-  draw0();
-  if(!cam()||state!=='play')return;
-  const nx=route[cur+1];if(!nx)return;
+function drawHint(p){                                                // どちらの手を のばすか
+  if(!cam()||state!=='play'||p.done)return;
+  const nx=route[p.cur+1];if(!nx)return;
   const t=nx.type==='lunge'?'ジャンプ！':nx.type==='top'?'手を のばせ！':nx.side?'右手 →':'← 左手';
   bigText(t,nx.type==='normal'?(nx.side?W-90:90):CX,sy(nx.h)-44,30,'#fff');
-};
-Body.gate({title:'つかめ！ホールド！てっぺんだ！',corner:'tr',lines:['🧗 光るホールドが <b>左</b>にあれば <b>左手</b>を 上へ のばす','🧗 <b>右</b>にあれば <b>右手</b>を 上へ のばす','🦘 金色のホールドは <b>ジャンプ</b>で ランジ','ちがう手を のばすと ズルッと すべる','👏 手を たたく … スタート・もういちど']});
-window.__game={press,reach,get state(){return state;},get cur(){return cur;},get route(){return route;}};
+}
+Body.gate({title:'つかめ！ホールド！てっぺんだ！',corner:'tr',lines:['🧗 光るホールドが <b>左</b>にあれば <b>左手</b>を 上へ のばす','🧗 <b>右</b>にあれば <b>右手</b>を 上へ のばす','🦘 金色のホールドは <b>ジャンプ</b>で ランジ','ちがう手を のばすと ズルッと すべる','👥 <b>2人</b> うつると ふたりで きょうそう（左の人が 1P）','👏 手を たたく … スタート・もういちど']});
+window.__game={press,reach,lunge,people,get state(){return state;},get mode(){return mode;},get pl(){return pl;},get route(){return route;},update,draw};
 </script>
 </body>
 </html>
