@@ -1268,10 +1268,11 @@ export class MainScene extends Phaser.Scene {
       const fly = clamp((t.t - 0.08) / (SHAPES.tri.delay - 0.08), 0, 1);
       const k = fly < 1 ? 1 - 0.6 * fly : 0.4;
       const pulse = t.t < 0.08 ? 1 + 0.15 * Math.sin(t.t / 0.08 * Math.PI) : 1;
+      const big = (t.tri.power || 1) > 1 ? 1.3 : 1;   // 集中 満タンの 強い攻撃は 大きく
       const px = lerp(cx, ch.x, fly * fly), py = lerp(cy, ch.y, fly * fly);
       const rot = fly * 2.5;
       const P = v.map(q => {
-        const dx = (q.x - cx) * k * pulse, dy = (q.y - cy) * k * pulse;
+        const dx = (q.x - cx) * k * pulse * big, dy = (q.y - cy) * k * pulse * big;
         return { x: px + dx * Math.cos(rot) - dy * Math.sin(rot), y: py + dx * Math.sin(rot) + dy * Math.cos(rot) };
       });
       const al = t.t > SHAPES.tri.delay ? Math.max(0, 1 - (t.t - SHAPES.tri.delay) / 0.2) : 1;

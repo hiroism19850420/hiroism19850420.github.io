@@ -54,17 +54,19 @@ export const STROKE = {
   snapLineMax: 320,     // 寄せた線の 長さの上限
 };
 
+// 2026-10-28 ユーザー指定「決まった時間だけでなく、書いたら どんどん 防御や攻撃が できると良い」：
+// 攻撃に 集中は いらない（集中が3つ たまっていたら 1.5倍の 強い攻撃）、インクを 少なく・回復を 速く、線と丸を 長もち、6つまで 置ける
 export const SHAPES = {
-  line:   { ink: 12, life: 1.6 * TUNE.shapeLife, durability: 1, dmg: 24, focus: 1, score: 100, width: 8, radius: 12 },
-  circle: { ink: 24, life: 2.0 * TUNE.shapeLife, durability: 2, dmg: 12, focus: 1, score: 80, rMin: 35, rMax: 80 },
-  tri:    { ink: 30, focus: 3, dmg: 60, anim: 0.45, delay: 0.25, score: 250 },
+  line:   { ink: 8,  life: 3.0 * TUNE.shapeLife, durability: 1, dmg: 24, focus: 1, score: 100, width: 8, radius: 12 },
+  circle: { ink: 14, life: 3.6 * TUNE.shapeLife, durability: 2, dmg: 12, focus: 1, score: 80, rMin: 35, rMax: 80 },
+  tri:    { ink: 14, focus: 0, dmg: 40, power: 1.5, anim: 0.45, delay: 0.25, score: 250 },
 };
 
 export const BAL = {
   playerMax: 100, inkMax: 100, focusMax: 3,
   timeLimit: 240,
   invuln: 0.65,
-  maxShapes: 3, maxAttacks: 6,
+  maxShapes: 6, maxAttacks: 6,
   phaseTransition: 1.5,
   triSuppress: 0.35,
   triMinRest: 0.6,
@@ -87,8 +89,11 @@ export const PHASES = [
 
 export const DIFF = {
   // ぜんしん版の やさしい：元（bossHp 540 / dmgMul 0.70 / previewMul 1.25 / inkRegen 10）をさらにゆるめた
-  easy:   { key: 'easy',   name: 'やさしい', bossHp: 480, playerHp: 100, dmgMul: 0.55, previewMul: 1.25 * TUNE.previewMul, inkRegen: 12, guide: 'always', shapeIcon: 'always' },
-  normal: { key: 'normal', name: 'ふつう',   bossHp: 720, playerHp: 100, dmgMul: 1.00, previewMul: 1.00 * TUNE.previewMul, inkRegen: 8,  guide: 'first',  shapeIcon: 'setting' },
+  easy:   { key: 'easy',   name: 'やさしい', bossHp: 480, playerHp: 100, dmgMul: 0.55, previewMul: 1.25 * TUNE.previewMul, inkRegen: 22, guide: 'always', shapeIcon: 'always' },
+  normal: { key: 'normal', name: 'ふつう',   bossHp: 720, playerHp: 100, dmgMul: 1.00, previewMul: 1.00 * TUNE.previewMul, inkRegen: 16, guide: 'first',  shapeIcon: 'setting' },
+  // 敵が どんどん攻撃してくる 2段階。restMul：攻撃のあとの 休みの倍率。concurrent：同時に出す 攻撃の数、gap：重ねて出す 間かく（秒）
+  hard:   { key: 'hard',   name: 'むずかしい', bossHp: 840, playerHp: 100, dmgMul: 1.10, previewMul: 0.95 * TUNE.previewMul, inkRegen: 18, guide: 'first', shapeIcon: 'setting', restMul: 0.3, concurrent: 2, gap: 1.6 },
+  oni:    { key: 'oni',    name: 'げきむず',   bossHp: 960, playerHp: 100, dmgMul: 1.20, previewMul: 0.90 * TUNE.previewMul, inkRegen: 20, guide: 'first', shapeIcon: 'setting', restMul: 0.15, concurrent: 3, gap: 0.9 },
 };
 
 export const QUALITY = {
@@ -113,10 +118,10 @@ export const FAIL_TEXT = {
 };
 
 export const ADVICE = {
-  expired: '線は2.2秒で消えます。予告線が出てから少し待って描くと長く守れます。',
+  expired: '線は4秒ほどで消えます。いつでも描きなおせるので、どんどん描きましょう。',
   offset: 'オレンジの予告線の上を横切るように描きましょう。',
   ink: 'インクは毎秒回復します。丸は線の2倍インクを使います。',
-  focus: '三角・四角・星など 角のある形は集中3つで使えます。まずはガードで集中をためましょう。',
+  focus: '三角・四角・星など 角のある形は いつでも攻撃できます。ガードで集中が3つたまると 1.5倍の強さになります。',
   recog: '線はまっすぐ、丸と三角は始点と終点を近づけて閉じましょう。',
   none: '攻撃の予告が出たら、通り道に線を描いてみましょう。',
 };
