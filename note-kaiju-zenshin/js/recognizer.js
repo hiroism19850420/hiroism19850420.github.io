@@ -124,6 +124,12 @@ function sharpTurns(rs, th = 1.15) {
 // 角のある形（四角・五角形・一筆書きの星など）：鋭い曲がりが 3つ以上ある 閉じた形は 三角と同じ 攻撃にする
 // 六角形（1つの角で 60° 曲がる）まで 拾えるように、丸の判定より ゆるい 0.8 rad（約46°）で 数える
 const ANGULAR_MIN = 3, ANGULAR_TURN = 0.8;
+// 攻撃の見た目用：描いた輪郭を 角だけの折れ線にする（三角なら3点、四角なら4点、星なら5点）
+function outline(loop) {
+  const bb = bbox(loop);
+  const v = cornerCountClosed(loop, Math.max(6, 0.07 * Math.max(bb.w, bb.h)));
+  return v.length >= 3 ? v.map(p => ({ x: p.x, y: p.y })) : null;
+}
 function isAngular(loop, tri) {
   return sharpTurns(loop, ANGULAR_TURN) >= ANGULAR_MIN && tri.area >= 1200;
 }
@@ -237,8 +243,8 @@ function snap(pts, rs, se, maxSide, gap) {
     const lbb = bbox(loop);
     const tri = evalTriangle(loop, lbb), cir = evalCircle(loop, lbb);
     const circle = { type: 'circle', cx: cir.cx, cy: cir.cy, r: cir.r };
-    if (tri.score > cir.score && tri.area >= 1200) return { type: 'tri', verts: tri.verts, alt: circle };
-    if (isAngular(loop, tri)) return { type: 'tri', verts: tri.verts, alt: circle, angular: true };
+    if (tri.score > cir.score && tri.area >= 1200) return { type: 'tri', verts: tri.verts, shape: outline(loop), alt: circle };
+    if (isAngular(loop, tri)) return { type: 'tri', verts: tri.verts, shape: outline(loop), alt: circle, angular: true };
     return circle;
   }
   let a = pts[0], b = pts[pts.length - 1];
@@ -289,9 +295,9 @@ function recognizeStrict(pts) {
     const loop = trimLoop(rs);
     const lbb = bbox(loop);
     const tri = evalTriangle(loop, lbb);
-    if (tri.ok) return { type: 'tri', verts: tri.verts, cand: 'tri', detail: tri };
+    if (tri.ok) return { type: 'tri', verts: tri.verts, shape: outline(loop), cand: 'tri', detail: tri };
     const cir = evalCircle(loop, lbb);
-    if (isAngular(loop, tri)) return { type: 'tri', verts: tri.verts, cand: 'tri', angular: true, detail: tri };
+    if (isAngular(loop, tri)) return { type: 'tri', verts: tri.verts, shape: outline(loop), cand: 'tri', angular: true, detail: tri };
     if (cir.ok) return { type: 'circle', cx: cir.cx, cy: cir.cy, r: cir.r, cand: 'circle', detail: cir };
     return { type: null, why: 'closed', cand: tri.score > cir.score ? 'tri' : 'circle', detail: { tri, cir } };
   }

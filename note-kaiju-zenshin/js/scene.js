@@ -1259,11 +1259,12 @@ export class MainScene extends Phaser.Scene {
       g.fillStyle(COLORS.ink, 1); g.fillCircle(s.x, s.y, 7);
       g.fillStyle(0xffffff, 0.8); g.fillCircle(s.x - 2, s.y - 2, 2);
     }
-    // 三角：結晶化 → 自動照準 → 飛翔
+    // 角の形（三角・四角・星など）：描いた形のまま 結晶化 → 自動照準 → 飛翔
     const ch = this.view.anchors().chest;
+    const fan = (P, ox, oy) => { for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length]; g.fillTriangle(ox, oy, a.x, a.y, b.x, b.y); } };
     for (const t of this.triFx) {
-      const v = t.tri.verts;
-      const cx = (v[0].x + v[1].x + v[2].x) / 3, cy = (v[0].y + v[1].y + v[2].y) / 3;
+      const v = t.tri.shape || t.tri.verts;
+      const cx = v.reduce((s, q) => s + q.x, 0) / v.length, cy = v.reduce((s, q) => s + q.y, 0) / v.length;
       const fly = clamp((t.t - 0.08) / (SHAPES.tri.delay - 0.08), 0, 1);
       const k = fly < 1 ? 1 - 0.6 * fly : 0.4;
       const pulse = t.t < 0.08 ? 1 + 0.15 * Math.sin(t.t / 0.08 * Math.PI) : 1;
@@ -1278,10 +1279,11 @@ export class MainScene extends Phaser.Scene {
         g.lineStyle(2, COLORS.red, 0.5);
         this.dash(g, px, py, ch.x, ch.y, 6, 6, -t.t * 200);
       }
-      g.fillStyle(COLORS.red, 0.75 * al); g.fillTriangle(P[0].x, P[0].y, P[1].x, P[1].y, P[2].x, P[2].y);
+      g.fillStyle(COLORS.red, 0.75 * al); fan(P, px, py);
       const inner = P.map(q => ({ x: px + (q.x - px) * 0.55, y: py + (q.y - py) * 0.55 }));
-      g.fillStyle(COLORS.ink, 0.8 * al); g.fillTriangle(inner[0].x, inner[0].y, inner[1].x, inner[1].y, inner[2].x, inner[2].y);
-      g.lineStyle(3, 0xffffff, 0.9 * al); g.strokeTriangle(P[0].x, P[0].y, P[1].x, P[1].y, P[2].x, P[2].y);
+      g.fillStyle(COLORS.ink, 0.8 * al); fan(inner, px, py);
+      g.lineStyle(3, 0xffffff, 0.9 * al);
+      for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length]; g.lineBetween(a.x, a.y, b.x, b.y); }
       g.lineStyle(1.5, 0xffffff, 0.6 * al);
       for (const q of P) g.lineBetween(px, py, q.x, q.y);
     }

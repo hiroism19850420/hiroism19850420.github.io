@@ -125,7 +125,7 @@ export class Battle {
       }
       if (!infinite) { this.player.ink -= def.ink; this.player.focus -= def.focus; }
       this.stats.used.tri++;
-      const tri = { id: SID++, verts: r.verts, t: 0, hit: false, raw: stroke.points, who: stroke.who };
+      const tri = { id: SID++, verts: r.verts, shape: r.shape || r.verts, t: 0, hit: false, raw: stroke.points, who: stroke.who };
       this.tris.push(tri);
       this.emit('triFire', tri);
       return { ok: true, rec: r, shape: tri };
