@@ -244,7 +244,7 @@ export class MainScene extends Phaser.Scene {
     this.ui.hideTutChoice();
     const P = this.battle.player;
     P.ink = BAL.inkMax;
-    const texts = { 0: '', 1: Zen.on ? '線を描いて、左手を おろす' : '線を描いて、はなす', 2: '丸なら2回守れる', 3: '守ると、力がたまる', 4: '三角で反撃' };
+    const texts = { 0: '', 1: Zen.on ? '線を描いて、左手を おろす' : '線を描いて、はなす', 2: '丸なら2回守れる', 3: '守ると、力がたまる', 4: '三角・四角・星など 角のある形で反撃' };
     this.tTut.setText(texts[step]);
     if (step === 0) T.spawnIn = 99;
     if (step === 3) { P.focus = 0; T.focusT = 0; T.spawnIn = 99; }
@@ -347,7 +347,7 @@ export class MainScene extends Phaser.Scene {
     this.battle = this.newBattle('practice');
     this.ui.hideAll();
     this.ui.setPracticeBack(true);
-    this.tTut.setText('線・丸・三角を自由に描いてみよう');
+    this.tTut.setText('線・丸・三角（角のある形）を自由に描いてみよう');
   }
 
   // ---------- ポーズ ----------
@@ -599,7 +599,7 @@ export class MainScene extends Phaser.Scene {
   fadeStroke(points, color) { this.fading.push({ points, color, t: 0.25 }); }
 
   practiceFeedback(res) {
-    const names = { line: '線（インクシールド）', circle: '丸（まるバリア）', tri: '三角（トライアタック）' };
+    const names = { line: '線（インクシールド）', circle: '丸（まるバリア）', tri: '角の形（トライアタック）' };
     if (res.rec && res.rec.type) { this.showMsg(`${names[res.rec.type]}！${res.rec.lenient ? '（ちかい形に したよ）' : ''}`); return; }
     const r = res.rec;
     let hint = 'かたちが わからない';

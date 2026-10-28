@@ -103,7 +103,7 @@ function cornerCountClosed(rs, eps) {
 }
 
 // 鋭い曲がりの数（丸の「極端な角」チェック）
-function sharpTurns(rs) {
+function sharpTurns(rs, th = 1.15) {
   const ring = rs.slice(0, -1);
   const n = ring.length;
   const k = 2;
@@ -116,9 +116,16 @@ function sharpTurns(rs) {
   let count = 0;
   for (let i = 0; i < n; i++) {
     const t = turns[i];
-    if (t > 1.15 && t >= turns[(i - 1 + n) % n] && t >= turns[(i + 1) % n]) count++;
+    if (t > th && t >= turns[(i - 1 + n) % n] && t >= turns[(i + 1) % n]) count++;
   }
   return count;
+}
+
+// 角のある形（四角・五角形・一筆書きの星など）：鋭い曲がりが 3つ以上ある 閉じた形は 三角と同じ 攻撃にする
+// 六角形（1つの角で 60° 曲がる）まで 拾えるように、丸の判定より ゆるい 0.8 rad（約46°）で 数える
+const ANGULAR_MIN = 3, ANGULAR_TURN = 0.8;
+function isAngular(loop, tri) {
+  return sharpTurns(loop, ANGULAR_TURN) >= ANGULAR_MIN && tri.area >= 1200;
 }
 
 function sweptAngle(rs, c) {
@@ -231,6 +238,7 @@ function snap(pts, rs, se, maxSide, gap) {
     const tri = evalTriangle(loop, lbb), cir = evalCircle(loop, lbb);
     const circle = { type: 'circle', cx: cir.cx, cy: cir.cy, r: cir.r };
     if (tri.score > cir.score && tri.area >= 1200) return { type: 'tri', verts: tri.verts, alt: circle };
+    if (isAngular(loop, tri)) return { type: 'tri', verts: tri.verts, alt: circle, angular: true };
     return circle;
   }
   let a = pts[0], b = pts[pts.length - 1];
@@ -283,6 +291,7 @@ function recognizeStrict(pts) {
     const tri = evalTriangle(loop, lbb);
     if (tri.ok) return { type: 'tri', verts: tri.verts, cand: 'tri', detail: tri };
     const cir = evalCircle(loop, lbb);
+    if (isAngular(loop, tri)) return { type: 'tri', verts: tri.verts, cand: 'tri', angular: true, detail: tri };
     if (cir.ok) return { type: 'circle', cx: cir.cx, cy: cir.cy, r: cir.r, cand: 'circle', detail: cir };
     return { type: null, why: 'closed', cand: tri.score > cir.score ? 'tri' : 'circle', detail: { tri, cir } };
   }
