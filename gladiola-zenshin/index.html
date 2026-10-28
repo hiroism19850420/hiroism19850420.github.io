@@ -192,15 +192,17 @@ const SENS=1.3;
 function toLogical(cx,cy){return[(cx-offX)/scale,(cy-offY)/scale]}
 addEventListener('keydown',e=>{
   if(KEYMAP[e.code]){K[KEYMAP[e.code]]=1;e.preventDefault()}
+  if(KEYMAP2[e.code]){const[a,b]=KEYMAP2[e.code];K2[a][b]=1}
   if(e.code==='Space')e.preventDefault();
   onKey(e.code);
 });
-addEventListener('keyup',e=>{if(KEYMAP[e.code])K[KEYMAP[e.code]]=0});
+addEventListener('keyup',e=>{if(KEYMAP[e.code])K[KEYMAP[e.code]]=0;if(KEYMAP2[e.code]){const[a,b]=KEYMAP2[e.code];K2[a][b]=0}});
 cv.addEventListener('pointerdown',e=>{
   e.preventDefault();audioInit();
   const [x,y]=toLogical(e.clientX,e.clientY);
   if(G.state==='play'){
     if(x>W-46&&y<40){pauseGame();return}
+    if(mode===2){const t=T2[x<W/2?0:1];if(t.id==null){t.id=e.pointerId;t.lx=e.clientX;t.ly=e.clientY;try{cv.setPointerCapture(e.pointerId)}catch(_){}}return}   // ふたりで：画面の左半分が 1P、右半分が 2P
     if(touch.id==null){touch.id=e.pointerId;touch.lx=e.clientX;touch.ly=e.clientY;try{cv.setPointerCapture(e.pointerId)}catch(_){}}
     return;
   }
@@ -208,18 +210,27 @@ cv.addEventListener('pointerdown',e=>{
   if(G.state==='clear'&&G.stT>150)toTitle();
 },{passive:false});
 cv.addEventListener('pointermove',e=>{
+  if(mode===2){
+    const i=T2.findIndex(t=>t.id===e.pointerId);if(i<0||G.state!=='play')return;
+    const t=T2[i],dx=(e.clientX-t.lx)/scale*SENS,dy=(e.clientY-t.ly)/scale*SENS;t.lx=e.clientX;t.ly=e.clientY;
+    const q=PS[i];if(q.alive&&!q.entering){q.tx=clamp(q.tx+dx,10,W-14);q.ty=clamp(q.ty+dy,10,H-10)}
+    return;
+  }
   if(e.pointerId!==touch.id||G.state!=='play')return;
   const dx=(e.clientX-touch.lx)/scale*SENS,dy=(e.clientY-touch.ly)/scale*SENS;
   touch.lx=e.clientX;touch.ly=e.clientY;
   if(P.alive&&!P.entering){P.tx=clamp(P.tx+dx,10,W-14);P.ty=clamp(P.ty+dy,10,H-10)}
 });
-const endTouch=e=>{if(e.pointerId===touch.id)touch.id=null};
+const endTouch=e=>{if(e.pointerId===touch.id)touch.id=null;T2.forEach(t=>{if(t.id===e.pointerId)t.id=null})};
 cv.addEventListener('pointerup',endTouch);cv.addEventListener('pointercancel',endTouch);
 addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&G.state==='play')pauseGame()});
 
 let BTN=[];let selIdx=0;
 function onKey(code){
+  if(G.state==='title'&&code==='Digit1'){startGame(IS_TOUCH?'touch':'key');return}
+  if(G.state==='title'&&code==='Digit2'){startGame2();return}
+  if(G.state==='gameover'&&code==='Escape'){toTitle();return}
   if(G.state==='play'){if(code==='KeyP'||code==='Escape')pauseGame();return}
   if(G.state==='pause'&&(code==='KeyP'||code==='Escape')){resumeGame();return}
   if(G.state==='clear'&&G.stT>150&&(code==='Enter'||code==='Space')){toTitle();return}
@@ -252,6 +263,13 @@ const SEQ=['SPEED','MISSILE','TWIN','OPTION','LASER','SHIELD','SPEED','OPTION','
 const G={state:'title',t:0,stT:0,dist:0,pdist:0,bg:0,scroll:1,score:0,hi:store.get('hi',30000),stock:3,cp:0,evI:0,shake:0,flash:0,hitstop:0,powerIdx:0,gF:-1,gFT:0,nextExt:20000,midActive:false,bossActive:false,deadT:0,clearT:0,mode:'touch',introT:0,warnT:0,groups:{},cont:0,goT:0,result:null,boss:null,stats:{deaths:0,kills:0}};
 const P={x:90,y:180,px:90,py:180,tx:90,ty:180,alive:true,inv:0,spd:0,mis:0,wpn:0,opt:0,shield:0,opts:[],trail:[],fcd:0,mcd:0,bank:0,entering:0,sf:0};
 const E=[],PB=[],EB=[],PT=[],CAPS=[];let BEAMS=[];let eid=0;
+// ふたりで（きょうりょく）：機体を 2つ。1機ぶんの P を 入れかえて、ひとりで用の 処理を そのまま使う
+let mode=1,cur=-1;
+const PS=[{},{}],PKEY=Object.keys(P);
+const K2=[{l:0,r:0,u:0,d:0},{l:0,r:0,u:0,d:0}];
+const KEYMAP2={KeyA:[0,'l'],KeyD:[0,'r'],KeyW:[0,'u'],KeyS:[0,'d'],ArrowLeft:[1,'l'],ArrowRight:[1,'r'],ArrowUp:[1,'u'],ArrowDown:[1,'d']};
+const T2=[{id:null,lx:0,ly:0},{id:null,lx:0,ly:0}];
+const PCOL2=['#2cb','#f6c'];
 
 function addScore(n){
   G.score+=n;
@@ -655,13 +673,13 @@ function startGame(mode){
   sfx('start');restartAt(clamp(DBG.cp,0,CP.length-1));
 }
 function gameOver(){G.state='gameover';G.goT=600;G.stT=0;selIdx=0;bgmStop();store.set('hi',G.hi);jingle([69,68,67,66,64,null,57],.18,.1)}
-function continueGame(){G.score=0;G.cont++;G.stock=3;G.nextExt=20000;resetPower();G.state='play';restartAt(G.cp);P.inv=180}
+function continueGame(){G.score=0;G.cont++;G.stock=3;G.nextExt=20000;resetPower();G.state='play';restartAt(G.cp);P.inv=180;if(mode===2)initShips()}
 function stageClear(){
   const bonus=G.stock*5000+(G.stats.deaths===0?30000:0)+(G.boss&&G.boss.timeout?0:10000);
   G.result={base:G.score,stock:G.stock,nomiss:G.stats.deaths===0,bonus};addScore(bonus);store.set('hi',G.hi);
   G.state='clear';G.stT=0;bgmStop();jingle([69,72,76,81,null,79,81,84,null,null,88],.12,.12);
 }
-function toTitle(){G.state='title';G.stT=0;selIdx=G.mode==='key'?1:0;bgmStop();store.set('hi',G.hi);clearWorld();G.dist=0}
+function toTitle(){mode=1;G.state='title';G.stT=0;selIdx=G.mode==='key'?1:0;bgmStop();store.set('hi',G.hi);clearWorld();G.dist=0}
 function pauseGame(){if(G.state!=='play')return;G.state='pause';selIdx=0;touch.id=null;if(AC&&AC.state==='running')AC.suspend()}
 function resumeGame(){G.state='play';touch.id=null;P.tx=P.x;P.ty=P.y;if(AC)AC.resume()}
 
@@ -797,14 +815,61 @@ function update(){
   if(G.state!=='play')return;
   G.pdist=G.dist;
   if(G.hitstop>0){G.hitstop--;
-    P.px=P.x;P.py=P.y;E.forEach(e=>{e.px=e.x;e.py=e.y});PB.forEach(b=>{b.px=b.x;b.py=b.y});EB.forEach(b=>{b.px=b.x;b.py=b.y});return}
+    if(mode===2)[0,1].forEach(i=>withS(i,()=>{P.px=P.x;P.py=P.y}));else{P.px=P.x;P.py=P.y}E.forEach(e=>{e.px=e.x;e.py=e.y});PB.forEach(b=>{b.px=b.x;b.py=b.y});EB.forEach(b=>{b.px=b.x;b.py=b.y});return}
   const tgt=(G.midActive||G.bossActive)?0:1;G.scroll+=(tgt-G.scroll)*.03;if(Math.abs(tgt-G.scroll)<.01)G.scroll=tgt;
   G.dist+=G.scroll;G.bg+=.4+G.scroll*.6;
   for(let i=CP.length-1;i>0;i--)if(G.dist>=CP[i]&&G.cp<i){G.cp=i;break}
   while(G.evI<EV.length&&G.dist>=EV[G.evI].x)EV[G.evI++].f();
-  updPlayer();updPB();updEnemies();updEB();updBeams();updCaps();collisions();updParticles();
+  if(mode===2)update2();
+  else{updPlayer();updPB();updEnemies();updEB();updBeams();updCaps();collisions();updParticles();}
   if(G.introT>0)G.introT--;if(G.warnT>0)G.warnT--;if(G.gFT>0)G.gFT--;
   if(G.clearT>0){G.clearT++;if(G.clearT>160)stageClear()}
+}
+
+// ================= ふたりで（きょうりょく） =================
+function withS(i,fn){
+  const q=PS[i];PKEY.forEach(k=>P[k]=q[k]);G.powerIdx=q.powerIdx;G.deadT=q.deadT;cur=i;
+  try{return fn()}finally{PKEY.forEach(k=>q[k]=P[k]);q.powerIdx=G.powerIdx;q.deadT=G.deadT;cur=-1}
+}
+function placeShip(i){
+  P.x=P.px=-30;P.y=P.py=i?220:140;P.tx=100;P.ty=P.y;P.alive=true;P.inv=150;P.entering=45;P.bank=0;
+  P.trail=[];for(let k=0;k<44;k++)P.trail.push({x:-30,y:P.y});
+  P.opts.forEach(o=>{o.x=o.px=-30;o.y=o.py=P.y});
+}
+function initShips(){
+  const base=Object.assign({},P);
+  for(let i=0;i<2;i++){
+    const q=PS[i];Object.assign(q,base);q.opts=[];q.trail=[];q.powerIdx=0;q.deadT=0;
+    q.spd=0;q.mis=0;q.wpn=0;q.opt=0;q.shield=0;q.fcd=0;q.mcd=0;q.sf=0;
+    withS(i,()=>placeShip(i));
+  }
+  T2.forEach(t=>t.id=null);
+}
+function startGame2(){mode=2;startGame(IS_TOUCH?'touch':'key');initShips()}
+function updPlayer2(){                     // withS の中で よぶ
+  const i=cur;
+  if(!P.alive){
+    G.deadT++;
+    if(G.deadT>=100&&G.stock>0){           // 残機が あれば その機体だけ もどってくる（世界は そのまま）
+      G.stock--;const k=G.powerIdx;resetPower();for(let j=0;j<Math.floor(k/2);j++)grantPower(true);
+      placeShip(i);G.deadT=0;
+    }
+    return;
+  }
+  const k0={l:K.l,r:K.r,u:K.u,d:K.d};Object.assign(K,K2[i]);
+  try{updPlayer()}finally{Object.assign(K,k0)}
+}
+function update2(){
+  for(let i=0;i<2;i++)withS(i,updPlayer2);
+  updPB();
+  const al=[0,1].filter(i=>PS[i].alive&&!PS[i].entering);
+  const tg=al.length?al[Math.floor(G.t/90)%al.length]:0;   // 敵が ねらう機体は ときどき 入れかわる
+  withS(tg,()=>{updEnemies();updEB()});
+  updBeams();
+  for(let i=0;i<2;i++)withS(i,updCaps);
+  for(let i=0;i<2;i++)withS(i,collisions);
+  updParticles();
+  if(G.state==='play'&&G.stock<=0&&PS.every(q=>!q.alive&&q.deadT>=100))gameOver();
 }
 
 // ================= 背景 =================
@@ -888,21 +953,31 @@ function drawHUD(){
   txt('SCORE',10,12,8,'rgba(150,240,255,.7)');txt(pad(G.score,8),10,25,13,'#fff');
   txt('HI',W/2-46,12,8,'rgba(255,130,220,.7)');txt(pad(G.hi,8),W/2-46,25,13,'#ffd6f0');
   // 残機
+  if(mode===2){ctx.save();ctx.translate(16,H-14);ctx.scale(.45,.45);drawShip(0,0,0,.85);ctx.restore();txt('×'+G.stock,26,H-14,10,'#fff')}
+  else{
   for(let i=0;i<Math.min(G.stock,6);i++){ctx.save();ctx.translate(16+i*14,H-14);ctx.scale(.45,.45);drawShip(0,0,0,.85);ctx.restore()}
   if(G.stock>6)txt('×'+G.stock,100,H-14,9,'#fff');
+  }
+  if(mode===2)[0,1].forEach(i=>withS(i,()=>drawGauge(i?338:100,36,i)));else drawGauge(W/2-56*3,56,-1);
+  drawPauseBtn();
+}
+function drawGauge(gx,sw,pi){
   // パワーゲージ
-  const sw=56,gx=W/2-sw*3,gy=H-22,nxt=SLOTS.indexOf(seqAt(G.powerIdx));
+  const gy=H-22,nxt=SLOTS.indexOf(seqAt(G.powerIdx));
+  if(pi>=0)txt((pi+1)+'P',gx-9,gy+7,9,PCOL2[pi],'center');
   const lv=[P.spd,P.mis,P.wpn===1?1:0,P.wpn===2?1:0,P.opt,P.shield],mx=[3,2,1,1,4,3];
   ctx.globalAlpha=.85;
   SLOTS.forEach((s,i)=>{const x=gx+i*sw;
     rr(x+1,gy,sw-3,15,3);ctx.fillStyle=lv[i]>0?'rgba(40,140,170,.55)':'rgba(20,10,40,.55)';ctx.fill();
     ctx.strokeStyle=i===nxt?`rgba(255,170,60,${.55+.45*Math.sin(G.t*.2)})`:'rgba(140,220,255,.35)';ctx.lineWidth=i===nxt?1.6:1;ctx.stroke();
     if(G.gF===i&&G.gFT>0){rr(x+1,gy,sw-3,15,3);ctx.fillStyle=`rgba(255,255,255,${G.gFT/45})`;ctx.fill()}
-    txt(s,x+sw/2-1,gy+6.5,7,lv[i]>0?'#eaffff':'rgba(180,190,230,.6)','center');
+    txt(s,x+sw/2-1,gy+6.5,sw<50?5.5:7,lv[i]>0?'#eaffff':'rgba(180,190,230,.6)','center');
     for(let k=0;k<mx[i]&&mx[i]>1;k++){ctx.fillStyle=k<lv[i]?'#5ff0ff':'rgba(255,255,255,.15)';ctx.fillRect(x+sw/2-1-mx[i]*4+k*8+1,gy+11.5,6,1.8)}
   });
   if(nxt>=0)txt('NEXT',gx+nxt*sw+sw/2-1,gy-6,6,'rgba(255,190,100,.9)','center');
   ctx.globalAlpha=1;
+}
+function drawPauseBtn(){
   // ポーズボタン
   if(G.state==='play'){circ(W-22,20,12);ctx.fillStyle='rgba(20,10,40,.5)';ctx.fill();ctx.strokeStyle='rgba(150,240,255,.5)';ctx.lineWidth=1;ctx.stroke();ctx.fillStyle='rgba(200,250,255,.85)';ctx.fillRect(W-26,14,3,12);ctx.fillRect(W-21,14,3,12)}
 }
@@ -954,13 +1029,15 @@ function render(al){
       else if(b.k==='L'){ctx.fillStyle='rgba(70,170,255,.45)';ctx.fillRect(x-b.len,y-3.5,b.len,7);ctx.fillStyle='rgba(190,250,255,.95)';ctx.fillRect(x-b.len,y-1.3,b.len,2.6)}
       else{ctx.drawImage(gspr('orange'),x-9,y-9,18,18);ctx.fillStyle='#fff3c8';ctx.fillRect(x-3,y-1.5,6,3)}}
     ctx.globalCompositeOperation='source-over';
-    // オプション・自機
-    if(P.alive){
+    // オプション・自機（ふたりでは 2機）
+    const selfDraw=pi=>{if(P.alive){
       P.opts.forEach((o,i)=>{const [x,y]=ip(o);drawOption(x,y,i)});
       const [x,y]=ip(P);
       if(!(P.inv>0&&!P.entering&&G.t%6<3))drawShip(x,y,P.bank);
       if(P.shield>0||P.sf>0){const a=P.sf>0?.9:.35+.1*Math.sin(G.t*.2);glow(x,y,26,'cyan',a*.5);circ(x,y,16);ctx.strokeStyle=`rgba(150,250,255,${a})`;ctx.lineWidth=1.4;ctx.stroke()}
-    }
+      if(pi>=0){glow(x,y,22,pi?'pink':'teal',.35);txt((pi+1)+'P',x,y-18,9,PCOL2[pi],'center')}
+    }};
+    if(mode===2)[0,1].forEach(i=>withS(i,()=>selfDraw(i)));else selfDraw(-1);
     // 敵弾
     ctx.globalCompositeOperation='lighter';
     for(const b of EB){const [x,y]=ip(b);const r=b.k?15:10;ctx.drawImage(gspr(b.k?'orange':'pink'),x-r,y-r,r*2,r*2)}
@@ -980,7 +1057,7 @@ function render(al){
   if(G.state==='play'){
     if(G.introT>0){const a=Math.min(1,G.introT/30,(230-G.introT)/20);ctx.globalAlpha=a;
       txt('STAGE 1',W/2,H/2-26,22,'#fff','center',F,900);txt('NEON GARDEN',W/2,H/2,11,'#ff9ae0','center');
-      txt(Body.mode==='cam'?'左手を 動かして移動 ・ ショットは自動':G.mode==='touch'?'画面のどこでもドラッグで移動 ・ ショットは自動':'矢印キー / WASD で移動 ・ ショットは自動 ・ P でポーズ',W/2,H/2+28,11,'#c8f6ff','center',JF,500);ctx.globalAlpha=1}
+      txt(mode===2?(Body.mode==='cam'?'ふたりで きょうりょく！ 2人とも 左手で 自分の機体を 動かす':G.mode==='touch'?'ふたりで きょうりょく！ 画面の 左半分で 1P、右半分で 2P を なぞる':'ふたりで きょうりょく！ 1P：WASD ／ 2P：矢印キー'):Body.mode==='cam'?'左手を 動かして移動 ・ ショットは自動':G.mode==='touch'?'画面のどこでもドラッグで移動 ・ ショットは自動':'矢印キー / WASD で移動 ・ ショットは自動 ・ P でポーズ',W/2,H/2+28,11,'#c8f6ff','center',JF,500);ctx.globalAlpha=1}
     if(G.warnT>0){const a=Math.min(1,G.warnT/20)*(G.t%30<18?1:.35);ctx.globalAlpha=a;ctx.fillStyle='rgba(255,30,80,.18)';ctx.fillRect(0,H/2-26,W,52);
       txt('WARNING',W/2,H/2-4,28,'#ff4f7a','center',F,900);txt('A HUGE BLOOM IS APPROACHING',W/2,H/2+16,8,'#ffc0d0','center');ctx.globalAlpha=1}
   }
@@ -998,11 +1075,13 @@ function drawOverlay(){
     ctx.font=`900 52px ${F}`;ctx.textAlign='center';ctx.textBaseline='middle';
     ctx.shadowColor='rgba(255,90,210,.9)';ctx.shadowBlur=22;ctx.fillStyle=g;ctx.fillText('GLADIOLA',W/2,112);ctx.shadowBlur=0;ctx.restore();
     txt('STAGE 1  ·  NEON GARDEN',W/2,152,10,'#ffb3e8','center');
-    button(W/2-200,192,190,56,'TOUCH MODE','画面をなぞって移動',()=>startGame('touch'),0);
-    button(W/2+10,192,190,56,'KEYBOARD MODE','矢印キー / WASD で移動',()=>startGame('key'),1);
+    button(W/2-200,176,190,50,'TOUCH MODE','画面をなぞって移動',()=>startGame('touch'),0);
+    button(W/2+10,176,190,50,'KEYBOARD MODE','矢印キー / WASD で移動',()=>startGame('key'),1);
     button(W-74,10,64,24,soundOn?'♪ ON':'♪ OFF',null,()=>{audioInit();setSound(!soundOn)},2);
-    txt('HI-SCORE  '+pad(G.hi,8),W/2,276,11,'#ffd6f0','center');
-    if(G.t%60<40)txt(Body.mode==='cam'?'手を たたいて スタート':IS_TOUCH?'モードを選んでスタート':'モードを選んでスタート (← → / Enter)',W/2,306,11,'#c8f6ff','center',JF,500);
+    button(W/2-110,236,220,42,'ふたりで',IS_TOUCH?'画面の 左が 1P・右が 2P':'1P：WASD ／ 2P：矢印キー（キー 2）',startGame2,3);
+    txt('HI-SCORE  '+pad(G.hi,8),W/2,292,11,'#ffd6f0','center');
+    if(Body.mode==='cam')txt(people()>=2?'👏 手をたたくと ふたりで スタート':'👏 手をたたいて スタート（2人 うつれば ふたりで）',W/2,316,12,people()>=2?'#f6c':'#c8f6ff','center',JF,700);
+    else if(G.t%60<40)txt(Body.mode==='cam'?'手を たたいて スタート':IS_TOUCH?'モードを選んでスタート':'モードを選んでスタート (← → / Enter)',W/2,306,11,'#c8f6ff','center',JF,500);
     txt('© 2026 hiroism  —  an original homage shooter',W/2,342,7,'rgba(180,170,220,.5)','center');
   }else if(G.state==='pause'){
     ctx.fillStyle='rgba(5,3,15,.7)';ctx.fillRect(0,0,W,H);
@@ -1020,6 +1099,7 @@ function drawOverlay(){
     ctx.fillStyle='rgba(5,3,15,.55)';ctx.fillRect(0,0,W,H);
     drawFlower(W/2,90,70,G.t*.006,.5);
     txt('STAGE CLEAR',W/2,72,30,'#fff','center',F,900);
+    if(mode===2&&G.stT>20)txt('ふたりで クリア！',W/2,102,13,'#ffe48a','center',JF,900);
     const r=G.result,k=G.stT;
     if(r){if(k>30)txt('SCORE        '+pad(r.base,8),W/2,130,12,'#c8f6ff','center');
       if(k>55)txt('STOCK BONUS  '+r.stock+' × 5000',W/2,154,12,'#c8f6ff','center');
@@ -1053,14 +1133,39 @@ Body.on('pose',()=>{
   if(!handS)handS=[h.px,h.py];
   const dx=h.px-handS[0],dy=h.py-handS[1];
   if(Math.hypot(dx,dy)>BODY.DEAD){handS[0]+=dx*BODY.EASE;handS[1]+=dy*BODY.EASE}
-  if(G.state!=='play'||!P.alive||P.entering>0)return;
+  if(mode!==1||G.state!=='play'||!P.alive||P.entering>0)return;
   P.tx=clamp(10+(handS[0]-BODY.X0)/(BODY.X1-BODY.X0)*(W-24),10,W-14);
   P.ty=clamp(10+(handS[1]-BODY.Y0)/(BODY.Y1-BODY.Y0)*(H-20),10,H-10);
 });
-Body.on('clap',()=>{if(Body.mode==='cam'&&G.state!=='play'){audioInit();onKey('Enter');}});
-Body.gate({title:'GLADIOLA',corner:'tr',lines:['🚀 <b>左手</b>を 動かす … 機体が 手に ついてくる','体や 右手を 動かしても 機体は 動かない','ショットは 自動','👏 手を たたく … スタート・けってい'],
+// ふたりで：カメラに 2人 うつす。画面の左に立つ人が 1P、右の人が 2P（Body.players[0] / [1]）。手は 自分の 左肩から 見るので 立つ場所は 関係ない
+Body.people=2;
+let seen2At=-9;                                                      // 最後に 2人 うつっていた時刻
+function people(){return performance.now()/1000-seen2At<1?2:1;}
+const hand2=[null,null];
+Body.players.forEach((B,i)=>{
+  B.on('pose',()=>{
+    const h=B.hands[0];
+    if(Body.mode!=='cam'||!h.vis){hand2[i]=null;return}
+    let hs=hand2[i];if(!hs)hs=hand2[i]=[h.px,h.py];
+    const dx=h.px-hs[0],dy=h.py-hs[1];
+    if(Math.hypot(dx,dy)>BODY.DEAD){hs[0]+=dx*BODY.EASE;hs[1]+=dy*BODY.EASE}
+    const q=PS[i];
+    if(mode!==2||G.state!=='play'||!q.alive||q.entering>0)return;
+    q.tx=clamp(10+(hs[0]-BODY.X0)/(BODY.X1-BODY.X0)*(W-24),10,W-14);
+    q.ty=clamp(10+(hs[1]-BODY.Y0)/(BODY.Y1-BODY.Y0)*(H-20),10,H-10);
+  });
+  B.on('clap',camClap);
+});
+function camClap(){
+  if(Body.mode!=='cam'||G.state==='play')return;
+  audioInit();
+  if(G.state==='title'&&people()>=2)startGame2();else onKey('Enter');
+}
+Body.on('clap',camClap);
+Body.on('poses',()=>{if(Body.count>=2)seen2At=performance.now()/1000;});
+Body.gate({title:'GLADIOLA',corner:'tr',lines:['🚀 <b>左手</b>を 動かす … 機体が 手に ついてくる','体や 右手を 動かしても 機体は 動かない','ショットは 自動','👥 <b>2人</b> うつると ふたりで きょうりょく（左の人が 1P）','👏 手を たたく … スタート・けってい'],
  onStart:m=>{if(m==='cam')selIdx=1;}});
-window.__G={G,P,E,EB,PB,CAPS,startGame,restartAt,CP,step(n){for(let i=0;i<n;i++)update();render(0)}};
+window.__G={G,P,E,EB,PB,CAPS,startGame,startGame2,PS,K2,withS,people,get mode(){return mode},restartAt,CP,step(n){for(let i=0;i<n;i++)update();render(0)}};
 })();
 </script>
 </body>
