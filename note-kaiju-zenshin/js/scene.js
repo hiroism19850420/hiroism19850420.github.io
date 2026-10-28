@@ -3,7 +3,10 @@ import { GAME, BAL, SHAPES, ATTACKS, DIFF, COLORS, FAIL_TEXT, QUALITY, STROKE, T
 import { Battle } from './battle.js';
 import { candidate, recognize, pathLength } from './recognizer.js';
 import { Save } from './save.js';
-import { Zen } from './zen.js';
+import { Zen, Zens } from './zen.js';
+
+// ふたりで：1P・2P の色（ペン・線・図形）
+export const PCOLS = [{ hex: 0x1fae9f, css: '#2cb' }, { hex: 0xe24aa8, css: '#f6c' }];
 
 const { VW, VH, AREA } = GAME;
 const FONT = '"Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif';
@@ -53,6 +56,11 @@ export class MainScene extends Phaser.Scene {
     this.zenLock = false;    // 体のペン：線が途中で切られたら、左手を いちど下ろすまで 書かない
     this.zenPos = { x: 480, y: 330 };
     this.zenBot = null;
+    // ふたりで：two＝ふたりで あそんでいる。slots＝1P・2P の 書いている線。pts＝1P・2P の 点数（battle が 数える）
+    this.two = false;
+    this.slots = [null, null];
+    this.zenPos2 = [{ x: 330, y: 330 }, { x: 630, y: 330 }];
+    this.zenLock2 = [false, false];
     this.gArea = this.add.graphics().setDepth(1);
     this.gKept = this.add.graphics().setDepth(1.5);
     this.gPaths = this.add.graphics().setDepth(2);
@@ -66,6 +74,7 @@ export class MainScene extends Phaser.Scene {
 
     // HUD テキスト
     this.tScore = this.txt(20, 26, '', { fontSize: '17px', color: '#fdf6e3' }, 0, 0.5);
+    this.tPen2 = [0, 1].map(i => this.txt(0, 0, (i + 1) + 'P', { fontSize: '16px', color: PCOLS[i].css, stroke: '#1d2a44', strokeThickness: 4 }, 0.5, 0.5).setDepth(18).setVisible(false));
     this.tBossName = this.txt(300, 9, this.ctl.monsterName || 'ラクガキドン', { fontSize: '12px', color: '#fdf6e3' }, 0, 0.5);
     this.tPhase = this.txt(670, 27, '', { fontSize: '15px', color: '#fdf6e3' }, 0, 0.5);
     this.tTime = this.txt(846, 26, '', { fontSize: '26px', color: '#fdf6e3' }, 1, 0.5);
@@ -134,6 +143,7 @@ export class MainScene extends Phaser.Scene {
   // ================= 状態遷移 =================
   toTitle() {
     this.clearPlay();
+    this.two = false;
     this.state = 'TITLE';
     this.view.setMode('title');
     this.audio.playSong('title');
@@ -144,6 +154,7 @@ export class MainScene extends Phaser.Scene {
   clearPlay() {
     this.battle = null;
     this.stroke = null;
+    this.slots = [null, null];
     this.tut = null;
     this.fading.length = 0; this.ghosts.length = 0; this.splashes.length = 0; this.ripples.length = 0;
     this.shots.length = 0; this.triFx.length = 0; this.cracks.length = 0; this.dmgNums.length = 0; this.claws.length = 0;
@@ -159,8 +170,11 @@ export class MainScene extends Phaser.Scene {
 
   get diff() { return DIFF[Save.data.lastDiff] || DIFF.easy; }
 
-  startFromTitle() {
+  // two：ふたりで（練習は とばして すぐ 戦う）
+  startFromTitle(two) {
     if (this.state !== 'TITLE') return;
+    this.two = !!two;
+    if (this.two) { this.startIntro(false); return; }
     if (!Save.data.tutorialDone) this.startTutorial(false);
     else this.startIntro(false);
   }
@@ -374,12 +388,28 @@ export class MainScene extends Phaser.Scene {
   onDown(p) {
     this.audio.unlock();
     const w = this.worldOf(p);
+    if (this.two) { this.withSlot(w.x < VW / 2 ? 0 : 1, () => this.beginStroke(w.x, w.y, p.id)); return; }   // ふたりで：左半分＝1P、右半分＝2P
     this.beginStroke(w.x, w.y, p.id);
   }
+
+  // ふたりで：i 番の人の 書いている線を this.stroke に 入れて fn を よぶ（線を書く しくみを 1人用と 同じに 使う）
+  withSlot(i, fn) {
+    const keep = this.stroke, who = this.curWho;
+    this.stroke = this.slots[i]; this.curWho = i;
+    try { return fn(); } finally { this.slots[i] = this.stroke; this.stroke = keep; this.curWho = who; }
+  }
+  slotOf(id) { return this.slots.findIndex(S => S && S.id === id); }
 
   onMove(p) {
     if (this.state === 'TITLE' && p.pointerType !== 'touch') {
       this.view.setParallax((p.x / this.scale.width - 0.5) * 2, (p.y / this.scale.height - 0.5) * 2);
+    }
+    if (this.two) {
+      const i = this.slotOf(p.id); if (i < 0) return;
+      if (!p.isDown) { this.onUp(p); return; }
+      const w = this.worldOf(p);
+      this.withSlot(i, () => this.moveStroke(w.x, w.y));
+      return;
     }
     const S = this.stroke;
     if (!S || p.id !== S.id) return;
@@ -389,6 +419,7 @@ export class MainScene extends Phaser.Scene {
   }
 
   onUp(p) {
+    if (this.two) { const i = this.slotOf(p.id); if (i >= 0) this.withSlot(i, () => this.endStroke()); return; }
     const S = this.stroke;
     if (!S || p.id !== S.id) return;
     this.endStroke();
@@ -422,7 +453,7 @@ export class MainScene extends Phaser.Scene {
     this.stroke = null;
     if (this.tut && this.tut.step === 0) { this.fadeStroke(S.points, COLORS.ink); return; }   // ペンの確かめは 図形にしない
     if (!this.battle || !this.canDraw()) { this.fadeStroke(S.points, 0x9aa3b5); return; }
-    const res = this.battle.submitStroke({ points: S.points });
+    const res = this.battle.submitStroke({ points: S.points, who: this.two ? this.curWho : undefined });
     this.lastResult = res;
     if (res.invalid) {
       this.fadeStroke(S.points, 0x8fa0c8);
@@ -444,6 +475,10 @@ export class MainScene extends Phaser.Scene {
   }
 
   cancelStroke() {
+    if (this.two && this.curWho == null) {   // ふたりで：ふたりぶん 取り消す
+      [0, 1].forEach(i => this.withSlot(i, () => { if (this.stroke && this.stroke.id === 'zen' && Zens[i].leftUp) this.zenLock2[i] = true; this.cancelStroke(); }));
+      return;
+    }
     if (!this.stroke) return;
     if (this.stroke.id === 'zen' && Zen.leftUp) this.zenLock = true;
     this.fadeStroke(this.stroke.points, 0x9aa3b5);
@@ -453,6 +488,7 @@ export class MainScene extends Phaser.Scene {
   // ================= 体のペン（ぜんしん版） =================
   // 左手を挙げている間 = ポインタを押している間。右手首の位置を 描くところ（AREA）に写して 同じ処理へ渡す
   zenUpdate(dt) {
+    if (this.two) { this.zenUpdate2(dt); return; }
     if (!Zen.on) return;
     if (this.zenBot) this.zenBot(dt);
     const drawer = this.ui.drawerOpen();
@@ -476,6 +512,25 @@ export class MainScene extends Phaser.Scene {
     }
   }
 
+  // ふたりで：Zens[0]（画面の左の人）が 1P、Zens[1] が 2P。それぞれの ペンで 同じ紙に 書く
+  zenUpdate2(dt) {
+    if (!Zen.on) return;
+    if (this.zenBot) this.zenBot(dt);
+    Zens.forEach((Z, i) => {
+      Z.setCtx('battle'); Z.tick(dt);
+      if (Z.pauseReq) { Z.pauseReq = false; if (['BATTLE', 'INTRO', 'RESUMING'].includes(this.state)) this.pause('gesture'); }
+      const w = this.zenPos2[i];
+      w.x = AREA.x0 + Z.pen.x * (AREA.x1 - AREA.x0);
+      w.y = AREA.y0 + Z.pen.y * (AREA.y1 - AREA.y0);
+      if (!Z.leftUp) this.zenLock2[i] = false;
+      this.withSlot(i, () => {
+        const S = this.stroke;
+        if (S && S.id === 'zen') { if (!Z.writing) this.endStroke(); else this.moveStroke(w.x, w.y); }
+        else if (!S && Z.writing && !this.zenLock2[i]) this.beginStroke(w.x, w.y, 'zen');
+      });
+    });
+  }
+
   zenStatus() {
     const s = Zen.status();
     if (s === 'writing' && this.zenLock) return 'relift';
@@ -486,7 +541,7 @@ export class MainScene extends Phaser.Scene {
   updateGuide() {
     const G = this.ctl.guide;
     if (!G) return;
-    if (!Zen.on) { G.update('hidden', '', null); return; }
+    if (!Zen.on || this.two) { G.update('hidden', '', null); return; }   // ふたりで は 案内を出さない（ペンに 1P・2P を出す）
     const st = this.state;
     const drawer = this.ui.drawerOpen();
     const live = ['BATTLE', 'TUTORIAL', 'PRACTICE', 'INTRO', 'RESUMING', 'TUT_DONE'].includes(st);
@@ -504,6 +559,18 @@ export class MainScene extends Phaser.Scene {
   // ペンの点：書いていないときは 中が空いた うすい丸、書いているときは 濃いインク色の 太い丸
   drawZenPen() {
     const g = this.gZen;
+    if (this.two) {   // ふたりで：それぞれの色の ペンと 1P・2P の 文字
+      Zens.forEach((Z, i) => {
+        const t = this.tPen2[i], { x, y } = this.zenPos2[i], c = PCOLS[i].hex;
+        t.setVisible(Zen.on && Z.rVis);
+        if (!Zen.on || !Z.rVis) return;
+        const on = this.slots[i] && this.slots[i].id === 'zen';
+        if (on) { g.fillStyle(c, 0.25); g.fillCircle(x, y, 17); g.fillStyle(c, 1); g.fillCircle(x, y, 10); g.lineStyle(2.5, 0xffffff, 0.9); g.strokeCircle(x, y, 12.5); }
+        else { g.lineStyle(3, c, 0.8); g.strokeCircle(x, y, 12); g.fillStyle(c, 0.6); g.fillCircle(x, y, 3); }
+        t.setPosition(x, y - 26);
+      });
+      return;
+    }
     if (!Zen.on || !Zen.rVis) return;
     const { x, y } = this.zenPos;
     if (this.stroke && this.stroke.id === 'zen') {
@@ -518,7 +585,7 @@ export class MainScene extends Phaser.Scene {
 
   // 両手を上げている間：ポーズまでの輪
   drawZenPause() {
-    const h = Zen.pauseHold;
+    const h = this.two ? Math.max(Zens[0].pauseHold, Zens[1].pauseHold) : Zen.pauseHold;
     const on = Zen.on && h > 0.05 && ['BATTLE', 'TUTORIAL', 'INTRO'].includes(this.state);
     this.tZen.setVisible(on);
     if (!on) return;
@@ -662,15 +729,19 @@ export class MainScene extends Phaser.Scene {
     this.endT = 0;
     this.summary = sum;
     this.ui.setPauseButton(false);
+    if (this.two) {   // ふたりで：記録は のこさない。点数の 多いほうが 勝ち
+      const P = this.battle.pts;
+      sum.two = true; sum.pts = P.slice(); sum.winner = P[0] > P[1] ? 0 : P[1] > P[0] ? 1 : -1;
+    }
     // 記録
     const D = Save.data;
     const best = D.best[sum.diff];
-    sum.newScore = sum.score > best.score;
-    sum.newTime = sum.result === 'win' && (best.timeMs === 0 || sum.timeMs < best.timeMs);
+    sum.newScore = !sum.two && sum.score > best.score;
+    sum.newTime = !sum.two && sum.result === 'win' && (best.timeMs === 0 || sum.timeMs < best.timeMs);
     sum.prevBest = { ...best };
     if (sum.newScore) best.score = sum.score;
     if (sum.newTime) best.timeMs = sum.timeMs;
-    if (sum.result === 'win') D.wins++;
+    if (sum.result === 'win' && !sum.two) D.wins++;
     if (!Save.write()) sum.saveFailed = true;
     if (sum.result === 'win') {
       this.state = 'VICTORY';
@@ -783,6 +854,7 @@ export class MainScene extends Phaser.Scene {
 
   // 長すぎる線は 取り消す（ぜんしん版は STROKE.maxTime まで待つ）
   strokeTimeout() {
+    if (this.two && this.curWho == null) { [0, 1].forEach(i => this.withSlot(i, () => this.strokeTimeout())); return; }
     if (this.stroke && this.clock - this.stroke.t0 >= STROKE.maxTime) {
       const zen = this.stroke.id === 'zen';
       this.cancelStroke();
@@ -842,6 +914,7 @@ export class MainScene extends Phaser.Scene {
     for (const t of this.dmgPool) t.setVisible(false);
     this.tCand.setVisible(false);
     this.drawZenPause();
+    this.tPen2.forEach(t => t.setVisible(false));
 
     if (this.state === 'RESULT' && this.summary && this.summary.result === 'win') this.drawKept();
     if (!showPlay) { this.hudVisible(false); this.tMsg.setVisible(false); this.tBig.setVisible(false); this.tTut.setVisible(false); return; }
@@ -1057,17 +1130,18 @@ export class MainScene extends Phaser.Scene {
       const formed = Math.min(1, s.age / 0.12);
       let al = 1;
       if (s.life < 0.4) al = 0.45 + 0.55 * Math.abs(Math.sin(s.life * 18));
+      const ink = s.who != null ? PCOLS[s.who].hex : COLORS.ink;   // ふたりで：書いた人の色
       // 元の筆跡の薄い残像
-      this.polyline(g, s.raw, 3, COLORS.ink, 0.22 + 0.5 * (1 - formed));
+      this.polyline(g, s.raw, 3, ink, 0.22 + 0.5 * (1 - formed));
       if (s.type === 'line') {
         const cx = (s.x1 + s.x2) / 2, cy = (s.y1 + s.y2) / 2;
         const k = 0.85 + 0.15 * formed;
         const x1 = cx + (s.x1 - cx) * k, y1 = cy + (s.y1 - cy) * k, x2 = cx + (s.x2 - cx) * k, y2 = cy + (s.y2 - cy) * k;
         g.lineStyle(SHAPES.line.width + 6, COLORS.inkLight, 0.25 * al * formed);
         g.lineBetween(x1, y1, x2, y2);
-        g.lineStyle(SHAPES.line.width, COLORS.ink, al * formed);
+        g.lineStyle(SHAPES.line.width, ink, al * formed);
         g.lineBetween(x1, y1, x2, y2);
-        g.fillStyle(COLORS.ink, al * formed);
+        g.fillStyle(ink, al * formed);
         g.fillCircle(x1, y1, SHAPES.line.width / 2); g.fillCircle(x2, y2, SHAPES.line.width / 2);
         g.lineStyle(2, COLORS.inkCore, 0.9 * al * formed);
         g.lineBetween(x1, y1, x2, y2);
@@ -1075,7 +1149,7 @@ export class MainScene extends Phaser.Scene {
         const r = s.r * (0.8 + 0.2 * formed);
         g.fillStyle(COLORS.inkLight, 0.16 * al * formed);
         g.fillCircle(s.cx, s.cy, r);
-        g.lineStyle(5, COLORS.ink, al * formed);
+        g.lineStyle(5, ink, al * formed);
         if (s.dur >= 2) g.strokeCircle(s.cx, s.cy, r);
         else {
           const ga = s.gapAng ?? -Math.PI / 2;
@@ -1133,6 +1207,10 @@ export class MainScene extends Phaser.Scene {
   drawStroke() {
     const g = this.gStroke;
     for (const f of this.fading) this.smoothLine(g, f.points, 4, f.color, Math.max(0, f.t / 0.25) * 0.8);
+    if (this.two && this.curWho == null) { [0, 1].forEach(i => this.withSlot(i, () => this.drawOneStroke(g))); return; }
+    this.drawOneStroke(g);
+  }
+  drawOneStroke(g) {
     const S = this.stroke;
     if (!S) return;
     const el = this.clock - S.t0;
@@ -1140,7 +1218,7 @@ export class MainScene extends Phaser.Scene {
     S.candT -= 1;
     if (S.candT <= 0) { S.cand = candidate(S.points); S.candT = 4; }
     const B = this.battle;
-    let color = COLORS.ink;
+    let color = this.two && this.curWho != null ? PCOLS[this.curWho].hex : COLORS.ink;
     if (S.cand && B && this.state !== 'PRACTICE') {
       const need = SHAPES[S.cand].ink;
       if (B.player.ink < need) color = 0xa8a8a8;
@@ -1316,7 +1394,7 @@ export class MainScene extends Phaser.Scene {
     g.lineStyle(2, 0xfbf7ec, 0.9);
     for (const th of B.thresholds) { const x = bx + bw * th / Bo.max; g.lineBetween(x, by - 4, x, by + bh + 4); }
     this.tPhase.setText(`PHASE ${Bo.phase}`);
-    this.tScore.setText(st === 'TUTORIAL' ? 'れんしゅう' : `SCORE ${B.score}`);
+    this.tScore.setText(st === 'TUTORIAL' ? 'れんしゅう' : this.two ? `1P ${B.pts[0]} ／ 2P ${B.pts[1]}` : `SCORE ${B.score}`);
     // 時間
     if (st === 'TUTORIAL') this.tTime.setText('');
     else {

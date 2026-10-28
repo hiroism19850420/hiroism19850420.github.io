@@ -21,9 +21,11 @@ function oneEuro(minC, beta) {
   f.reset = () => { x = null; };
   return f;
 }
+// 1人ぶんの 体のペンを作る。ふたりで あそぶときは Zens[0]（1P）・Zens[1]（2P）を それぞれの体で動かす
+export function makeZen() {
 const fX = oneEuro(ZEN.SMOOTH.minCutoff, ZEN.SMOOTH.beta), fY = oneEuro(ZEN.SMOOTH.minCutoff, ZEN.SMOOTH.beta);
 
-export const Zen = {
+return {
   on: false,            // カメラで遊んでいる（または ?dbg の nkz.zen() で 合成入力）
   ctx: 'battle',        // 'battle' | 'pad'
   fake: null,           // 合成入力 { x, y, left, lv, rv, both }
@@ -138,3 +140,6 @@ export const Zen = {
   // 拍手を「できた」に使ってよいか（左手を挙げている間・下ろした直後は使わない）
   quiet() { return !this.leftUp && this.clock - this.leftDownAt >= ZEN.CLAP_QUIET; },
 };
+}
+export const Zen = makeZen();
+export const Zens = [makeZen(), makeZen()];

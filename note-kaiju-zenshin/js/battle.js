@@ -71,6 +71,7 @@ export class Battle {
     this.hitStop = 0;
     this.combo = 0;
     this.score = 0;
+    this.pts = [0, 0];   // ふたりで：1P・2P の 点数（守った・三角を当てた 人に 入る）
     this.history = [];            // 攻撃の履歴
     this.laneHist = [];
     this.seen = {};               // 攻撃種別の初回
@@ -124,7 +125,7 @@ export class Battle {
       }
       if (!infinite) { this.player.ink -= def.ink; this.player.focus -= def.focus; }
       this.stats.used.tri++;
-      const tri = { id: SID++, verts: r.verts, t: 0, hit: false, raw: stroke.points };
+      const tri = { id: SID++, verts: r.verts, t: 0, hit: false, raw: stroke.points, who: stroke.who };
       this.tris.push(tri);
       this.emit('triFire', tri);
       return { ok: true, rec: r, shape: tri };
@@ -141,7 +142,7 @@ export class Battle {
       const old = this.shapes.shift();
       this.expireShape(old, 'replaced');
     }
-    const s = { id: SID++, type: r.type, born: this.time, life: def.life, maxLife: def.life, dur: def.durability, raw: stroke.points, age: 0 };
+    const s = { id: SID++, type: r.type, born: this.time, life: def.life, maxLife: def.life, dur: def.durability, raw: stroke.points, age: 0, who: stroke.who };
     if (r.type === 'line') { s.x1 = r.x1; s.y1 = r.y1; s.x2 = r.x2; s.y2 = r.y2; }
     else { s.cx = r.cx; s.cy = r.cy; s.r = Math.max(def.rMin, Math.min(def.rMax, r.r)); s.rawR = r.r; }
     this.shapes.push(s);
@@ -363,7 +364,9 @@ export class Battle {
         tr.hit = true;
         if (this.state !== 'over' && this.mode !== 'practice') {
           this.stats.triHits++;
-          this.score += Math.round(SHAPES.tri.score * this.multiplier());
+          const pt = Math.round(SHAPES.tri.score * this.multiplier());
+          this.score += pt;
+          if (tr.who != null) this.pts[tr.who] += pt;
           this.suppress = Math.max(this.suppress, BAL.triSuppress);
           this.nextAttackIn = Math.max(this.nextAttackIn, BAL.triMinRest);
           this.hitStop = this.reduceFx ? BAL.hitStop * 0.5 : BAL.hitStop;
@@ -479,7 +482,11 @@ export class Battle {
     this.stats.blockBy[s.type]++;
     const prevFocus = this.player.focus;
     this.player.focus = Math.min(BAL.focusMax, this.player.focus + def.focus);
-    if (this.mode !== 'practice') this.score += Math.round(def.score * this.multiplier());
+    if (this.mode !== 'practice') {
+      const pt = Math.round(def.score * this.multiplier());
+      this.score += pt;
+      if (s.who != null) this.pts[s.who] += pt;
+    }
     this.emit('block', { s, x, y, a, it, combo: this.combo, dmg: def.dmg });
     if (prevFocus < BAL.focusMax && this.player.focus >= BAL.focusMax) this.emit('focusFull', {});
     this.damageBoss(def.dmg, false);

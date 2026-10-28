@@ -8,16 +8,20 @@ import { MainScene } from './scene.js';
 import { recognize, pointSegDist } from './recognizer.js';
 import { Battle } from './battle.js';
 import { buildArt, isUsable, unpackStrokes, drawCustomDoodle, autoName } from './custom-monster.js';
-import { Zen } from './zen.js';
+import { Zen, Zens } from './zen.js';
 import { Guide } from './guide.js';
 
 const stage = document.getElementById('stage');
+// ふたりで：カメラに 2人 うつす。画面の左に立つ人が 1P、右の人が 2P（それぞれ 自分の 右手首が ペン）
+let seen2At = -9;
+if (window.Body) window.Body.people = 2;
 const Body = window.Body;
 const isMobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 const ctl = {
   view: null, audio: new AudioManager(), ui: null, scene: null, game: null,
   fixedSeed: null,
+  people() { return performance.now() / 1000 - seen2At < 1 ? 2 : 1; },   // いま カメラに 2人 うつっているか
   isPortrait() { return isMobile && window.innerHeight > window.innerWidth; },
   applyQuality() {
     const q = Save.data.quality || ctl.autoQuality;
@@ -81,11 +85,22 @@ if (Body) {
       '👇 <b>左手を おろす</b> … ペンが はなれて、線が きまる（線・丸・三角）',
       '👏 <b>はくしゅ</b> … はじめる・できた（怪獣を描く）・つづける',
       '🙌 <b>両手を 高く 1びょう</b> … ポーズ',
+      '👥 <b>2人</b> うつると ふたりで 点数きそう（左の人が 1P）',
     ],
     onStart: (m) => { if (m === 'cam') zenOn(); },
   });
   Body.on('pose', (B) => { if (Body.mode === 'cam' && !Zen.fake && B.lm) Zen.feed(B.lm, B.asp); });
   Body.on('clap', () => { if (Body.mode === 'cam') ctl.ui.onClap(); });
+  Body.players.forEach((P, i) => {
+    P.on('pose', (B) => { if (Body.mode === 'cam' && !Zens[i].fake && B.lm) Zens[i].feed(B.lm, Body.asp || B.asp); });
+    P.on('clap', () => { if (Body.mode === 'cam' && ctl.scene && ctl.scene.two) ctl.ui.onClap(); });   // ひとりの ときは 主役の 手たたきだけ
+  });
+  let two0 = false;
+  Body.on('poses', () => {
+    if (Body.count >= 2) seen2At = performance.now() / 1000;
+    const two = ctl.people() >= 2;
+    if (two !== two0) { two0 = two; if (ctl.ui.titleOpen()) ctl.ui.refreshTitle(); }   // タイトルの「ふたりで 👏」を 変える
+  });
 }
 
 // カメラの小さな映像は 画面の右上（ポーズボタンの下）に、ゲームの大きさに合わせて置く
@@ -161,6 +176,8 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('keydown', (e) => {
   const s = ctl.scene;
   if (!s) return;
+  if (s.state === 'TITLE' && ctl.ui.titleOpen() && (e.key === '1' || e.key === '2')) { ctl.audio.unlock(); ctl.ui.startGame(e.key === '2'); return; }
+  if (e.key === 'Escape' && s.state === 'RESULT' && s.two) { s.toTitle(); e.preventDefault(); return; }
   if (e.key === 'Escape') { s.togglePause(); e.preventDefault(); }
   else if (e.key === 'm' || e.key === 'M') {
     Save.data.muted = !Save.data.muted; Save.write();
@@ -222,7 +239,7 @@ async function boot() {
     transparent: true,
     banner: false,
     scale: { mode: Phaser.Scale.NONE, zoom: 1 / pr },
-    input: { activePointers: 1, mouse: { preventDefaultWheel: false } },
+    input: { activePointers: 2, mouse: { preventDefaultWheel: false } },   // ふたりで：指2本で 1P・2P
     render: { antialias: true, roundPixels: false },
     callbacks: { preBoot: (game) => game.registry.set('ctl', ctl) },
     scene: [MainScene],
@@ -353,6 +370,36 @@ if (new URLSearchParams(location.search).has('dbg')) {
       return ctl.ui.drawStrokes.length;
     },
     frame,
+    // ---- ふたりで ----
+    // two()：ふたりで はじめる（タイトルから）。zen2()：1P・2P の 体のペンを 合成する
+    // hand2(i, x, y)・left2(i, on)：i 番の人の 右手・左手。trace2(i, 'line'|'circle'|'tri', cx, cy, s)
+    two() { ctl.scene.startFromTitle(true); return ctl.scene.state; },
+    zen2(on = true) { Zens.forEach(Z => { Z.fake = on ? { x: 0.5, y: 0.6, left: false, lv: true, rv: true, both: false } : null; }); if (on && !Zen.on) zenOn(); return Zen.on; },
+    hand2(i, x, y) { Zens[i].fake.x = x; Zens[i].fake.y = y; },
+    left2(i, on = true) { Zens[i].fake.left = on; },
+    trace2(i, kind, cx = 480, cy = 340, s = 70) {
+      const pts = Array.isArray(kind) ? kind : path(kind, cx, cy, s);
+      const F = Zens[i].fake;
+      [F.x, F.y] = toN(pts[0][0], pts[0][1]); F.left = false; frame(2);
+      F.left = true; frame(1);
+      for (const p of pts) { [F.x, F.y] = toN(p[0], p[1]); frame(1); }
+      S().lastResult = null;
+      F.left = false; frame(2);
+      const r = S().lastResult;
+      return r ? { ok: r.ok, type: r.rec && r.rec.type, who: r.shape ? r.shape.who : null } : null;
+    },
+    // 2人ぶんの 関節を body.js へ 入れる（a・b：{ rw:[x,y], lw:[x,y] }、x は 画面の 0〜1。a は 画面の 左の人）
+    feed2(a, b) {
+      const mk = ({ rw, lw, cx }) => {
+        const lm = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, visibility: 0.9 }));
+        const m = (k, x, y, v = 0.95) => { lm[k] = { x: 1 - x, y, visibility: v }; };
+        m(11, cx - 0.08, 0.45); m(12, cx + 0.08, 0.45); m(0, cx, 0.32); m(23, cx - 0.06, 0.75); m(24, cx + 0.06, 0.75);
+        m(15, lw[0], lw[1]); m(16, rw[0], rw[1]); return lm;
+      };
+      const A = mk({ cx: 0.27, ...a }), B = mk({ cx: 0.73, ...b });
+      Body.feedPlayers([A, B], 0.033); Body.emit('poses', { all: [A, B], dt: 0.033, asp: 4 / 3 });
+      return Zens.map(Z => ({ pen: { ...Z.tgt }, leftRaw: Z.leftRaw }));
+    },
     // 自動で戦う（体のペンの合成入力で）。予告線の通り道に 線か丸、集中3つで三角
     bot(on = true) {
       const sc = S();

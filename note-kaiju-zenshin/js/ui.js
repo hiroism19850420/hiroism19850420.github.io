@@ -35,6 +35,7 @@ export class UI {
 
   bind() {
     this.btn('btnStart', () => this.startGame());
+    this.btn('btnTwo', () => this.startGame(true));
     this.btn('btnHow', () => { if (this.ctl.isPortrait()) { this.showRotate(true); return; } this.scene.startTutorial(true); });
     this.btn('btnPractice', () => { if (this.ctl.isPortrait()) { this.showRotate(true); return; } this.scene.startPractice(); });
     this.btn('btnSettings', () => this.showSettings());
@@ -107,14 +108,16 @@ export class UI {
   }
 
   // タイトルの「はじめる」と 拍手。カメラのときは 3・2・1 のあとで始める
-  startGame() {
+  // two：ふたりで（同じ紙に 1P と 2P が 書いて、点数を きそう）
+  startGame(two) {
     if (this.ctl.isPortrait()) { this.showRotate(true); return; }
     if (this.counting || !this.scene || this.scene.state !== 'TITLE') return;
     this.counting = true;
-    const wait = window.Body ? window.Body.countdown(3, 'はなれて かまえてね<br>左手を あげると、右手で かけるよ') : Promise.resolve();
+    const text = two ? 'ふたりで ならんで かまえてね<br>左の人が 1P、右の人が 2P' : 'はなれて かまえてね<br>左手を あげると、右手で かけるよ';
+    const wait = window.Body ? window.Body.countdown(3, text) : Promise.resolve();
     wait.then(() => {
       this.counting = false;
-      this.scene.startFromTitle();
+      this.scene.startFromTitle(two);
     });
   }
 
@@ -123,7 +126,7 @@ export class UI {
     const s = this.scene;
     if (!s || !$('confirm').hidden || !$('settings').hidden || !$('imageModal').hidden || !$('rotate').hidden) return;
     if (this.drawerOpen()) { this.zenDone(); return; }
-    if (s.state === 'TITLE' && this.titleOpen()) { this.click(); this.startGame(); }
+    if (s.state === 'TITLE' && this.titleOpen()) { this.click(); this.startGame(this.ctl.people() >= 2); }   // 2人 うつっていれば ふたりで
     else if (s.state === 'PAUSED') { this.click(); s.resume(); }
     else if (s.state === 'RESULT') { this.click(); s.retry(); }
   }
@@ -155,13 +158,16 @@ export class UI {
     $('bestLine').textContent = best.score > 0
       ? `最高記録（${DIFF[d.lastDiff].name}）  ${best.score.toLocaleString()} 点${best.timeMs ? ` ／ 最短 ${fmtTime(best.timeMs)}` : ''}`
       : `最高記録（${DIFF[d.lastDiff].name}）  まだありません`;
-    $('btnStart').textContent = Zen.on ? 'はじめる 👏' : 'はじめる';
+    const two = Zen.on && this.ctl.people() >= 2;
+    $('btnStart').textContent = Zen.on && !two ? 'はじめる 👏' : 'ひとりで';
+    $('btnTwo').textContent = two ? 'ふたりで 👏' : 'ふたりで';
+    $('twoNote').textContent = Zen.on ? (two ? '👏 はくしゅで ふたりで スタート' : '2人 うつれば ふたりで（左の人が 1P）') : 'マウス・タッチは 左半分が 1P、右半分が 2P';
     $('startNote').textContent = d.tutorialDone ? '' : 'はじめてなら、まず かんたんな練習から';
     $('foeLine').textContent = `いまの相手：${this.ctl.monsterName || 'ラクガキドン'}${d.useCustom ? '（きみの絵）' : ''}`;
     $('playCount').textContent = d.plays ? `あそんだ回数 ${d.plays} ／ 封印 ${d.wins}` : '';
   }
 
-  setStartEnabled(on) { $('btnStart').disabled = !on; $('btnHow').disabled = !on; $('btnPractice').disabled = !on; }
+  setStartEnabled(on) { $('btnTwo').disabled = !on; $('btnStart').disabled = !on; $('btnHow').disabled = !on; $('btnPractice').disabled = !on; }
 
   showSettings() {
     $('settings').hidden = false;
@@ -485,6 +491,21 @@ export class UI {
     $('resAdvice').textContent = !win && s.topFail ? `ヒント：${ADVICE[s.topFail]}` : '';
     $('btnDiff').textContent = `→ ${DIFF[s.diff === 'easy' ? 'normal' : 'easy'].name}で`;
     $('resZen').hidden = !Zen.on;
+    // ふたりで：勝ち負けを 上に、1P・2P の 点数を 出す
+    const two = !!s.two;
+    for (const id of ['btnDiff', 'btnImage']) $(id).hidden = two;
+    $('btnAgain').textContent = two ? 'もういちど（R）' : 'もう一度（R）';
+    $('btnResTitle').textContent = two ? 'タイトルへ（Esc）' : 'タイトルへ';
+    if (two) {
+      const w = s.winner;
+      $('resHead').innerHTML = `<span style="color:${w < 0 ? '#1d2a44' : ['#1a9e90', '#d63c9a'][w]}">${w < 0 ? 'ひきわけ' : (w + 1) + 'P の勝ち!'}</span>`;
+      $('resRank').textContent = w < 0 ? '＝' : (w + 1) + 'P';
+      $('resRank').className = 'rank';
+      $('resScore').innerHTML = `<span style="color:#1a9e90">${s.pts[0].toLocaleString()}</span> － <span style="color:#d63c9a">${s.pts[1].toLocaleString()}</span>`;
+      $('resStats').innerHTML = [['1P の 点数', s.pts[0].toLocaleString()], ['2P の 点数', s.pts[1].toLocaleString()], ['怪獣', win ? '封印した！' : `残り ${s.bossHp} / ${s.bossMax}`], ['戦闘時間', fmtTime(s.timeMs)], ['点数の きまり', '守ると 線100・丸80、三角が 当たると 250']]
+        .map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join('');
+      $('resAdvice').hidden = true;
+    }
     if (s.saveFailed) this.toast('記録を保存できませんでした');
   }
 
