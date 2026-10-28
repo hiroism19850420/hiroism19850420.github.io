@@ -24,6 +24,16 @@ let state='title',stage=1,lives=3,score=0,best=0,overAt=0;
 let stack=[],BH=20,drop=0,flying=[],effects=[];
 let timeLeft=0,timeMax=1,stun=0,phaseT=0,pressed=[0,0,0],hammerT=0;
 let catMood='normal',moodT=0,catShake=0;
+// ふたりで：画面を 左右に わけて、同じ つみきの タワーを 2人で きょうそう。先に ネコを おろした方が 1勝、先に3勝で 勝ち
+const KEYS2=[[['1','z'],['2','x'],['3','c']],[['8','j'],['9','k'],['0','l']]];  // 1P / 2P
+const PCOL=[{c:'#2cb'},{c:'#f6c'}];
+const WIN=3;
+let mode=1,FW=W,round=1,pl=[],gfx=[],btns=[],done=false,wins=0;
+function mkLane(){return {stack:[],drop:0,flying:[],effects:[],stun:0,pressed:[0,0,0],hammerT:0,catMood:'normal',moodT:0,catShake:0,done:false,wins:0};}
+function saveP(p){Object.assign(p,{stack,drop,flying,effects,stun,pressed,hammerT,catMood,moodT,catShake,done,wins});}
+function loadP(p){({stack,drop,flying,effects,stun,pressed,hammerT,catMood,moodT,catShake,done,wins}=p);}
+function withP(i,fn){loadP(pl[i]);try{return fn();}finally{saveP(pl[i]);}}
+function setMode(m){mode=m;FW=W*m;if(cv.width!==FW)cv.width=FW;pl=[];for(let i=0;i<m;i++)pl.push(mkLane());}
 
 // ---------- 積み木の並び（規則的なパターンが途中で切り替わる） ----------
 const PATS=[[0,1,2],[0,0,1,1,2,2],[0,1,0,2],[0,1,2,1],[0,0,1,2],[0,1,1,2,2,2]];
@@ -44,10 +54,13 @@ function startStage(){
   stack=makeStack(n);
   const rate=Math.min(6,1+stage*0.4);         // 1秒あたりに必要な段数（上限6）
   timeMax=timeLeft=Math.ceil(n/rate*10)/10;
-  drop=0;flying=[];stun=0;catMood='normal';moodT=0;
+  drop=0;flying=[];stun=0;catMood='normal';moodT=0;done=false;
+  if(mode===2){const st=stack;pl.forEach((p,i)=>withP(i,()=>{stack=st.slice();drop=0;flying=[];stun=0;catMood='normal';moodT=0;done=false;}));}
   state='ready';readyT=0;cdStep=0;
 }
-function newGame(){stage=1;lives=3;score=0;effects=[];startStage();}
+function newGame(){stage=1;round=1;lives=3;score=0;effects=[];gfx=[];if(mode===2)setMode(2);startStage();}
+function toTitle(){setMode(1);gfx=[];newGame();state='title';}
+function gfxAdd(x,y,text,color,size,life=0.7){gfx.push({x,y,text,color,size,life,max:life,rot:(Math.random()-0.5)*0.3});}
 
 // ---------- 効果音 ----------
 let actx=null,noiseBuf=null;
@@ -232,14 +245,21 @@ function drawButtons(){
 // ---------- ゲーム処理 ----------
 function press(i){
   pressed[i]=0.12;
-  if(state!=='play'||stun>0)return;
+  if(state!=='play'||stun>0||done)return;
   if(stack[0]===i){
     stack.shift();hammerT=0.1;
     flying.push({c:i,x:CX,y:FLOOR-BH/2-drop,vx:-(700+Math.random()*300),vy:-150-Math.random()*150,
       rot:0,vr:-(8+Math.random()*6),w:BW,h:BH,t:0});
     drop+=BH;score++;playHit();
     fx(CX-BW/2-10,FLOOR-50,'カン!',TYPES[i].c,34,0.5);
-    if(stack.length===0){
+    if(stack.length===0&&mode===2){                                  // ふたりで：先に おろした人の 勝ち
+      done=true;wins++;catMood='happy';playClear();
+      state='round';phaseT=2.8;
+      fx(CX,280,'ネコおろし成功!','#fc3',40,1.6);
+      const me=pl.findIndex(p=>p.stack===stack);
+      gfxAdd(FW/2,360,(me+1)+'P の勝ち!',PCOL[me].c,60,2.2);
+      pl.forEach((p,k)=>{if(k!==me){p.catMood='cry';p.moodT=0;}});
+    }else if(stack.length===0){
       const bonus=Math.ceil(timeLeft)*5;score+=bonus;
       state='clear';phaseT=2.2;catMood='happy';playClear();
       fx(CX,280,'ネコおろし成功!','#fc3',40,1.6);
@@ -252,6 +272,13 @@ function press(i){
 }
 
 function update(dt){
+  if(mode===2){pl.forEach((p,i)=>withP(i,()=>updLane(dt)));}
+  else updLane(dt);
+  gfx.forEach(f=>{f.life-=dt;f.y-=30*dt;});
+  gfx=gfx.filter(f=>f.life>0);
+  updState(dt);
+}
+function updLane(dt){
   for(let i=0;i<3;i++)pressed[i]=Math.max(0,pressed[i]-dt);
   hammerT=Math.max(0,hammerT-dt);catShake=Math.max(0,catShake-dt);stun=Math.max(0,stun-dt);
   if(moodT>0){moodT-=dt;if(moodT<=0&&state==='play')catMood='normal';}
@@ -260,18 +287,24 @@ function update(dt){
   effects=effects.filter(f=>f.life>0);
   flying.forEach(f=>{f.t+=dt;f.x+=f.vx*dt;f.vy+=1500*dt;f.y+=f.vy*dt;f.rot+=f.vr*dt;});
   flying=flying.filter(f=>f.t<1.5&&f.x>-200&&f.y<H+50);
-
+}
+function updState(dt){
   if(state==='ready'){
     readyT+=dt;
     const step=Math.floor((readyT-CD_INTRO)/CD_STEP)+1;   // 1=「3」 2=「2」 3=「1」 4=スタート
     if(readyT>=CD_INTRO&&step>cdStep){
       cdStep=step;
-      if(cdStep>=4){state='play';playCount(true);fx(CX,320,'スタート!','#fff',52,0.7);}
+      if(cdStep>=4){state='play';playCount(true);if(mode===1)fx(CX,320,'スタート!','#fff',52,0.7);else gfxAdd(FW/2,320,'スタート!','#fff',52,0.7);}
       else playCount(false);
     }
   }else if(state==='play'){
     timeLeft-=dt;
-    if(timeLeft<=0){
+    if(timeLeft<=0&&mode===2){                                       // ふたりで：どちらも おろせず → ひきわけ
+      timeLeft=0;state='round';phaseT=2.6;playFail();
+      pl.forEach(p=>{p.catMood='cry';p.moodT=0;});
+      gfxAdd(FW/2,250,'時間切れ…','#aaa',44,1.6);
+      gfxAdd(FW/2,320,'ひきわけ','#fff',40,1.6);
+    }else if(timeLeft<=0){
       timeLeft=0;state='fail';phaseT=2;lives--;catMood='cry';playFail();
       fx(CX,300,'時間切れ…','#aaa',44,1.4);
     }
@@ -282,11 +315,19 @@ function update(dt){
       else if(lives<=0){state='over';best=Math.max(best,score);overAt=performance.now();}
       else startStage();
     }
+  }else if(state==='round'){
+    phaseT-=dt;
+    if(phaseT<=0){
+      if(pl.some(p=>p.wins>=WIN)){state='over';overAt=performance.now();}
+      else{
+        if(pl.some(p=>p.done))stage++;                               // 勝負がついたら 次は 少し 高い タワー
+        round++;startStage();
+      }
+    }
   }
 }
 
-function draw(){
-  const now=performance.now();
+function drawLane(li,now){
   ctx.fillStyle='#fdf0d5';ctx.fillRect(0,0,W,FLOOR);
   ctx.fillStyle='#f6e0b5';
   for(let y=20,r=0;y<FLOOR;y+=48,r++)for(let x=(r%2)*24+12;x<W;x+=48)circle(x,y,5);
@@ -315,46 +356,99 @@ function draw(){
     ctx.globalAlpha=1;
   }
 
-  bigText('点数 '+score,80,30,22,'#fc3');
-  bigText('♥'.repeat(Math.max(0,lives)),W-60,30,24,'#f45');
+  if(mode===1){
+    bigText('点数 '+score,80,30,22,'#fc3');
+    bigText('♥'.repeat(Math.max(0,lives)),W-60,30,24,'#f45');
+  }else{
+    bigText((li+1)+'P',36,30,28,PCOL[li].c);
+    bigText('★'.repeat(wins)+'☆'.repeat(Math.max(0,WIN-wins)),W-70,30,24,'#fc3');
+    if(state==='ready'&&Body.mode!=='cam')bigText('キー '+KEYS2[li].map(k=>k[1].toUpperCase()).join(' '),W/2,450,26,PCOL[li].c);
+  }
   if(state!=='title'&&state!=='over'){
-    bigText('ステージ '+stage,W/2,30,20,'#fff');
+    bigText(mode===1?'ステージ '+stage:'ラウンド '+round,W/2,30,20,'#fff');
     ctx.fillStyle='#555';rr(40,54,400,14,7);ctx.fill();
     const ratio=timeLeft/timeMax;
     if(ratio>0.02){ctx.fillStyle=ratio<0.3?'#f44':'#4c4';rr(40,54,400*ratio,14,7);ctx.fill();}
     bigText('のこり '+n,80,98,22,'#fff');
     bigText(timeLeft.toFixed(1)+'秒',W-70,98,22,'#fff');
   }
+}
+
+function menuBtn(x,y,w,h,label,sub,col,act){
+  ctx.fillStyle='#222';rr(x-w/2,y+5,w,h,16);ctx.fill();
+  ctx.fillStyle=col;rr(x-w/2,y,w,h,16);ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=3;rr(x-w/2,y,w,h,16);ctx.stroke();
+  bigText(label,x,y+h/2-7,26,'#fff');
+  ctx.fillStyle='#fff';ctx.font='bold 13px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(sub,x,y+h-12);
+  btns.push({x:x-w/2,y,w,h,act});
+}
+
+function draw(){
+  const now=performance.now();
+  btns=[];
+  if(mode===1)drawLane(0,now);
+  else pl.forEach((p,li)=>withP(li,()=>{
+    ctx.save();ctx.translate(li*W,0);
+    ctx.beginPath();ctx.rect(0,0,W,H);ctx.clip();
+    drawLane(li,now);
+    ctx.restore();
+  }));
+  if(mode===2){ctx.fillStyle='#222';ctx.fillRect(W-3,0,6,H);}       // 1P と 2P の しきり
+  const tmp=effects;effects=gfx;                                    // 画面全体の 文字
+  for(const f of gfx){
+    const a=f.max-f.life,sc=a<0.08?0.5+a/0.08*0.8:Math.max(1,1.3-(a-0.08));
+    ctx.globalAlpha=Math.min(1,f.life/0.2);
+    bigText(f.text,f.x,f.y,f.size,f.color,f.rot,sc);
+    ctx.globalAlpha=1;
+  }
+  effects=tmp;
+
+  const C=FW/2;
   if(state==='ready'){
+    const name=mode===1?'ステージ '+stage:'ラウンド '+round;
     if(cdStep===0){
-      bigText('ステージ '+stage,W/2,250,48,'#fc3');
-      bigText('よーい…',W/2,320,40,'#fff');
+      bigText(name,C,250,48,'#fc3');
+      bigText('よーい…',C,320,40,'#fff');
     }else{
       const a=(readyT-CD_INTRO)-(cdStep-1)*CD_STEP;   // 数字が出てからの経過時間
       const sc=a<0.1?1.6-a*6:1;                      // 出た瞬間だけ大きく
-      bigText('ステージ '+stage,W/2,190,30,'#fff');
-      bigText(String(4-cdStep),W/2,300,120,['#f44','#fc3','#4c4'][cdStep-1],0,sc);
+      bigText(name,C,190,30,'#fff');
+      bigText(String(4-cdStep),C,300,120,['#f44','#fc3','#4c4'][cdStep-1],0,sc);
     }
   }
 
   if(state==='title'||state==='over'){
-    ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(0,0,FW,H);
     const wob=Math.sin(now/200)*0.05;
     if(state==='title'){
-      bigText('つみき！',W/2,150,56,'#e33',-0.08+wob);
-      bigText('ぬいて！',W/2,225,56,'#3b3',0.06-wob);
-      bigText('ネコおろし！',W/2,305,58,'#36e',-0.04+wob);
+      bigText('つみき！',C,150,56,'#e33',-0.08+wob);
+      bigText('ぬいて！',C,225,56,'#3b3',0.06-wob);
+      bigText('ネコおろし！',C,305,58,'#36e',-0.04+wob);
+    }else if(mode===1){
+      bigText('ネコ、おりられず…',C,170,40,'#fc3',wob);
+      bigText('ステージ '+stage+' まで到達',C,235,28,'#fff');
+      bigText('点数 '+score,C,280,36,'#fff');
+      bigText('ベスト '+best,C,325,26,'#fff');
     }else{
-      bigText('ネコ、おりられず…',W/2,170,40,'#fc3',wob);
-      bigText('ステージ '+stage+' まで到達',W/2,235,28,'#fff');
-      bigText('点数 '+score,W/2,280,36,'#fff');
-      bigText('ベスト '+best,W/2,325,26,'#fff');
+      const w=pl[0].wins>=WIN?0:1;
+      bigText((w+1)+'P の勝ち!',C,170,64,PCOL[w].c,wob);
+      bigText(pl[0].wins+' － '+pl[1].wins,C,260,48,'#fff');
     }
+    const camT=Body.mode==='cam';
     ctx.fillStyle='#fff';ctx.font='18px sans-serif';ctx.textAlign='center';ctx.textBaseline='alphabetic';
-    ctx.fillText('いちばん下のつみきと同じ色のボタンを叩け！',W/2,380);
-    ctx.fillText('まちがえると少しの間たたけない',W/2,408);
-    ctx.fillText('キー: 1 2 3 / Z X C / J K L',W/2,436);
-    bigText(Body.mode==='cam'?'手を たたいて スタート':'スペース か タップでスタート',W/2,485,24,'#fff');
+    ctx.fillText('いちばん下のつみきと同じ色のボタンを叩け！',C,380);
+    ctx.fillText('まちがえると少しの間たたけない',C,408);
+    if(state==='title'){
+      ctx.fillText('ふたりで：同じタワーで競争、先に'+WIN+'回 ネコを おろして勝ち',C,436);
+      menuBtn(C,462,280,64,'ひとりで','キー 1 か スペース','#2a9',()=>{setMode(1);newGame();});
+      menuBtn(C,542,280,64,'ふたりで','1P は Z X C ／ 2P は J K L','#c4c',()=>{setMode(2);newGame();});
+    }else{
+      ctx.fillText(camT?(mode===1?'左手・手をたたく・右手で たたく':'カメラの 左に立つ人が 1P、右の人が 2P'):mode===1?'キー: 1 2 3 / Z X C / J K L':'1P: Z X C ／ 2P: J K L',C,436);
+      menuBtn(C,462,280,64,'もういちど','スペース','#e70',()=>newGame());
+      menuBtn(C,542,280,64,'タイトルへ','Esc','#567',toTitle);
+    }
+    if(camT)bigText(people()>=2?'👏 手をたたくと ふたりで スタート':'👏 手をたたいて スタート（2人 うつれば ふたりで）',C,650,people()>=2?24:19,people()>=2?'#f6c':'#fff');
   }
 }
 
@@ -363,19 +457,38 @@ function canStart(){return state==='title'||(state==='over'&&performance.now()-o
 addEventListener('keydown',e=>{
   initAudio();
   if(state==='title'||state==='over'){
-    if((e.key===' '||e.key==='Enter')&&canStart()){e.preventDefault();newGame();}
+    if(!canStart())return;
+    if(state==='title'){
+      if(e.key===' '||e.key==='Enter'||e.key==='1'){e.preventDefault();setMode(1);newGame();}
+      else if(e.key==='2'){setMode(2);newGame();}
+    }else{
+      if(e.key===' '||e.key==='Enter'){e.preventDefault();newGame();}
+      else if(e.key==='Escape')toTitle();
+    }
     return;
   }
   const k=e.key.toLowerCase();
-  TYPES.forEach((t,i)=>{if(t.keys.includes(k))press(i);});
+  if(mode===1)TYPES.forEach((t,i)=>{if(t.keys.includes(k))press(i);});
+  else{
+    if(e.repeat)return;
+    KEYS2.forEach((ks,pi)=>ks.forEach((kk,i)=>{if(kk.includes(k))withP(pi,()=>press(i));}));
+  }
 });
 
 cv.addEventListener('pointerdown',ev=>{
   initAudio();
-  if(state==='title'||state==='over'){if(canStart())newGame();return;}
   const r=cv.getBoundingClientRect();
-  const x=(ev.clientX-r.left)*W/r.width,y=(ev.clientY-r.top)*H/r.height;
-  if(y>BTN_Y)press(Math.min(2,Math.floor(x/(W/3))));
+  const x=(ev.clientX-r.left)*FW/r.width,y=(ev.clientY-r.top)*H/r.height;
+  if(state==='title'||state==='over'){
+    if(!canStart())return;
+    const b=btns.find(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);
+    if(b)b.act();
+    return;
+  }
+  if(y>BTN_Y){
+    const li=Math.min(mode-1,Math.floor(x/W)),bi=Math.min(2,Math.floor((x-li*W)/(W/3)));
+    if(mode===1)press(bi);else withP(li,()=>press(bi));
+  }
 });
 
 let last=performance.now();
@@ -386,11 +499,27 @@ function loop(now){
 requestAnimationFrame(loop);
 
 // ---------- ぜんしん版：左手をふる＝左、手をたたく（ジャンプでも）＝まん中、右手をふる＝右 ----------
+Body.people=2;                                                       // 2人まで 読む（ひとりのときは 大きくうつる人が 主役）
+let seen2At=-9;                                                      // 最後に 2人 うつっていた時刻
+function people(){return performance.now()/1000-seen2At<1?2:1;}
+Body.on('poses',()=>{if(Body.count>=2)seen2At=performance.now()/1000;});
+function camStart(){if(Body.mode==='cam'&&(state==='title'||state==='over')&&canStart()){initAudio();setMode(people());newGame();}}
 Body.three(i=>{
   if(Body.mode!=='cam')return;
   initAudio();
-  if(state!=='play'){if(canStart())newGame();return;}
-  press(i);
+  if(state==='title'||state==='over'){camStart();return;}
+  if(mode===1)press(i);
+});
+// ふたりで：Body.players[0]（画面の左の人）が 1P、[1]（右の人）が 2P。Body.three と 同じ 見わけかた
+Body.players.forEach((P,pi)=>{
+  const fn=i=>{
+    if(Body.mode!=='cam')return;
+    if(state==='title'||state==='over'){camStart();return;}
+    if(mode===2)withP(pi,()=>press(i));
+  };
+  P.on('swing',e=>{if((e.i?-e.dx:e.dx)>0.5||e.dy<-0.5||P.now-(P.clapAt||-9)<0.45)return;fn(e.i?2:0);});
+  P.on('clap',()=>fn(1));
+  P.on('jump',()=>fn(1));
 });
 const drawButtons0=drawButtons;
 drawButtons=function(){
@@ -401,8 +530,8 @@ drawButtons=function(){
     ctx.strokeText(t,W/6+i*W/3,BTN_Y+22);ctx.fillText(t,W/6+i*W/3,BTN_Y+22);
   });
 };
-Body.gate({title:'つみき！ぬいて！ネコおろし！',corner:'tr',lines:['いちばん下の つみきと 同じ色を たたこう','👈 <b>左手</b>を ふる … 左（赤）','👏 <b>手を たたく</b>（ジャンプでも）… まん中（緑）','👉 <b>右手</b>を ふる … 右（青）','はじめる・もういちど … 手を たたく']});
-window.__game={press,get state(){return state;},get score(){return score;}};
+Body.gate({title:'つみき！ぬいて！ネコおろし！',corner:'tr',lines:['いちばん下の つみきと 同じ色を たたこう','👈 <b>左手</b>を ふる … 左（赤）','👏 <b>手を たたく</b>（ジャンプでも）… まん中（緑）','👉 <b>右手</b>を ふる … 右（青）','👥 <b>2人</b> うつると ふたりで きょうそう（左の人が 1P）','はじめる・もういちど … 手を たたく']});
+window.__game={press,get state(){return state;},get score(){return score;},get mode(){return mode;},get pl(){return pl;},get stack(){return stack;},setMode,newGame,toTitle,update,draw,withP};
 </script>
 </blockquote>
 </body>
