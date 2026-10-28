@@ -56,6 +56,11 @@
         <button data-lv="1" class="sel">ふつう</button>
         <button data-lv="2">むずかしい</button>
       </div>
+      <div class="row" id="modes">
+        <button data-pm="1" class="sel">ひとりで</button>
+        <button data-pm="2">ふたりで</button>
+      </div>
+      <div class="note" id="pmNote">ふたりで：同じ 球を ふたりで 打って、10球の スコアで しょうぶ（キー 1 / 2）</div>
       <div class="row"><button id="startBtn">はじめる</button></div>
       <div class="clap" id="clapHint">👏 手を たたいても はじまるよ</div>
       <div class="row note">
@@ -115,6 +120,7 @@ const game={
   state:"boot", level:1, n:0, score:0, tally:{hr:0,hit:0,out:0,foul:0,miss:0},
   pitch:null, tState:0, swing:null, launch:null, banner:null, flash:0, impact:null, trail:[],
   side:null, stance:null, stanceAt:0, longest:0,
+  two:false, pm:1, ps:[],             // ふたりで：ps[0]＝1P（画面の左の人）、ps[1]＝2P（右の人）
   best:parseInt(store.get("bmz_best","0"),10)||0,
   offset:parseInt(store.get("bmz_offset","0"),10)||0
 };
@@ -256,6 +262,7 @@ function newPitch(){
     T:lv.T*def.k, x0:0.25, y0:1.9, xT:(Math.random()*2-1)*0.22, yT:0.55+Math.random()*0.45,
     tRelease:0, tArrive:0};
   game.swing=null; game.launch=null; game.banner=null; game.impact=null; game.trail=[]; game.early=0;
+  game.ps.forEach(q=>{q.swing=null;q.res=null;q.early=0});
   setState("ready"); sfx.ready();
 }
 
@@ -263,20 +270,32 @@ function startGame(){
   audio();
   game.n=0; game.score=0; game.longest=0; game.tally={hr:0,hit:0,out:0,foul:0,miss:0};
   game.pitch=null; game.swing=null; game.launch=null; game.banner=null; sparks.length=0;
+  game.two=game.pm===2;
+  game.ps=game.two?[0,1].map(i=>({score:0,longest:0,tally:{hr:0,hit:0,out:0,foul:0,miss:0},side:cam()?(BAT[i+1].side||null):(i?"R":"L"),swing:null,res:null,early:0,last:null})):[];
+  $("backBtn").textContent=game.two?"タイトルへ":"せってい";
   $("title").classList.add("hide"); $("final").classList.add("hide");
   if(cam()) setState("count"); else newPitch();
 }
 
 /* スイングの受付。at=当たる 時刻(ms) */
 function onSwing(power,at){
+  if(game.two) return;
   game.lastSwing={t:now(),power};
   if(game.state==="ready"||game.state==="windup"||game.state==="count"){game.early=now();return}   // 投げる前は 数えない（罰なし）
   if(game.state!=="flight"||game.swing) return;
   game.swing={at,power};
-  const p=game.pitch, dt=at-p.tArrive;
-  if(dt<J.MISS_EARLY){finish("miss",0,"空振り！",{note:"はやすぎ！ もっと ひきつけて",dt});return}
-  if(dt>J.FOUL_LATE){finish("miss",0,"空振り！",{note:"おそかった！ すこし はやく ふろう",dt});return}
-  const u=clamp((at-p.tRelease)/p.T,0,1.15), bp=ballAt(p,u), sgn=game.side==="L"?-1:1;
+  const r=judgeSwing(game.pitch,at,power,game.side);
+  if(r.kind==="miss"){finish("miss",0,r.label,{note:r.note,dt:r.dt});return}
+  launch(r.bp,r.kind,r.dist,r.angle);
+  game.longest=Math.max(game.longest,r.kind==="foul"?0:Math.round(r.dist));
+  finish(r.kind,r.pts,r.label,{note:r.note,dist:r.kind==="foul"?0:Math.round(r.dist),q:r.q,dt:r.dt});
+}
+// ふった 時刻 at（ms）から 当たりを きめる（ボールは まだ とばさない）
+function judgeSwing(p,at,power,side){
+  const dt=at-p.tArrive;
+  if(dt<J.MISS_EARLY) return {kind:"miss",pts:0,label:"空振り！",note:"はやすぎ！ もっと ひきつけて",dt};
+  if(dt>J.FOUL_LATE) return {kind:"miss",pts:0,label:"空振り！",note:"おそかった！ すこし はやく ふろう",dt};
+  const u=clamp((at-p.tRelease)/p.T,0,1.15), bp=ballAt(p,u), sgn=side==="L"?-1:1;
   let kind,dist,angle,label,pts,note,q="nice";
   if(dt<J.FOUL_EARLY||dt>J.JUST_HI){            // ファウル
     kind="foul"; dist=25+power*30; angle=sgn*(dt<0?-1:1)*(52+Math.random()*18); label="ファウル"; pts=0; q="foul";
@@ -292,9 +311,7 @@ function onSwing(power,at){
     else{kind="out";label=Math.random()<.5?"ゴロ…アウト":"ポップフライ…";pts=5}
     note=Math.abs(dt)<=60?"ドンピシャ！":dt<J.JUST_LO?(k<0.6?"はやい！ もっと ひきつけて":"もうすこし ひきつけて"):"いい タイミング！";
   }
-  launch(bp,kind,dist,angle);
-  game.longest=Math.max(game.longest,kind==="foul"?0:Math.round(dist));
-  finish(kind,pts,label,{note,dist:kind==="foul"?0:Math.round(dist),q,dt});
+  return {kind,dist,angle,label,pts,note,q,dt,bp};
 }
 
 function launch(bp,kind,dist,angleDeg){
@@ -345,6 +362,8 @@ function update(){
   else if(game.state==="windup"&&el>WINDUP){
     const p=game.pitch; p.tRelease=t; p.tArrive=t+p.T; setState("flight");
     if(dbgAuto!=null) setTimeout(()=>BMD.swingNow(),Math.max(0,p.T+dbgAuto));
+  }else if(game.two&&game.state==="flight"&&t>game.pitch.tArrive+J.LOOK){
+    resolve2();
   }else if(game.state==="flight"&&!game.swing&&t>game.pitch.tArrive+J.LOOK){
     finish("miss",0,"見逃し！",{note:"ボールが きたら よこに ふろう"});
   }else if(game.state==="result"){
@@ -404,7 +423,12 @@ function draw(){
 
   // バット
   const side=game.side||"R";
-  if(game.swing) drawBat(t-game.swing.at,side);
+  if(game.two) game.ps.forEach((q,i)=>{
+    const sd=q.side||(i?"R":"L");
+    if(q.swing) drawBat(t-q.swing.at,sd);
+    else if(["count","ready","windup","flight"].includes(st)) batShape(REST,sd,!cam()||BAT[i+1].stance?0.95:0.35);
+  });
+  else if(game.swing) drawBat(t-game.swing.at,side);
   else if(["count","ready","windup","flight"].includes(st)) batShape(REST,side,!cam()||game.stance?0.95:0.35);
 
   // 当たった しゅんかん
@@ -429,9 +453,17 @@ function draw(){
   // HUD
   ctx.fillStyle="#0009"; ctx.fillRect(0,0,W,52);
   ctx.fillStyle="#fff"; ctx.font="bold 28px sans-serif"; ctx.textBaseline="middle"; ctx.textAlign="left";
+  if(game.two){
+    ctx.textAlign="center"; ctx.fillText(`ボール ${Math.min(game.n+1,TOTAL)} / ${TOTAL}`,W/2,27);
+    game.ps.forEach((q,i)=>{
+      ctx.textAlign=i?"right":"left"; ctx.fillStyle=PCOL[i];
+      ctx.fillText(`${i+1}P ${q.score}点　${q.side==="L"?"ひだり":q.side==="R"?"みぎ":"？"}うち`,i?W-20:20,27);
+    });
+  }else{
   ctx.fillText(`ボール ${Math.min(game.n+1,TOTAL)} / ${TOTAL}`,20,27);
   ctx.fillStyle="#ffd84a"; ctx.fillText(side==="L"?"🏏 ひだりうち":"🏏 みぎうち",250,27);
   ctx.fillStyle="#fff"; ctx.textAlign="center"; ctx.fillText(`スコア ${game.score}`,W/2+80,27);
+  }
 
   // メッセージ
   ctx.textAlign="center";
@@ -440,9 +472,14 @@ function draw(){
     big("はなれて、バットを かまえて",640,170,"#fff",44);
     big(String(Math.max(1,n)),640,330,"#ffd84a",150);
   }
-  if(st==="ready"){big("ピッチャー かまえた…",640,150,"#fff",42); if(cam()&&!game.stance) big("バットを かまえて",640,215,"#9ad0ff",34)}
+  if(st==="ready"){big("ピッチャー かまえた…",640,150,"#fff",42); if(cam()&&!game.two&&!game.stance) big("バットを かまえて",640,215,"#9ad0ff",34)}
   if((st==="ready"||st==="windup")&&game.early&&t-game.early<900) big("まだ！ なげてから ふろう",640,270,"#9ad0ff",34);
-  if(game.lastSwing&&t-game.lastSwing.t<600&&!game.impact){
+  if(game.two) game.ps.forEach((q,i)=>{
+    const x=i?1040:240;
+    if((st==="ready"||st==="windup")&&q.early&&t-q.early<900) big(`${i+1}P まだ！`,x,330,PCOL[i],36);
+    if(q.last&&t-q.last<600&&!game.impact){ctx.globalAlpha=1-(t-q.last)/600; big("ブンッ！",x,460,PCOL[i],44); ctx.globalAlpha=1}
+  });
+  else if(game.lastSwing&&t-game.lastSwing.t<600&&!game.impact){
     ctx.globalAlpha=1-(t-game.lastSwing.t)/600; big("ブンッ！",side==="L"?240:1040,460,"#7dffa0",44); ctx.globalAlpha=1;
   }
   if(st==="windup") big("…",640,150,"#fff",42);
@@ -468,8 +505,19 @@ function drawFlag(L){      // ボールが おちた所に 旗と きょり
 function drawBanner(t){
   const b=game.banner, L=game.launch, col={hr:"#ff5a3c",hit:"#ffd84a",out:"#cfd8dc",foul:"#9ad0ff",miss:"#ffffff"}[b.kind];
   const flying=b.dist&&L&&!L.landed;
+  if(b.two&&!flying){                    // ふたりで：左に 1P、右に 2P の けっか
+    const t0=b.dist&&L?L.landT:b.t, a=clamp((t-t0)/180,0,1);
+    b.two.forEach((r,i)=>{
+      const x=i?960:320, c={hr:"#ff5a3c",hit:"#ffd84a",out:"#cfd8dc",foul:"#9ad0ff",miss:"#ffffff"}[r.kind];
+      big(`${i+1}P`,x,80,PCOL[i],40);
+      big(r.label,x,138,c,48*(0.8+0.2*a));
+      ctx.font="bold 24px sans-serif"; ctx.fillStyle="#fff"; ctx.strokeStyle="#000"; ctx.lineWidth=5; ctx.textAlign="center";
+      const sub=(r.kind!=="miss"&&r.kind!=="foul"?Math.round(r.dist)+"m　":"")+(r.note||"")+(r.pts?`　+${r.pts}`:"");
+      ctx.strokeText(sub,x,190); ctx.fillText(sub,x,190);
+    });
+  }
   // 結果の文字は、とんでいる間は 出さない（空を あけて ボールを 見せる）。おちたら 出す
-  if(!flying){
+  if(!flying&&!b.two){
     const t0=b.dist&&L?L.landT:b.t, a=clamp((t-t0)/180,0,1);
     big(b.text,640,118,col,64*(0.8+0.2*a));
     ctx.font="bold 26px sans-serif"; ctx.fillStyle="#fff"; ctx.strokeStyle="#000"; ctx.lineWidth=5;
@@ -484,7 +532,7 @@ function drawBanner(t){
     let sz=b.kind==="hr"?150:116;
     if(L.landed){const e=clamp((t-L.landT)/260,0,1); sz*=1+0.25*(1-e)*(1-e)}
     const y=605;
-    big("飛距離",640,y-86,"#fff",34);
+    big(b.who!=null?`${b.who+1}P の 飛距離`:"飛距離",640,y-86,b.who!=null?PCOL[b.who]:"#fff",34);
     big(`${d}m`,640,y,b.kind==="hr"?"#ffe84a":"#ffffff",sz);
     if(L.landed&&b.kind==="hr"){
       big("スタンド イン！",640,y-142,"#ff9a3c",48);
@@ -520,6 +568,15 @@ function big(text,x,y,col,size){
 function showFinal(){
   setState("final");
   game.banner=null; game.launch=null; game.pitch=null; game.swing=null;
+  if(game.two){
+    const [a,b]=game.ps, w=a.score===b.score?-1:a.score>b.score?0:1;
+    $("finTitle").innerHTML=w<0?"ひきわけ":`<span style="color:${PCOL[w]}">${w+1}P の勝ち!</span>`;
+    $("finBody").innerHTML=game.ps.map((q,i)=>`<b style="color:${PCOL[i]}">${i+1}P</b> スコア <b style="font-size:1.5em;color:#ffd84a">${q.score}</b> 点　いちばん とんだ ${q.longest}m<br>`+
+      `<span class="note">ホームラン ${q.tally.hr}　ヒット ${q.tally.hit}　アウト ${q.tally.out}　ファウル ${q.tally.foul}　空振り/見逃し ${q.tally.miss}</span>`).join("<br>");
+    $("finClap").classList.toggle("hide",!cam());
+    $("final").classList.remove("hide"); sfx.fanfare();
+    return;
+  }
   const s=game.score, t=game.tally;
   const rank=s>=500?["🏆 ミスター・スラッガー！","もう プロ級。ホームランの かんかくが バッチリ！"]:
              s>=300?["🥇 4番バッター","ひきつけて ふれてる！ いい スイング"]:
@@ -533,6 +590,7 @@ function showFinal(){
 }
 function showTitle(){
   $("final").classList.add("hide"); $("title").classList.remove("hide"); setState("title");
+  game.two=false;
   $("clapHint").classList.toggle("hide",!cam());
   if(!cam()){$("stanceTxt").textContent="スペース か クリックで スイング"; $("stanceNote").textContent="カメラなしの おためし。右打ちで あそぶよ"; $("stanceIcon").textContent="⌨"}
 }
@@ -540,71 +598,173 @@ function showTitle(){
 /* ---------- カメラ：かまえ と スイング ---------- */
 // かまえ：手が 肩より 少し下までの 高さで、体の まん中から 右か左に よっている（りょう手が 見えるときは 近くに ある）
 const FAR=0.8, FRONT=0.0, FAR_MEMORY=0.7, SWING_V=2.2, HOLD=300, COOL_MS=700;   // 肩はば＝1。手が 体の まん中から FAR より はなれて HOLD ミリ秒 じっとして＝かまえ／かまえてから FAR_MEMORY 秒いない、SWING_V（肩はば／秒）より 速く、まん中（FRONT）を こえたら＝ふり
-function handPos(){        // りょう手の まん中の 位置。体の まん中から 右が ＋（鏡うつし）
-  if(!Body.ok) return null;
-  const hs=Body.hands.filter(h=>h.vis); if(!hs.length) return null;
-  if(Body.both&&Body.gap>1.5) return null;
-  let mx=0,my=0; hs.forEach(h=>{mx+=(h.x-Body.cx)*Body.asp/Body.unit; my+=(h.y-Body.cy)/Body.unit}); mx/=hs.length; my/=hs.length;
+// B：Body（ひとり）か Body.players[i]（ふたりで）。ふたりでは 自分の 肩からの 手の位置（px, py）で はかる
+function handPos(B){        // りょう手の まん中の 位置。体の まん中から 右が ＋（鏡うつし）
+  B=B||Body;
+  if(!B.ok) return null;
+  const hs=B.hands.filter(h=>h.vis); if(!hs.length) return null;
+  if(B.both&&B.gap>1.5) return null;
+  let mx=0,my=0;
+  if(B===Body) hs.forEach(h=>{mx+=(h.x-B.cx)*B.asp/B.unit; my+=(h.y-B.cy)/B.unit});
+  else B.hands.forEach((h,i)=>{if(h.vis){mx+=h.px+(i?0.5:-0.5); my+=h.py}});
+  mx/=hs.length; my/=hs.length;
   return {mx,my};
 }
-function readStance(){
-  const p=handPos(); if(!p||p.my>1.4||Math.abs(p.mx)<FAR) return null;
+function readStance(B){
+  const p=handPos(B); if(!p||p.my>1.4||Math.abs(p.mx)<FAR) return null;
   return p.mx>0?"R":"L";      // 鏡うつしなので、画面の右に 手が ある＝右打ち
 }
 // ふり：よこ向きに じっと かまえた 手が、体の 前（まん中）を こえるまで 一気に 来たときに 1回。ちょっと 手を うごかしただけでは ふらない
-let farT=-9, farSince=0, prevD=null, prevT=0, lastBody=-9;
-function swingFromBody(){
-  const p=handPos(), t=now();
-  if(!p||!game.side||p.my>1.6){prevD=null;farSince=0;return}
-  const d=(game.side==="R"?1:-1)*p.mx;
-  if(d>FAR){if(!farSince) farSince=t; if(t-farSince>HOLD) farT=t}
-  else farSince=0;
-  if(prevD!=null&&d<FRONT&&prevD>=FRONT&&t-farT<FAR_MEMORY*1000&&t-lastBody>COOL_MS){
-    const v=(prevD-d)/Math.max(0.001,(t-prevT)/1000), dist=FAR+0.0;
-    if(v>SWING_V){farT=-9; lastBody=t; bodySwing(clamp((v-2)/6,0.25,1))}
-  }
-  prevD=d; prevT=t;
+// 1人ぶんの かまえ・ふりを 見る。BAT[0]＝ひとり（Body）、BAT[1]＝1P、BAT[2]＝2P
+function makeBat(B,k){
+  const o={B,side:null,stance:null};
+  let farT=-9, farSince=0, prevD=null, prevT=0, lastBody=-9, stCand=null, stSince=0;
+  const getSide=()=>k?(game.two&&game.ps[k-1]?game.ps[k-1].side:o.side):game.side;
+  o.swingFromBody=function(){
+    const p=handPos(B), t=now(), side=getSide();
+    if(!p||!side||p.my>1.6){prevD=null;farSince=0;return}
+    const d=(side==="R"?1:-1)*p.mx;
+    if(d>FAR){if(!farSince) farSince=t; if(t-farSince>HOLD) farT=t}
+    else farSince=0;
+    if(prevD!=null&&d<FRONT&&prevD>=FRONT&&t-farT<FAR_MEMORY*1000&&t-lastBody>COOL_MS){
+      const v=(prevD-d)/Math.max(0.001,(t-prevT)/1000);
+      if(v>SWING_V){farT=-9; lastBody=t; const pw=clamp((v-2)/6,0.25,1); if(k) onSwing2(k-1,pw,now()-SWING_LAG+game.offset); else bodySwing(pw)}
+    }
+    prevD=d; prevT=t;
+  };
+  o.readStance=function(){
+    const s=readStance(B), t=now();
+    if(s!==stCand){stCand=s; stSince=t}
+    o.stance=s&&t-stSince>200?s:null;
+    return o.stance;
+  };
+  return o;
 }
 function bodySwing(power){onSwing(power,now()-SWING_LAG+game.offset)}
-let stCand=null, stSince=0;
+const BAT=[makeBat(Body,0),makeBat(Body.players[0],1),makeBat(Body.players[1],2)];
+const sideOK=st=>st==="title"||st==="count"||(st==="ready"&&game.n===0);   // 右打ち・左打ちを かえて よい ところ
+Body.people=2;              // 2人まで 読む（ひとりのときは 大きくうつる人が 主役）
 Body.on("pose",()=>{
-  if(!cam()) return;
-  swingFromBody();
-  const s=readStance(), t=now();
-  if(s!==stCand){stCand=s; stSince=t}
-  game.stance=s&&t-stSince>200?s:null;
+  if(!cam()||game.two) return;
+  BAT[0].swingFromBody();
+  game.stance=BAT[0].readStance();
   // 右打ち・左打ちは さいしょに かまえた手で きめる。1球目を 投げはじめたら かえない
   const st=game.state;
-  if(game.stance&&(!game.side||st==="title"||st==="count"||(st==="ready"&&game.n===0))) game.side=game.stance;
-  if(game.state==="title"){
+  if(game.stance&&(!game.side||sideOK(st))) game.side=game.stance;
+  if(game.state==="title"&&game.pm===1){
     const el=$("stanceTxt");
     el.textContent=game.side?`かまえ：${game.side==="L"?"ひだりうち":"みぎうち"} ✔`:"かまえ：まだ";
     el.classList.toggle("ok",!!game.side);
     $("stanceIcon").textContent=game.stance?"🏏":"🧍";
   }
 });
-Body.on("clap",e=>{
-  if(!cam()) return;
-  if(Math.abs((e.x-Body.cx)*Body.asp/Body.unit)>0.45) return;    // 肩の よこで 手を あわせたのは バットの にぎり。手たたきに しない
-  const t=now(), st=game.state;
-  if(st==="title") startGame();
-  else if(st==="final"&&t-game.tState>1500) startGame();
-  else if(st==="result"&&game.launch&&game.launch.landed&&t-game.launch.landT>500) nextBall();   // もう1球（とんだ ボールを 見おわってから）
+// ふたりで：画面の左の人が 1P、右の人が 2P
+Body.players.forEach((P,i)=>{
+  const bt=BAT[i+1];
+  P.on("pose",()=>{
+    if(!cam()) return;
+    if(game.two) bt.swingFromBody();
+    const s=bt.readStance(), st=game.state, q=game.two?game.ps[i]:null;
+    if(s&&(!bt.side||st==="title"||st==="final")) bt.side=s;
+    if(q&&s&&(!q.side||sideOK(st))){q.side=s; bt.side=s}
+  });
+  P.on("clap",e=>onClap(e,P));
 });
+let seen2At=-9;
+function people(){return performance.now()/1000-seen2At<1?2:1}
+Body.on("poses",()=>{if(Body.count>=2) seen2At=performance.now()/1000});
+let clapAt=0;
+function onClap(e,B){
+  if(!cam()) return;
+  if(Math.abs((e.x-B.cx)*B.asp/B.unit)>0.45) return;    // 肩の よこで 手を あわせたのは バットの にぎり。手たたきに しない
+  const t=now(), st=game.state;
+  if(t-clapAt<800) return;
+  if(st==="title"||(st==="final"&&t-game.tState>1500)){clapAt=t; setPm(people()); startGame()}
+  else if(st==="result"&&game.launch&&game.launch.landed&&t-game.launch.landT>500){clapAt=t; nextBall()}   // もう1球（とんだ ボールを 見おわってから）
+}
+Body.on("clap",e=>onClap(e,Body));
+// タイトルの 人数と かまえの 表示
+setInterval(()=>{
+  if(game.state!=="title") return;
+  if(cam()) $("clapHint").textContent=people()>=2?"👏 手をたたくと ふたりで スタート":"👏 手を たたいても はじまるよ（2人 うつれば ふたりで）";
+  if(game.pm===2){
+    const t=i=>{const sd=cam()?BAT[i+1].side:(i?"R":"L"); return `<span style="color:${PCOL[i]}">${i+1}P：${sd?(sd==="L"?"ひだりうち":"みぎうち")+" ✔":"まだ"}</span>`};
+    $("stanceTxt").innerHTML=t(0)+"　"+t(1);
+    $("stanceNote").textContent=cam()?"カメラの 左に立つ人が 1P、右の人が 2P。それぞれ 肩の よこで かまえてね":"1P は A キー、2P は L キー（画面の 左半分・右半分を タッチ）で スイング";
+    $("stanceIcon").textContent="👥";
+  }
+},200);
+
+/* ---------- ふたりで：同じ 球を ふたりで 打つ ---------- */
+const PCOL=["#2cb","#f6c"];
+function onSwing2(i,power,at){
+  const q=game.ps[i]; if(!q) return;
+  q.last=now();
+  if(game.state==="ready"||game.state==="windup"||game.state==="count"){q.early=now();return}
+  if(game.state!=="flight"||q.swing) return;
+  q.swing={at,power}; q.res=judgeSwing(game.pitch,at,power,q.side||(i?"R":"L"));
+  if(game.ps.every(o=>o.swing)) resolve2();
+}
+function resolve2(){
+  if(game.state!=="flight") return;
+  const rs=game.ps.map(q=>q.res||{kind:"miss",pts:0,label:"見逃し！",note:"",dt:null});
+  let best=-1,bv=-1;
+  rs.forEach((r,i)=>{
+    const q=game.ps[i];
+    q.score+=r.pts; q.tally[r.kind]++;
+    if(r.kind!=="miss"&&r.kind!=="foul") q.longest=Math.max(q.longest,Math.round(r.dist));
+    if(r.kind!=="miss"){const v=r.pts*1000+r.dist; if(v>bv){bv=v;best=i}}
+  });
+  const top=rs.reduce((a,r)=>Math.max(a,r.pts),0);
+  game.banner={two:rs,kind:"two",text:"",note:"",pitch:game.pitch.name,t:now(),dist:0};
+  if(best>=0){
+    const r=rs[best];
+    game.swing=game.ps[best].swing;
+    launch(r.bp,r.kind,r.dist,r.angle);
+    if(r.kind!=="foul"){game.banner.dist=Math.round(r.dist); game.banner.kind=r.kind; game.banner.who=best}
+  }
+  if(rs.some(r=>r.kind==="hr")) game.flash=.35; else if(rs.some(r=>r.kind==="hit")) game.flash=.2;
+  if(best<0) sfx.miss(); else sfx.hit(rs[best].q||"nice");
+  setState("result");
+}
+function setPm(n){
+  game.pm=n; [...$("modes").children].forEach(x=>x.classList.toggle("sel",+x.dataset.pm===n));
+  if(n===1&&game.state==="title"){
+    if(cam()){$("stanceTxt").textContent=game.side?`かまえ：${game.side==="L"?"ひだりうち":"みぎうち"} ✔`:"かまえ：まだ"; $("stanceNote").textContent="りょう手を 右か左の 肩の よこで にぎると、右打ち・左打ちが きまるよ"; $("stanceIcon").textContent="🧍"}
+    else{$("stanceTxt").textContent="スペース か クリックで スイング"; $("stanceNote").textContent="カメラなしの おためし。右打ちで あそぶよ"; $("stanceIcon").textContent="⌨"}
+  }
+}
 
 /* ---------- 入力（カメラなし） ---------- */
-function keySwing(){
+function keySwing(i){
   audio();
   if(game.state==="title"||game.state==="final"||game.state==="boot") return;
+  if(game.two){if(i!=null) onSwing2(i,0.75,now()+game.offset); return}
   onSwing(0.75,now()+game.offset);
 }
-window.addEventListener("keydown",e=>{if(e.code==="Space"){e.preventDefault();keySwing()}});
-cv.addEventListener("pointerdown",keySwing);
+// ふたりで（キー）：1P は A・Z・S、2P は L・M・K（← → でも）
+const KEY2={KeyA:0,KeyZ:0,KeyS:0,ArrowLeft:0,KeyL:1,KeyM:1,KeyK:1,ArrowRight:1};
+window.addEventListener("keydown",e=>{
+  if(e.repeat) return;
+  const st=game.state;
+  if(st==="title"&&(e.code==="Digit1"||e.code==="Digit2")){setPm(e.code==="Digit1"?1:2);return}
+  if(st==="final"&&game.two&&now()-game.tState>800){
+    if(e.code==="Enter"||e.code==="Space"){e.preventDefault();startGame();return}
+    if(e.code==="Escape"){showTitle();setPm(2);return}
+  }
+  if(game.two&&e.code in KEY2){e.preventDefault();keySwing(KEY2[e.code]);return}
+  if(e.code==="Space"){e.preventDefault();keySwing()}
+});
+cv.addEventListener("pointerdown",e=>{
+  if(game.two){const r=cv.getBoundingClientRect(); keySwing(e.clientX-r.left<r.width/2?0:1)}   // 画面の 左半分＝1P、右半分＝2P
+  else keySwing();
+});
 document.addEventListener("pointerdown",()=>audio(),true);   // 音は さいしょに さわった ときに よういする
 
 $("startBtn").addEventListener("click",startGame);
 $("againBtn").addEventListener("click",startGame);
-$("backBtn").addEventListener("click",showTitle);
+$("backBtn").addEventListener("click",()=>{const two=game.two; showTitle(); if(two) setPm(2)});
+$("modes").addEventListener("click",e=>{const b=e.target.closest("button[data-pm]"); if(b) setPm(+b.dataset.pm)});
 $("levels").addEventListener("click",e=>{
   const b=e.target.closest("button[data-lv]"); if(!b) return;
   game.level=+b.dataset.lv; [...$("levels").children].forEach(x=>x.classList.toggle("sel",x===b));
@@ -630,6 +790,8 @@ const BMD={
   stance(side){game.side=side; game.stance=side},
   cam(v=true){Body.mode=v?"cam":"nocam"},          // カメラの 処理（swing・clap）を カメラなしで ためす
   clap(){Body.emit("clap",{})},
+  two(v=true){setPm(v?2:1)}, swing2(i,off=0){const at=game.pitch.tArrive+off; setTimeout(()=>onSwing2(i,0.8,now()),Math.max(0,at-now()))},
+  get ps(){return game.ps}, BAT,
   fakeSwing(power=0.8){bodySwing(power)}
 };
 window.__bmz=game;
@@ -644,7 +806,8 @@ if(DBG){
     "かまえた手を、<b>体の 前まで ふりぬく</b>と 打つ。ちょっと 動かしただけでは ふらない",
     "<b>ひきつけて</b> ふるほど 遠くへ とぶ。はやすぎ・おそすぎは ファウルや 空振り（罰なし）",
     "手を もどさなくても、つづけて ふれる",
-    "👏 手を たたく … はじめる・もういちど"],
+    "👏 手を たたく … はじめる・もういちど",
+    "👥 <b>2人</b> うつると ふたりで（左の人が 1P）。同じ 球を ふたりで 打って しょうぶ"],
     onStart:m=>{audio(); if(m==="cam"){Body.cfg.SW_SPEED=2.4; Body.cfg.SW_DIST=0.3} showTitle()}});
 }
 loop();
