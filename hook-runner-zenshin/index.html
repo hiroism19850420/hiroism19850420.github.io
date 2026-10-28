@@ -11,9 +11,24 @@
   canvas{image-rendering:auto;touch-action:none;}
   /* カメラの映像は 小さく 右下に出すだけ（主役は ゲーム画面） */
   #bodyMirror{width:min(19vw,140px)!important;opacity:.85!important}
+  /* ひとりで は 画面いっぱいに 1つ、ふたりで は 左右に 2つ */
+  #wrap{position:fixed;inset:0;display:flex}
+  #wrap .pane{flex:1;position:relative;min-width:0}
+  #wrap.two .pane+.pane{border-left:4px solid #333}
+  #menu,#vs{position:fixed;left:0;right:0;z-index:500;display:none;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;color:#fff}
+  #menu{bottom:5vh;justify-content:center;gap:18px}
+  #menu button,#vs button{font:bold 20px "Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;color:#fff;border:0;border-radius:14px;padding:12px 26px;cursor:pointer;box-shadow:0 4px 0 #0006}
+  #menu button small,#vs button small{display:block;font-size:12px;font-weight:normal;opacity:.85}
+  #vs{top:0;bottom:0;background:#000a;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center}
+  #vsWin{font:bold 64px "Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif;text-shadow:0 4px 0 #000}
+  #vsScore{font:bold 34px monospace}
 </style>
 <script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
 <body>
+<div id="wrap"></div>
+<div id="menu"><button id="b1" style="background:#2a9">ひとりで<small>キー 1 か スペース</small></button><button id="b2" style="background:#c4c">ふたりで<small>1P は Z ／ 2P は L</small></button></div>
+<div id="vs"><div id="vsWin"></div><div id="vsScore"></div><div id="vsHint" style="font-size:18px"></div>
+<div style="display:flex;gap:18px"><button id="bAgain" style="background:#e70">もういちど<small>スペース</small></button><button id="bTitle" style="background:#567">タイトルへ<small>Esc</small></button></div></div>
 <script src="body.js"></script>
 <script>
 // ============================================================
@@ -35,7 +50,13 @@ const HAND = {
 const SPEED_START = 0.7;  // はじめの速さ（ふつうの何倍か）
 const SPEED_RAMP = 60;    // この秒数で ふつうの速さ（1倍）まで だんだん上げる
 // ぜんしん版の状態（もう1回 しても のこす）
-const zen = { mode:'', held:false, level:null, restart:false, bot:false };
+const zen = { mode:'', bot:false, n:1, seed:1, vsDone:false };   // n：あそぶ人数（1 か 2）
+// ふたりで：カメラに 2人 うつす。画面の左に立つ人が 1P、右の人が 2P（それぞれ 自分の手の高さで つかむ）
+Body.people = 2;
+const PCOL = [{css:'#2cb', hex:0x22ccbb}, {css:'#f6c', hex:0xff66cc}];   // 1P・2P の色
+let seen2At = -9;                                  // 最後に 2人 うつっていた時刻
+function people(){ return performance.now()/1000-seen2At<1?2:1; }
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 
 const W = 960, H = 600;
 const LAVA_Y = 565;
@@ -140,10 +161,16 @@ const synth = new Synth();
 // メインシーン
 // ------------------------------------------------------------
 class GameScene extends Phaser.Scene {
-  constructor(){ super('game'); }
+  // pi：ふたりで のとき 0＝1P・1＝2P、ひとりのときは -1。autoStart：create で すぐ 3・2・1
+  constructor(pi, autoStart){ super('game'); this.pi=pi; this.autoStart=!!autoStart; this.z={held:false,level:null}; this.mem=[{lv:null,lost:9},{lv:null,lost:9}]; }
 
   create(){
     // --- 状態初期化 ---
+    // ふたりで は 同じ たねで コースを作り、ふたりとも 同じコースを走る
+    this.rnd = this.pi>=0 ? mulberry32(zen.seed) : Math.random;
+    this.rb = (a,b)=>a+Math.floor(this.rnd()*(b-a+1));
+    this.rf = (a,b)=>a+this.rnd()*(b-a);
+    this.halt=false;       // ふたりで：勝負が ついたら 止める
     this.px=150; this.py=300; this.vx=380; this.vy=-150;
     this.anchor=null; this.wireLen=0; this.connectTime=0;
     this.camX=0; this.zoomV=1;
@@ -211,7 +238,7 @@ class GameScene extends Phaser.Scene {
     this.input.on('pointerdown',pt=>{
       synth.init();
       if(!zen.mode) return;                       // 入口の画面が出ている間
-      if(this.dead){ if(this.resultShown) this.retry(); return; }
+      if(this.dead){ if(this.resultShown&&zen.n===1) this.retry(); return; }
       if(this.phase==='wait'){ this.beginCountdown(); return; }
       if(this.phase!=='play') return;
       if(pt.rightButtonDown()){ this.doDash(); return; }
@@ -224,6 +251,12 @@ class GameScene extends Phaser.Scene {
     this.input.on('pointerup',()=>this.releaseHook());
     this.keySpace=this.input.keyboard.addKey('SPACE');
     this.keyShift=this.input.keyboard.addKey('SHIFT');
+    // ふたりで（カメラなし）：1P は Z＝つかむ（押している間）・X＝DASH ／ 2P は L か ↑＝つかむ・K＝DASH
+    if(this.pi>=0){
+      const K=this.pi===0?[['Z'],['X']]:[['L','UP'],['K']];
+      this.keyGrab=K[0].map(k=>this.input.keyboard.addKey(k));
+      this.keyDash=K[1].map(k=>this.input.keyboard.addKey(k));
+    }
     this.input.mouse.disableContextMenu();
 
     // 初期アンカー配置
@@ -232,8 +265,13 @@ class GameScene extends Phaser.Scene {
     // 確認用：URL に ?dbg をつけると window.scene で中を見られる
     if(location.search.includes('dbg')) window.scene=this;
 
+    // ふたりで の ラベル（1P・2P）
+    if(this.pi>=0){
+      this.add.text(W/2,14,(this.pi+1)+'P',{fontSize:'40px',fontFamily:'monospace',color:PCOL[this.pi].css,stroke:'#0b0c10',strokeThickness:6}).setOrigin(0.5,0).setDepth(120).setScrollFactor(0);
+      this.txtMission.setVisible(false);
+    }
     // もう1回（手をたたく・タップ）のときは すぐ 3・2・1 へ
-    if(zen.restart){ zen.restart=false; this.beginCountdown(); }
+    if(this.autoStart){ this.autoStart=false; this.beginCountdown(); }
     else this.showGuide();
   }
 
@@ -243,8 +281,9 @@ class GameScene extends Phaser.Scene {
   showGuide(){
     if(this.phase!=='wait') return;
     let t='';
-    if(zen.mode==='cam') t='👏 手を たたくと スタート\n\n✋ 手を 頭の近くまで 上げている間 … つかむ\n👇 手を 下ろす … はなして とぶ';
-    else if(zen.mode) t='タップ / SPACE で スタート\n\n押している間 … つかむ\nはなす … とぶ\nSHIFT・ダブルタップ … DASH';
+    const two=people()>=2;
+    if(zen.mode==='cam') t=(two?'👏 手を たたくと ふたりで スタート':'👏 手を たたくと スタート（2人 うつれば ふたりで）')+'\n\n✋ 手を 頭の近くまで 上げている間 … つかむ\n👇 手を 下ろす … はなして とぶ';
+    else if(zen.mode) t='タップ / SPACE で スタート（キー 2 で ふたりで）\n\n押している間 … つかむ\nはなす … とぶ\nSHIFT・ダブルタップ … DASH';
     this.txtGuide.setText(t).setVisible(true);
   }
   beginCountdown(){
@@ -269,7 +308,7 @@ class GameScene extends Phaser.Scene {
       synth.sweep('square',1320,1320,0.16,0.3);
     }
   }
-  retry(){ zen.restart=true; this.scene.restart(); }
+  retry(){ this.autoStart=true; this.scene.restart(); }
   onClap(){
     if(this.phase==='wait'&&!this.dead) this.beginCountdown();
     else if(this.dead&&this.resultShown&&this.realT-this.resultAt>0.8) this.retry();
@@ -283,14 +322,15 @@ class GameScene extends Phaser.Scene {
   // ----------------------------------------------------------
   camInput(dt){
     if(Body.mode!=='cam') return;
-    const lv=readHandLevel(dt); zen.level=lv;
-    let want=zen.held;
+    const z=this.z;
+    const lv=readHandLevel(dt,this.pi>=0?Body.players[this.pi]:Body,this.mem); z.level=lv;   // ふたりで は 自分の体だけを見る
+    let want=z.held;
     if(lv===null) want=false;   // 手が見えない・画面の外＝はなす
-    else if(!zen.held&&lv<HAND.UP) want=true;
-    else if(zen.held&&lv>HAND.DOWN) want=false;
-    const rise=want&&!zen.held, fall=!want&&zen.held;
-    zen.held=want;
-    if(this.phase!=='play'||this.dead) return;
+    else if(!z.held&&lv<HAND.UP) want=true;
+    else if(z.held&&lv>HAND.DOWN) want=false;
+    const rise=want&&!z.held, fall=!want&&z.held;
+    z.held=want;
+    if(this.phase!=='play'||this.dead||this.halt) return;
     if(rise){ if(!this.anchor) this.castHook(); }
     else if(fall) this.releaseHook();
     else if(want&&!this.anchor) this.castHook(true);   // 上げたまま：とどくフックが来たら つかむ
@@ -306,8 +346,10 @@ class GameScene extends Phaser.Scene {
     }
     if(this.phase!=='play'||this.dead) up=false;
     this.botUp=up;
-    hrzFeed(1.2, up?-1.0:1.2, dt);
-    if(this.phase==='wait'||(this.dead&&this.resultShown&&this.realT-this.resultAt>1.5)) hrzClap();
+    if(this.pi<0){
+      hrzFeed(1.2, up?-1.0:1.2, dt);
+      if(this.phase==='wait'||(this.dead&&this.resultShown&&this.realT-this.resultAt>1.5)) hrzClap();
+    } else if(this.pi===1){ const s=scenes(); hrzFeed2(1.2, s[0]&&s[0].botUp?-1.0:1.2, 1.2, up?-1.0:1.2, dt); }
   }
 
   // ----------------------------------------------------------
@@ -319,19 +361,19 @@ class GameScene extends Phaser.Scene {
   spawnChunk(){
     const k=this.difficulty();
     for(let i=0;i<6;i++){
-      const gap=Phaser.Math.Between(190, 190+Math.floor(180*k));
+      const gap=this.rb(190, 190+Math.floor(180*k));
       this.genX+=gap;
-      const y=Phaser.Math.Between(65,220);
-      const r=Math.random();
+      const y=this.rb(65,220);
+      const r=this.rnd();
       let type='normal';
       if(r<0.15) type='move'; else if(r<0.27) type='brittle'; else if(r<0.32) type='gold';
       this.anchors.push({
         x:this.genX, y:y, baseY:y, type:type,
-        phase:Math.random()*6.28, life:1.2, used:false
+        phase:this.rnd()*6.28, life:1.2, used:false
       });
       // コイン3連（円弧下部）
-      if(Math.random()<0.85-0.2*k){
-        const rad=Phaser.Math.Between(130,210);
+      if(this.rnd()<0.85-0.2*k){
+        const rad=this.rb(130,210);
         for(let c=0;c<3;c++){
           const a=Math.PI*(0.35+0.15*c);
           this.coins.push({
@@ -341,19 +383,19 @@ class GameScene extends Phaser.Scene {
         }
       }
       // 特殊アイテム
-      const ir=Math.random();
+      const ir=this.rnd();
       if(ir<0.04) this.items.push({x:this.genX+60,y:y+180,type:'magnet',got:false});
       else if(ir<0.07) this.items.push({x:this.genX+60,y:y+180,type:'shield',got:false});
       else if(ir<0.09) this.items.push({x:this.genX+60,y:y+180,type:'slow',got:false});
       else if(ir<0.11) this.items.push({x:this.genX+60,y:y+180,type:'multi',got:false});
       // レーザー
-      if(this.genX>900 && Math.random()<0.35+0.30*k){
+      if(this.genX>900 && this.rnd()<0.35+0.30*k){
         this.lasers.push({
-          x:this.genX+Phaser.Math.Between(60,140),
-          y:Phaser.Math.Between(280,470),
-          len:Phaser.Math.Between(70,120),
-          ang:Math.random()*6.28,
-          spd:Phaser.Math.FloatBetween(-2.2,2.2),
+          x:this.genX+this.rb(60,140),
+          y:this.rb(280,470),
+          len:this.rb(70,120),
+          ang:this.rnd()*6.28,
+          spd:this.rf(-2.2,2.2),
           nearDone:false, alive:true
         });
       }
@@ -455,11 +497,20 @@ class GameScene extends Phaser.Scene {
     if(zen.bot) this.botFeed(dt);
     this.camInput(dt);
     if(this.phase==='count') this.updateCountdown();
+    if(zen.n===2) vsCheck();
 
     // キー入力
     const sp=Phaser.Input.Keyboard.JustDown(this.keySpace);
     if(sp) synth.init();
     if(!zen.mode){ /* 入口の画面が出ている間は 何もしない */ }
+    else if(this.pi>=0){
+      // ふたりで：押している間 つかむ、はなすと とぶ
+      if(this.phase==='play'&&!this.dead&&!this.halt){
+        if(this.keyGrab.some(k=>Phaser.Input.Keyboard.JustDown(k))){ synth.init(); this.castHook(); }
+        if(this.keyGrab.some(k=>Phaser.Input.Keyboard.JustUp(k))&&!this.keyGrab.some(k=>k.isDown)) this.releaseHook();
+        if(this.keyDash.some(k=>Phaser.Input.Keyboard.JustDown(k))) this.doDash();
+      }
+    }
     else if(!this.dead){
       if(sp){
         if(this.phase==='wait') this.beginCountdown();
@@ -470,7 +521,7 @@ class GameScene extends Phaser.Scene {
       if(sp&&this.resultShown) this.retry();
     }
 
-    if(this.started&&!this.dead) this.physics(sdt,dt);
+    if(this.started&&!this.dead&&!this.halt) this.physics(sdt,dt);
     this.updateWorld(sdt,dt);
     this.render(dt);
   }
@@ -750,6 +801,13 @@ class GameScene extends Phaser.Scene {
     this.time.delayedCall(700,()=>this.showResult());
   }
   showResult(){
+    if(this.pi>=0){   // ふたりで：その人の画面には 点数だけ。勝ち負けは 両方の上に出す
+      const g=this.add.graphics().setDepth(200).setScrollFactor(0);
+      g.fillStyle(0x000000,0.6).fillRect(0,0,W,H);
+      this.add.text(W/2,H/2-40,'アウト！\n\n'+this.cause+'\nスコア '+Math.floor(this.score),{fontSize:'30px',fontFamily:'"Hiragino Kaku Gothic ProN","Yu Gothic","Meiryo",sans-serif',color:PCOL[this.pi].css,align:'center',lineSpacing:8,stroke:'#0b0c10',strokeThickness:6}).setOrigin(0.5).setDepth(201).setScrollFactor(0);
+      this.resultShown=true; this.resultAt=this.realT;
+      return;
+    }
     const total=Math.floor(this.score);
     const isNew=total>this.high;
     if(isNew){ this.high=total; localStorage.setItem('cyberHookHighScoreZen',String(total)); }
@@ -793,14 +851,14 @@ class GameScene extends Phaser.Scene {
     g.fillStyle(0x000000,0.35).fillRoundedRect(x-10,top-8,20,bot-top+16,8);
     g.lineStyle(2,0x00f0ff,0.9).lineBetween(x-14,Y(HAND.UP),x+14,Y(HAND.UP));
     g.lineStyle(2,0x8b949e,0.7).lineBetween(x-10,Y(HAND.DOWN),x+10,Y(HAND.DOWN));
-    const lv=zen.level;
+    const lv=this.z.level, held=this.z.held;
     if(lv!==null){
-      const col=zen.held?0x00f0ff:0xffffff;
-      g.fillStyle(col,zen.held?0.5:0.25).fillRect(x-6,Y(lv),12,bot-Y(lv));
+      const col=held?0x00f0ff:0xffffff;
+      g.fillStyle(col,held?0.5:0.25).fillRect(x-6,Y(lv),12,bot-Y(lv));
       g.fillStyle(col,1).fillCircle(x,Y(lv),8);
     }
-    this.txtHand.setText(lv===null?'✋ 手が 見えない':zen.held?'✋ つかむ':'✋ はなす')
-      .setColor(lv===null?'#ff7788':zen.held?'#00f0ff':'#8b949e');
+    this.txtHand.setText(lv===null?'✋ 手が 見えない':held?'✋ つかむ':'✋ はなす')
+      .setColor(lv===null?'#ff7788':held?'#00f0ff':'#8b949e');
   }
 
   // ----------------------------------------------------------
@@ -889,7 +947,7 @@ class GameScene extends Phaser.Scene {
       if(this.anchor) pose='hang';
       else if(this.started&&this.vy<-60) pose='jump';
       const col=this.dashTimer>0?0xffbe0b:0xffffff;
-      const hand=drawStickG(g,this.px,this.py,STICK_H,{pose,phase:this.legPh,rot:this.bodyRot,color:col});
+      const hand=drawStickG(g,this.px,this.py,STICK_H,{pose,phase:this.legPh,rot:this.bodyRot,color:col,glow:this.pi>=0?PCOL[this.pi].hex:undefined});
       if(this.anchor){
         g.lineStyle(2,0x00f0ff,0.9).lineBetween(this.anchor.x,this.anchor.y,hand.x,hand.y);
         g.lineStyle(1,0xffffff,0.5).lineBetween(this.anchor.x,this.anchor.y,hand.x,hand.y);
@@ -919,7 +977,8 @@ class GameScene extends Phaser.Scene {
 
     // UI
     const total=Math.floor(this.score);
-    this.txtScore.setText('SCORE '+String(total).padStart(7,'0')+'  HI '+String(Math.max(this.high,total)).padStart(7,'0'));
+    if(this.pi>=0) this.txtScore.setText('SCORE '+String(total).padStart(7,'0'));
+    else this.txtScore.setText('SCORE '+String(total).padStart(7,'0')+'  HI '+String(Math.max(this.high,total)).padStart(7,'0'));
     this.txtLife.setText('♥'.repeat(Math.max(0,this.lives))+'♡'.repeat(MAX_LIVES-Math.max(0,this.lives)));
     let status='';
     if(this.magnetT>0) status+='MAGNET '+this.magnetT.toFixed(0)+'s ';
@@ -979,7 +1038,7 @@ function drawStickG(g, cx, cy, h, o = {}) {
   const head = P(0, neckY - headR * 1.15);
 
   // うしろに光のにじみ → 本体の順に描く。関節に丸を置いて角をなめらかにする
-  for (const [w, a, c] of [[lw * 3.2, 0.18, 0x00f0ff], [lw, 1, color]]) {
+  for (const [w, a, c] of [[lw * 3.2, o.glow === undefined ? 0.18 : 0.4, o.glow === undefined ? 0x00f0ff : o.glow], [lw, 1, color]]) {
     g.lineStyle(w, c, a);
     for (const pts of parts) {
       g.beginPath(); g.moveTo(pts[0].x, pts[0].y);
@@ -998,12 +1057,12 @@ function drawStickG(g, cx, cy, h, o = {}) {
 // 見えている手のうち いちばん高い手の高さ（肩はば単位、上が－）。見えない・画面の外なら null
 // ------------------------------------------------------------
 // 手ごとに、見えなくなっても HAND.LOST 秒だけは 前の高さを おぼえておく（1コマの 読みとりミスで はなさない）
-const handMem=[{lv:null,lost:9},{lv:null,lost:9}];
-function readHandLevel(dt){
+// B：読む体（ひとりは Body、ふたりで は Body.players[i]）。mem：その人の 手の おぼえ
+function readHandLevel(dt,B,mem){
   let best=null;
-  Body.hands.forEach((h,i)=>{
-    const m=handMem[i];
-    if(Body.mode==='cam'&&Body.ok&&h.vis&&h.y>=HAND.EDGE&&h.y<=1-HAND.EDGE){ m.lv=h.py; m.lost=0; }
+  B.hands.forEach((h,i)=>{
+    const m=mem[i];
+    if(Body.mode==='cam'&&B.ok&&h.vis&&h.y>=HAND.EDGE&&h.y<=1-HAND.EDGE){ m.lv=h.py; m.lost=0; }
     else { m.lost+=dt; if(m.lost>HAND.LOST) m.lv=null; }
     if(m.lv!==null&&(best===null||m.lv<best)) best=m.lv;
   });
@@ -1012,28 +1071,122 @@ function readHandLevel(dt){
 
 // ------------------------------------------------------------
 // 起動
+// ひとりで：画面いっぱいに 1つ。ふたりで：左に 1P・右に 2P の 2つを ならべる（コースは 同じ）
 // ------------------------------------------------------------
-const game = new Phaser.Game({
-  type: Phaser.AUTO,
-  width: W, height: H,
-  backgroundColor: '#0b0c10',
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: GameScene
-});
-const gameScene = () => game.scene.getScene('game');
+const wrap = document.getElementById('wrap');
+const games = [];
+function buildGames(n, autoStart){
+  games.splice(0).forEach(g => g.destroy(true));
+  wrap.innerHTML = ''; wrap.className = n === 2 ? 'two' : '';
+  zen.n = n; zen.vsDone = false; zen.seed = (Math.random() * 1e9) | 0;
+  for (let i = 0; i < n; i++){
+    const d = document.createElement('div'); d.className = 'pane'; wrap.appendChild(d);
+    games.push(new Phaser.Game({
+      type: Phaser.AUTO, parent: d,
+      width: W, height: H,
+      backgroundColor: '#0b0c10',
+      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+      scene: new GameScene(n === 2 ? i : -1, autoStart)
+    }));
+  }
+  showMenu(); hideVs();
+}
+const sceneOf = g => g && g.scene && g.scene.getScene('game');
+const scenes = () => games.map(sceneOf);
+const gameScene = () => sceneOf(games[0]);
 // 入口のボタンを押した しゅんかんに 音を つくる（カメラの準備を待つと 音が出ないことがある）
 addEventListener('pointerdown', () => { synth.init(); if (synth.ctx && synth.ctx.state === 'suspended') synth.ctx.resume(); }, { capture: true });
 function zenStart(mode){
   zen.mode = mode;
   const s = gameScene(); if (s) s.showGuide();
+  showMenu();
 }
-Body.on('clap', () => { if (Body.mode !== 'cam' || !zen.mode) return; const s = gameScene(); if (s) s.onClap(); });
+
+// ---- ひとりで／ふたりで の えらび（スタート待ちの間だけ 出す）----
+const menu = document.getElementById('menu'), vs = document.getElementById('vs');
+function showMenu(){
+  const s = gameScene();
+  const on = !!zen.mode && zen.n === 1 && (!s || (s.phase === 'wait' && !s.dead));
+  menu.style.display = on ? 'flex' : 'none';
+}
+function start1(){ synth.init(); const s = gameScene(); if (zen.n === 1 && s && s.phase === 'wait') s.beginCountdown(); showMenu(); }
+function start2(){ synth.init(); buildGames(2, true); }
+document.getElementById('b1').onclick = start1;
+document.getElementById('b2').onclick = start2;
+setInterval(() => {   // スタート待ちの 案内（2人 うつっているか）を 新しくする
+  showMenu();
+  const s = gameScene();
+  if (zen.mode && zen.n === 1 && s && s.phase === 'wait') s.showGuide();
+}, 250);
+
+// ---- ふたりで：勝ち負け ----
+// 片方が アウトになったら、もう片方は その点数を こえた しゅんかんに 勝ち。両方 アウトなら 点数の 多いほう
+let vsAt = 0;
+function vsCheck(){
+  if (zen.n !== 2 || zen.vsDone) return;
+  const s = scenes(); if (!s[0] || !s[1] || !s[0].started || !s[1].started) return;
+  const sc = s.map(x => Math.floor(x.score)), d = s.map(x => x.dead);
+  let w = null;
+  if (d[0] && d[1]){ if (!s[0].resultShown || !s[1].resultShown) return; w = sc[0] > sc[1] ? 0 : sc[1] > sc[0] ? 1 : -1; }
+  else if (d[0] && sc[1] > sc[0]) w = 1;
+  else if (d[1] && sc[0] > sc[1]) w = 0;
+  if (w === null) return;
+  zen.vsDone = true;
+  s.forEach(x => { x.halt = true; });
+  showVs(w, sc);
+}
+function showVs(w, sc){
+  const t = document.getElementById('vsWin');
+  t.textContent = w < 0 ? 'ひきわけ' : (w + 1) + 'P の勝ち!';
+  t.style.color = w < 0 ? '#fff' : PCOL[w].css;
+  document.getElementById('vsScore').innerHTML = '<span style="color:#2cb">1P ' + sc[0] + '</span> － <span style="color:#f6c">2P ' + sc[1] + '</span>';
+  document.getElementById('vsHint').textContent = Body.mode === 'cam' ? '👏 手を たたくと もういちど' : 'スペースで もういちど ／ Esc で タイトルへ';
+  vs.style.display = 'flex'; vsAt = performance.now();
+  if (w >= 0) synth.playPerfect();
+}
+function hideVs(){ vs.style.display = 'none'; }
+function again(){
+  if (zen.n !== 2) return;
+  hideVs(); zen.vsDone = false; zen.seed = (Math.random() * 1e9) | 0;
+  scenes().forEach(s => s && s.retry());
+}
+function toTitle(){ buildGames(1, false); }
+document.getElementById('bAgain').onclick = again;
+document.getElementById('bTitle').onclick = toTitle;
+addEventListener('keydown', e => {
+  if (!zen.mode) return;
+  if (vs.style.display === 'flex'){
+    if (performance.now() - vsAt < 800) return;
+    if (e.key === ' ' || e.key === 'Enter'){ e.preventDefault(); again(); }
+    else if (e.key === 'Escape') toTitle();
+    return;
+  }
+  if (menu.style.display === 'flex'){
+    if (e.key === '2') start2();
+    else if (e.key === '1') start1();
+  }
+});
+
+// ---- 手をたたく：ひとりの スタート待ちで 2人 うつっていれば ふたりで ----
+function onClapAny(){
+  if (Body.mode !== 'cam' || !zen.mode) return;
+  if (zen.n === 2){ if (vs.style.display === 'flex' && performance.now() - vsAt > 800) again(); return; }
+  const s = gameScene(); if (!s) return;
+  if (s.phase === 'wait' && !s.dead && people() >= 2) start2();
+  else s.onClap();
+}
+Body.on('clap', onClapAny);
+Body.players.forEach(P => P.on('clap', onClapAny));
+Body.on('poses', () => { if (Body.count >= 2) seen2At = performance.now() / 1000; });
+
+buildGames(1, false);
 Body.gate({
   title: 'Cyber Hook Runner 2<br>ぜんしん版', corner: 'br',
   lines: [
     '✋ 手を <b>頭の近くまで 上げる</b> … ワイヤーで つかむ',
     '👇 手を <b>下ろす</b> … はなして とぶ',
     '右手・左手・両手 どれでも OK。上げ切らなくて いい',
+    '👥 <b>2人</b> うつると ふたりで きょうそう（左の人が 1P）',
     '👏 手を たたく … はじめる・もう1回'
   ],
   onStart: zenStart
@@ -1043,37 +1196,51 @@ Body.gate({
 // 確認用：URL に ?dbg をつけると window.hrz が使える（window.dbg は MediaPipe が使うので 使わない）
 //   hrz.cam() / hrz.nocam() … 入口を とばす
 //   hrz.hand(左, 右) … 手の高さ（肩はば単位、上が－）を 合成して 1コマ 流す。null＝見えない、'out'＝画面の上に出た
+//   hrz.hand2(1Pの左, 1Pの右, 2Pの左, 2Pの右) … ふたり ぶんを 合成して 流す（1P は 画面の左に立つ）
 //   hrz.clap() … 手をたたく / hrz.bot(true) … 自動で あそぶ / hrz.step(コマ数) … 早送り / hrz.state()
+//   hrz.two() … ふたりで はじめる / hrz.title() … タイトルへ
 // ------------------------------------------------------------
 let hrzT = 0;
-function fakeLandmarks(l, r){
+// ox：体の 横の ずれ（映像の x。鏡うつし前なので ＋は 画面の 左へ）
+function fakeLandmarks(l, r, ox){
+  ox = ox || 0;
   const lm = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, visibility: 0 }));
-  const S = (i, x, y, v) => { lm[i] = { x, y, visibility: v == null ? 0.99 : v }; };
-  S(11, 0.6, 0.5); S(12, 0.4, 0.5); S(0, 0.5, 0.36); S(23, 0.57, 0.85); S(24, 0.43, 0.85);
-  const u = 0.2 * (Body.asp || 4 / 3);   // 肩はば（body.js と同じ はかり方）
+  const S = (i, x, y, v) => { lm[i] = { x: x + ox, y, visibility: v == null ? 0.99 : v }; };
+  const sc = ox ? 0.5 : 1;   // ふたり うつるときは 少し小さく（遠く）
+  const X = x => 0.5 + (x - 0.5) * sc;
+  S(11, X(0.6), 0.5); S(12, X(0.4), 0.5); S(0, 0.5, 0.36); S(23, X(0.57), 0.85); S(24, X(0.43), 0.85);
+  const u = 0.2 * sc * (Body.asp || 4 / 3);   // 肩はば（body.js と同じ はかり方）
   const Wr = (i, x, lv) => {
     if (lv == null) return;
-    if (lv === 'out') S(i, x, -0.04, 0.2);          // 画面の上に出た（見えにくい）
-    else if (lv === 'edge') S(i, x, -0.02, 0.9);    // 画面の上に出た（見えている扱いでも 外とみなす）
-    else if (Array.isArray(lv)) S(i, lv[0], lv[1]); // [x, y] で 直接
-    else S(i, x, 0.5 + lv * u);
+    if (lv === 'out') S(i, X(x), -0.04, 0.2);          // 画面の上に出た（見えにくい）
+    else if (lv === 'edge') S(i, X(x), -0.02, 0.9);    // 画面の上に出た（見えている扱いでも 外とみなす）
+    else if (Array.isArray(lv)) S(i, lv[0], lv[1]);    // [x, y] で 直接
+    else S(i, X(x), 0.5 + lv * u);
   };
   Wr(15, 0.68, l); Wr(16, 0.32, r);
   return lm;
 }
 function hrzFeed(l, r, dt){ dt = dt || 1 / 30; hrzT += dt; Body.feed(fakeLandmarks(l, r), dt, hrzT); }
+function hrzFeed2(l1, r1, l2, r2, dt){
+  dt = dt || 1 / 30; hrzT += dt;
+  const a = fakeLandmarks(l1, r1, 0.25), b = fakeLandmarks(l2, r2, -0.25);   // a は 画面の左（1P）
+  Body.feedPlayers([a, b], dt); Body.feed(a, dt, hrzT); Body.emit('poses', { all: [a, b], dt, asp: 4 / 3 });
+}
 function hrzClap(){ hrzFeed([0.75, 0.6], [0.25, 0.6]); hrzFeed([0.5, 0.6], [0.5, 0.6]); hrzFeed(1.2, 1.2); }
 if (location.search.includes('dbg')) {
   const skipGate = mode => { const g = document.getElementById('bodyGate'); if (g) g.remove(); Body.mode = mode; zenStart(mode); };
+  const st = s => s && ({ pi: s.pi, phase: s.phase, held: s.z.held, level: s.z.level, anchor: !!s.anchor, px: Math.round(s.px), py: Math.round(s.py), score: Math.floor(s.score), lives: s.lives, dead: s.dead, halt: s.halt, result: s.resultShown, speed: +s.speedMul().toFixed(2), biome: s.biome });
   window.hrz = {
-    HAND, zen, Body, game,
-    get scene(){ return gameScene(); },
+    HAND, zen, Body, get games(){ return games; },
+    get scene(){ return gameScene(); }, get scenes(){ return scenes(); },
     cam(){ skipGate('cam'); }, nocam(){ skipGate('nocam'); },
-    hand(l, r, dt){ hrzFeed(l === undefined ? 1.2 : l, r === undefined ? 1.2 : r, dt); return zen.level; },
+    two: start2, title: toTitle, again, vsCheck,
+    hand(l, r, dt){ hrzFeed(l === undefined ? 1.2 : l, r === undefined ? 1.2 : r, dt); return gameScene().z.level; },
+    hand2(l1, r1, l2, r2, dt){ const u = v => v === undefined ? 1.2 : v; hrzFeed2(u(l1), u(r1), u(l2), u(r2), dt); return scenes().map(s => s && s.z.level); },
     clap: hrzClap,
     bot(on){ zen.bot = on !== false; },
-    step(n, ms){ const s = gameScene(); for (let i = 0; i < (n || 1); i++) s.update(0, ms || 1000 / 60); return this.state(); },
-    state(){ const s = gameScene(); return { phase: s.phase, held: zen.held, level: zen.level, anchor: !!s.anchor, px: Math.round(s.px), py: Math.round(s.py), score: Math.floor(s.score), lives: s.lives, dead: s.dead, result: s.resultShown, speed: +s.speedMul().toFixed(2), biome: s.biome }; }
+    step(n, ms){ for (let i = 0; i < (n || 1); i++) scenes().forEach(s => s && s.update(0, ms || 1000 / 60)); return this.state(); },
+    state(){ return zen.n === 2 ? { n: 2, vsDone: zen.vsDone, vs: vs.style.display, p: scenes().map(st) } : st(gameScene()); }
   };
 }
 </script>

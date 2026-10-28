@@ -12,7 +12,11 @@ canvas{display:block;width:min(100vw,calc(100vh*960/544));height:min(100vh,calc(
 .seed{width:24px;height:24px;border-radius:50%;background:#fff6c0;box-shadow:0 0 30px 10px #ffe680;animation:b 2s infinite}
 @keyframes b{50%{transform:translateY(-8px)}}
 #name{font-size:22px;padding:8px 12px;border-radius:10px;border:2px solid #ffe680;background:#111;color:#fff;text-align:center;width:200px;outline:none}
-#start{font-size:26px;width:70px;height:50px;border-radius:12px;border:none;background:#ffe680;cursor:pointer}
+#start,#start2{font-size:22px;padding:10px 20px;border-radius:12px;border:none;background:#ffe680;cursor:pointer;font-weight:bold}
+#start2{background:#f6c;color:#fff}
+.btns{display:flex;gap:14px}
+.hint{color:#bbb;font:15px sans-serif;text-align:center;line-height:1.6}
+#camHint{color:#fff;font-weight:bold;font-size:18px}
 .keys{color:#888;display:flex;gap:10px;font:16px sans-serif}
 .keys span{border:1px solid #555;border-radius:6px;padding:3px 9px}
 #touch{display:none;position:fixed;inset:0;pointer-events:none}
@@ -31,8 +35,10 @@ canvas{display:block;width:min(100vw,calc(100vh*960/544));height:min(100vh,calc(
 <div id="overlay">
   <div class="seed"></div>
   <input id="name" maxlength="10" placeholder="✎" autocomplete="off">
-  <button id="start">▶</button>
+  <div class="btns"><button id="start">▶ ひとりで</button><button id="start2">👥 ふたりで</button></div>
   <div class="keys"><span>←</span><span>→</span><span>␣</span></div>
+  <div class="hint">ふたりで：先に 大きな木に ついた方の 勝ち<br>1P は A D W ／ 2P は ← → ↑</div>
+  <div id="camHint" class="hint"></div>
 </div>
 <div id="touch"><div id="pad"><span>◀</span><span>▶</span></div><div id="jump"></div></div>
 <div id="rotate"><div class="phone"></div></div>
@@ -50,7 +56,7 @@ const DARK_BASE=100, DARK_PER=14, DARK_ALPHA=0.86;   // 暗闇の見える範囲
 const HURT_INV=1.5, KNOCK=260, DROP_LIFE=6;   // 無敵時間、はじかれる強さ、散った光が残る秒数
 // ========================
 const $=id=>document.getElementById(id);
-const cv=$('c'),cx=cv.getContext('2d');
+const cv=$('c'),cx0=cv.getContext('2d');let cx=cx0;   // ふたりでは 1人ずつ 別の絵に かいてから ならべる
 const VW=960,VH=544,TS=32,ROWS=17,W=230;
 const dk=document.createElement('canvas');dk.width=VW;dk.height=VH;const dkx=dk.getContext('2d');
 const clamp=(v,a,b)=>v<a?a:v>b?b:v;
@@ -58,6 +64,7 @@ const SKEY='hikari_sprouts',NKEY='hikari_name';
 let sprouts=[];try{sprouts=JSON.parse(localStorage.getItem(SKEY)||'[]')}catch(e){}
 const nameEl=$('name');nameEl.value=localStorage.getItem(NKEY)||'';
 const treeX=213*TS, DARK_A=76*TS, DARK_B=149*TS, CPS=[3,74,97,134,151];
+let mode=1,IN=null,cur2=0,worlds=[],winner=-1,winAt=0,readyT=0;   // ふたりで
 let state='title',map,sh,orbs,plats,crushed,stomps,lights,cpi,P,tr,cr,parts=[],camX=0,T=0,fade=0,flash=0,pname='',quiet=false,finalBloom=0;
 
 // ---------- ステージ ----------
@@ -200,7 +207,7 @@ function updPlats(dt){for(const p of plats){p.px=p.x;p.py=p.y}
     else if(p.k==='leaf'){p.t+=dt;p.x=p.x0+Math.sin(p.t*0.9)*64;p.y=p.y0+Math.sin(p.t*1.8)*4}
     else if(p.k==='crumble'){if(p.solid){if(P.on===p||p.tm>0)p.tm+=dt;if(p.tm>0.45){p.solid=0;p.fall=0;p.tm=0}}else{p.fall+=dt;if(p.fall>3){p.solid=1;p.tm=0}}}}
   for(const s of sh){if(!s.alive)continue;if(s.big)updBig(s,dt);else updSmall(s,dt);if(s.y>VH+100)s.alive=0}}
-function updPlay(dt){updPlats(dt);updPlayer(dt,readInput());
+function updPlay(dt){updPlats(dt);updPlayer(dt,IN||readInput());
   if(P.inv>0)P.inv-=dt;if(P.hurt>0)P.hurt-=dt;updDrops(dt);
   if(P.onG&&!P.on){P.lastX=P.x+P.w/2;P.lastY=P.y+P.h}
   for(const o of orbs)if(!o.got&&!(o.cd>0)&&Math.hypot(o.x-(P.x+9),o.y-(P.y+10))<22){o.got=1;lights++;puff(o.x,o.y,10,'#fff3a0');sfx('orb')}
@@ -208,8 +215,8 @@ function updPlay(dt){updPlats(dt);updPlayer(dt,readInput());
   for(const b of sh){if(!b.alive||!b.big)continue;if(ov(P,b,0)&&P.y+P.h>b.y+6){P.x=(P.x+P.w/2<b.x+b.w/2)?b.x-P.w-0.1:b.x+b.w+0.1;P.vx=0;if(hitTiles(P.x,P.y,P.w,P.h))P.y=b.y-P.h-0.1}}
   if(P.y>VH+60){die();return}
   while(cpi<CPS.length-1&&P.x>CPS[cpi+1]*TS)cpi++;
-  if(P.x>treeX-110&&P.onG){state='tree';P.hurt=0;tr={ph:0,t:0,given:0,quiet:stomps===0,bloom:0,fly:[],seed:null,nameT:-1};setSong('tree')}
-  camX+=(clamp(P.x-VW*0.4,0,W*TS-VW)-camX)*Math.min(dt*8,1)}
+  if(P.x>treeX-110&&P.onG){if(mode===2){state='win2';winner=cur2;winAt=performance.now();sfx('bloom');return}state='tree';P.hurt=0;tr={ph:0,t:0,given:0,quiet:stomps===0,bloom:0,fly:[],seed:null,nameT:-1};setSong('tree')}
+  camX+=((mode===2?clamp(P.x-CROP-170,-CROP,W*TS-CROP-HW):clamp(P.x-VW*0.4,0,W*TS-VW))-camX)*Math.min(dt*8,1)}
 function updTree(dt){tr.t+=dt;updPlats(dt);
   if(tr.ph===0){updPlayer(dt,{l:0,r:P.x+P.w/2<treeX-46,j:0});if(P.x+P.w/2>=treeX-48&&P.onG){tr.ph=1;tr.t=0}}
   else if(tr.ph===1){P.vx=0;updPlayer(dt,{l:0,r:0,j:0});
@@ -378,35 +385,128 @@ function render(){drawSky();if(state==='title')return;
   if(fade>0){cx.fillStyle=`rgba(0,0,0,${fade})`;cx.fillRect(0,0,VW,VH)}}
 
 // ---------- 進行 ----------
-function startGame(){pname=nameEl.value.trim().slice(0,10);try{localStorage.setItem(NKEY,pname)}catch(e){}
+function startGame(m){if(m===2){start2();return}mode=1;IN=null;pname=nameEl.value.trim().slice(0,10);try{localStorage.setItem(NKEY,pname)}catch(e){}
   nameEl.blur();initAudio();buildWorld();state='play';setSong('field');$('overlay').style.display='none';
   if('ontouchstart' in window)$('touch').classList.add('on');
   const d=document.documentElement;if(d.requestFullscreen)d.requestFullscreen().then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape')).catch(()=>{})}
-function toTitle(){state='title';cur=null;fade=0;$('overlay').style.display='flex';$('touch').classList.remove('on')}
-$('start').addEventListener('click',startGame);
-nameEl.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();startGame()}});
+function toTitle(){mode=1;IN=null;state='title';cur=null;fade=0;$('overlay').style.display='flex';$('touch').classList.remove('on')}
+$('start').addEventListener('click',()=>startGame(1));
+$('start2').addEventListener('click',()=>startGame(2));
+nameEl.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();startGame(1)}});
 let last=performance.now();
-function loop(now){const dt=Math.min((now-last)/1000,1/30);last=now;T+=dt;
-  if(state==='play')updPlay(dt);else if(state==='tree')updTree(dt);else if(state==='credits')updCredits(dt);
-  if(state!=='title')updParts(dt);if(flash>0)flash=Math.max(0,flash-dt*1.5);
-  if(AC&&state==='play')MG.gain.setTargetAtTime(darkAmt(P.x)>0.5?0.3:0.55,AC.currentTime,0.5);
-  render();requestAnimationFrame(loop)}
+function frame(dt){T+=dt;
+  if(mode===2)step2(dt);
+  else{if(state==='play')updPlay(dt);else if(state==='tree')updTree(dt);else if(state==='credits')updCredits(dt);
+    if(state!=='title')updParts(dt);}
+  if(flash>0)flash=Math.max(0,flash-dt*1.5);
+  if(AC&&state==='play')MG.gain.setTargetAtTime(darkAmt(P.x)>0.5?0.3:0.55,AC.currentTime,0.5)}
+function draw(){if(mode===2&&state!=='title')render2();else render();if(state==='title')titleHint()}
+function loop(now){const dt=Math.min((now-last)/1000,1/30);last=now;frame(dt);draw();requestAnimationFrame(loop)}
 requestAnimationFrame(loop);
 
 // ---------- ぜんしん版：立つ場所（または うでを横にのばす）で 左右に進む、とびあがる＝ジャンプ ----------
 const BODY={ZONE:0.22,ARM:1.1,JUMP_HOLD:0.35};   // ZONE：画面のまん中から これだけ ずれたら進む／ARM：手が肩から これだけ横に出たら進む（肩はば単位）
 let jumpEnd=0;
+Body.people=2;                                  // 2人まで 読む（ひとりのときは 大きくうつる人が 主役）
 Body.on('pose',()=>{
-  if(Body.mode!=='cam')return;
+  if(Body.mode!=='cam'||mode===2)return;
   const h=Body.hands,arm=i=>h[i].vis&&Math.abs(h[i].py)<0.7&&(i?h[i].px>BODY.ARM:h[i].px<-BODY.ARM);
   touch.l=Body.pos<-BODY.ZONE||arm(0)?1:0;
   touch.r=Body.pos>BODY.ZONE||arm(1)?1:0;
   if(touch.l&&touch.r)touch.l=touch.r=0;
   touch.j=performance.now()<jumpEnd?1:0;
 });
-Body.on('jump',()=>{if(Body.mode==='cam'){jumpEnd=performance.now()+BODY.JUMP_HOLD*1000;touch.j=1;}});
-Body.gate({title:'ヒカリノタネ',corner:'tr',needFull:true,lines:['⬅ カメラの <b>左がわに 立つ</b> … 左へ 進む','➡ <b>右がわに 立つ</b> … 右へ 進む','（うでを 横に のばしても 進む）','まん中に 立つ … 止まる','🦘 <b>とびあがる</b> … ジャンプ']});
-window.__game={touch,get state(){return state;}};
+Body.on('jump',()=>{if(Body.mode==='cam'&&mode===1){jumpEnd=performance.now()+BODY.JUMP_HOLD*1000;touch.j=1;}});
+Body.gate({title:'ヒカリノタネ',corner:'tr',needFull:true,lines:['⬅ カメラの <b>左がわに 立つ</b> … 左へ 進む','➡ <b>右がわに 立つ</b> … 右へ 進む','（うでを 横に のばしても 進む）','まん中に 立つ … 止まる','🦘 <b>とびあがる</b> … ジャンプ','👥 <b>2人</b> うつると ふたりで きょうそう（左の人が 1P）','👏 手を たたく … スタート']});
+
+// ---------- ふたりで：同じ道を 2人で きょうそう。画面の左が 1P、右が 2P。先に 大きな木に ついた方の 勝ち ----------
+const CROP=240,HW=480,PCOL=['#2cb','#f6c'];      // 1人ぶんの絵（960）の まん中あたり 480 を 切りとって ならべる
+const oc=document.createElement('canvas');oc.width=VW;oc.height=VH;const ocx=oc.getContext('2d');
+const saveW=()=>({map,sh,orbs,plats,crushed,stomps,lights,cpi,P,tr,cr,parts,camX});
+function loadW(w){({map,sh,orbs,plats,crushed,stomps,lights,cpi,P,tr,cr,parts,camX}=w)}
+function start2(){initAudio();nameEl.blur();pname='';mode=2;worlds=[];
+  for(let i=0;i<2;i++){buildWorld();camX=P.x-CROP-170;worlds.push(saveW())}
+  state='ready2';readyT=0;winner=-1;fade=0;flash=0;setSong('field');
+  $('overlay').style.display='none';$('touch').classList.remove('on');pt2.clear();
+  const d=document.documentElement;if(d.requestFullscreen&&!document.fullscreenElement)d.requestFullscreen().then(()=>screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape')).catch(()=>{})}
+function step2(dt){
+  if(state==='ready2'){const a=Math.ceil(3-readyT);readyT+=dt;const b=Math.ceil(3-readyT);
+    if(b!==a&&AC)tone(b>0?72:84,AC.currentTime,b>0?0.25:0.6,'triangle',0.12,SG);
+    if(readyT>=3)state='play'}
+  for(let i=0;i<2;i++){loadW(worlds[i]);cur2=i;
+    if(state==='play'){IN=in2(i);updPlay(dt)}
+    updParts(dt);worlds[i]=saveW()}
+  IN=null}
+// 2P の入力：キーボード（1P は A D W、2P は ← → ↑）・画面タッチ（左半分が 1P）・カメラ
+const KEY2=[['KeyA','KeyD','KeyW'],['ArrowLeft','ArrowRight','ArrowUp']];
+const camIn=[{l:0,r:0,j:0},{l:0,r:0,j:0}],jumpEnd2=[0,0],pt2=new Map();
+function in2(i){const k=KEY2[i],c=camIn[i],I={l:!!(keys[k[0]]||c.l),r:!!(keys[k[1]]||c.r),j:!!(keys[k[2]]||c.j)};
+  for(const v of pt2.values())if(v.i===i)I[v.a]=true;return I}
+function cvXY(e){const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*VW/r.width,(e.clientY-r.top)*VH/r.height]}
+function padAct(x,y){const i=x<HW?0:1,lx=x-i*HW;return{i,a:y<VH*0.5||lx>=240?'j':lx<120?'l':'r'}}
+const TOUCH2=('ontouchstart' in window);
+cv.addEventListener('pointerdown',e=>{if(mode!==2)return;initAudio();const[x,y]=cvXY(e);
+  if(state==='win2'){if(performance.now()-winAt<800)return;for(const b of btn2)if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h)b.act();return}
+  pt2.set(e.pointerId,padAct(x,y));if(cv.setPointerCapture)cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(mode===2&&pt2.has(e.pointerId)){const[x,y]=cvXY(e);pt2.set(e.pointerId,padAct(x,y))}});
+['pointerup','pointercancel'].forEach(v=>cv.addEventListener(v,e=>pt2.delete(e.pointerId)));
+addEventListener('keydown',e=>{if(document.activeElement===nameEl)return;
+  if(state==='title'){if(e.key==='1')startGame(1);else if(e.key==='2')startGame(2)}
+  else if(state==='win2'&&performance.now()-winAt>800){if(e.key===' '||e.key==='Enter'){e.preventDefault();start2()}else if(e.key==='Escape')toTitle()}});
+// カメラ：それぞれの人を 自分の半分の中で 見る（左の人は 画面の左半分が 0〜1）
+Body.players.forEach((B2,i)=>{
+  B2.on('pose',()=>{if(Body.mode!=='cam'||mode!==2)return;
+    const pos=clamp(((B2.cx-i*0.5)*2-0.5)*2,-1,1),h=B2.hands,arm=k=>h[k].vis&&Math.abs(h[k].py)<0.7&&(k?h[k].px>BODY.ARM:h[k].px<-BODY.ARM),c=camIn[i];
+    c.l=pos<-BODY.ZONE||arm(0)?1:0;c.r=pos>BODY.ZONE||arm(1)?1:0;if(c.l&&c.r)c.l=c.r=0;
+    c.j=performance.now()<jumpEnd2[i]?1:0});
+  B2.on('jump',()=>{if(Body.mode==='cam'&&mode===2){jumpEnd2[i]=performance.now()+BODY.JUMP_HOLD*1000;camIn[i].j=1}});
+  B2.on('clap',camStart)});
+let seen2At=-9;
+const people=()=>performance.now()/1000-seen2At<1?2:1;
+Body.on('poses',()=>{if(Body.count>=2)seen2At=performance.now()/1000;
+  Body.players.forEach((B2,i)=>{if(!B2.ok)camIn[i].l=camIn[i].r=camIn[i].j=0})});
+Body.on('clap',camStart);
+function camStart(){if(Body.mode!=='cam')return;
+  if(state==='title'){initAudio();startGame(people())}
+  else if(state==='win2'&&performance.now()-winAt>1500)start2()}
+let lastHint='';
+function titleHint(){const t=Body.mode!=='cam'?'':people()>=2?'👏 手をたたくと ふたりで スタート':'👏 手をたたいて スタート（2人 うつれば ふたりで）';
+  if(t!==lastHint){lastHint=t;const el=$('camHint');el.textContent=t;el.style.color=people()>=2?'#f6c':'#fff'}}
+// 2P の絵
+function txt(t,x,y,size,col){cx.save();cx.font=`900 ${size}px sans-serif`;cx.textAlign='center';cx.textBaseline='middle';cx.lineJoin='round';
+  cx.strokeStyle='#222';cx.lineWidth=size/4;cx.strokeText(t,x,y);cx.fillStyle=col;cx.fillText(t,x,y);cx.restore()}
+let btn2=[];
+function rrect(x,y,w,h,r){cx.beginPath();cx.moveTo(x+r,y);cx.arcTo(x+w,y,x+w,y+h,r);cx.arcTo(x+w,y+h,x,y+h,r);cx.arcTo(x,y+h,x,y,r);cx.arcTo(x,y,x+w,y,r);cx.closePath()}
+function button2(x,y,w,h,label,sub,col,act){cx.fillStyle='#222';rrect(x-w/2,y+4,w,h,14);cx.fill();
+  cx.fillStyle=col;rrect(x-w/2,y,w,h,14);cx.fill();cx.strokeStyle='#fff';cx.lineWidth=3;cx.stroke();
+  txt(label,x,y+h/2-6,24,'#fff');cx.fillStyle='#fff';cx.font='bold 12px sans-serif';cx.textAlign='center';cx.textBaseline='alphabetic';cx.fillText(sub,x,y+h-8);
+  btn2.push({x:x-w/2,y,w,h,act})}
+function render2(){
+  const prog=worlds.map(w=>clamp((w.P.x-3*TS)/(treeX-110-3*TS),0,1));
+  for(let i=0;i<2;i++){loadW(worlds[i]);cx=ocx;render();
+    if(!(P.inv>0&&Math.floor(T*12)%2))txt((i+1)+'P',P.x+P.w/2-camX,P.y-26,16,PCOL[i]);
+    cx=cx0;cx.drawImage(oc,CROP,0,HW,VH,i*HW,0,HW,VH);
+    const x0=i*HW;
+    txt((i+1)+'P',x0+30,26,24,PCOL[i]);
+    if(lights>0){glow(x0+72,26,11);cx.fillStyle='#fff6c8';cx.font='bold 18px sans-serif';cx.textAlign='left';cx.textBaseline='alphabetic';cx.fillText('×'+lights,x0+86,33)}
+    const bx=x0+150,bw=HW-210;                    // ゴールまでの すすみぐあい（自分は 大きく、あいては 小さく）
+    cx.fillStyle='rgba(0,0,0,0.35)';cx.fillRect(bx,22,bw,8);
+    cx.fillStyle='#ffb8cc';cx.beginPath();cx.arc(bx+bw+10,26,8,0,7);cx.fill();
+    cx.fillStyle=PCOL[1-i];cx.beginPath();cx.arc(bx+bw*prog[1-i],26,5,0,7);cx.fill();
+    cx.fillStyle=PCOL[i];cx.strokeStyle='#fff';cx.lineWidth=2;cx.beginPath();cx.arc(bx+bw*prog[i],26,8,0,7);cx.fill();cx.stroke();
+    if(TOUCH2&&state!=='win2'){cx.font='bold 26px sans-serif';cx.textAlign='center';cx.textBaseline='middle';
+      [['◀',60],['▶',180],['⤒',360]].forEach(([t,dx])=>{cx.fillStyle='rgba(255,255,255,0.12)';cx.beginPath();cx.arc(x0+dx,VH-60,36,0,7);cx.fill();cx.fillStyle='rgba(255,255,255,0.5)';cx.fillText(t,x0+dx,VH-60)})}
+    cx.strokeStyle=PCOL[i];cx.lineWidth=4;cx.strokeRect(x0+2,2,HW-4,VH-4)}
+  cx.fillStyle='#111';cx.fillRect(HW-3,0,6,VH);
+  btn2=[];
+  if(state==='ready2'){const n=Math.ceil(3-readyT);for(let i=0;i<2;i++){txt(n>0?String(n):'スタート!',i*HW+HW/2,VH*0.42,n>0?110:56,['#4c4','#fc3','#f44'][n-1]||'#fff');
+      if(Body.mode!=='cam')txt(i?'2P：← → ↑':'1P：A D W',i*HW+HW/2,VH*0.62,26,PCOL[i])}}
+  if(state==='win2'){cx.fillStyle='rgba(0,0,0,0.55)';cx.fillRect(0,0,VW,VH);
+    txt((winner+1)+'P の勝ち!',VW/2,150,72,PCOL[winner]);
+    txt('大きな木に ついた！',VW/2,230,26,'#fff6c8');
+    button2(VW/2,290,280,64,'もういちど','スペース'+(Body.mode==='cam'?' ／ 👏':''),'#e70',start2);
+    button2(VW/2,370,280,64,'タイトルへ','Esc','#567',toTitle)}}
+window.__game={touch,get P(){return P;},get state(){return state;},get mode(){return mode;},get worlds(){return worlds;},frame,draw,startGame,in2,camIn,people};
 })();
 </script>
 </body>

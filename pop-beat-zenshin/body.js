@@ -1,5 +1,6 @@
 // 全身版ゲーム共通：カメラで体の動きを読む。各ゲームのフォルダに同じものをコピーして使う。
 // 使い方：Body.gate({ title, lines, onStart }) で入口を出し、Body.on('swing' など, fn) で動きを受けとる。
+// ふたりで：カメラを はじめる前に Body.people = 2。Body.players[0]（画面の左に立つ人）・[1]（右の人）にも Body と同じ on / hands などがある。
 // 座標は「鏡うつし」。x は 0（画面左）〜1（画面右）、y は 0（上）〜1（下）。手 0 は画面の左がわの手。
 (function(){
 'use strict';
@@ -23,6 +24,9 @@ const CFG = {
 };
 
 const hand = () => ({ x: 0, y: 0, px: 0, py: 0, vis: false, up: false, p: null, org: null, armed: false, at: -9 });
+let asp = 4 / 3;
+// 1人ぶんの「体」。Body 本体のほか、ふたりで あそぶときは Body.players[0]（画面の左の人）と [1]（右の人）も 同じ形で使える
+function makeBody(){
 const B = {
   cfg: CFG, mode: 'off', ok: false, full: false, now: 0, asp: 4 / 3,   // asp：カメラ映像の横÷縦
   hands: [hand(), hand()],
@@ -40,11 +44,12 @@ const subs = {};
 B.on = (name, fn) => { (subs[name] = subs[name] || []).push(fn); return B; };
 B.emit = (name, data) => { (subs[name] || []).forEach(fn => { try { fn(data || {}); } catch (e) { console.error(e); } }); };
 
-let baseY = null, lastStep = '', stepTimes = [], clapArmed = false, asp = 4 / 3;
+let baseY = null, lastStep = '', stepTimes = [], clapArmed = false;
 function clear(){
   B.ok = false; B.full = false; B.both = false;
   B.hands.forEach(h => { h.vis = false; h.p = null; });
 }
+B.clear = clear;
 // lm：MediaPipe の関節 33 個。dt：前の読み取りからの秒数
 B.feed = function(lm, dt, t){
   dt = Math.max(dt || 0.033, 0.001);
@@ -115,6 +120,22 @@ B.feed = function(lm, dt, t){
   B.lm = lm;
   B.emit('pose', B);
 };
+return B;
+}
+const B = makeBody();
+B.people = 1;    // カメラを はじめる前に 2 にすると、ふたりで あそべる（2人 うつると 左右半分ずつ 読む）
+B.count = 0;     // いま カメラに うつっている人数（people が 2 のとき）
+B.players = [makeBody(), makeBody()];   // people が 2 のとき：画面の左に立つ人・右に立つ人（1人だけなら 立っている がわ）
+const seen = lm => (lm[11].visibility == null ? 1 : lm[11].visibility) > 0.5 && (lm[12].visibility == null ? 1 : lm[12].visibility) > 0.5;
+B.feedPlayers = feedPlayers;   // テスト用にも 使える（all：全員の関節）
+function feedPlayers(all, dt){
+  const ok = all.filter(seen), cxOf = lm => 1 - (lm[11].x + lm[12].x) / 2;   // 鏡うつしの 体の左右
+  const lane = [null, null];
+  if (ok.length >= 2){ const s = ok.slice().sort((a, b) => cxOf(a) - cxOf(b)); lane[0] = s[0]; lane[1] = s[s.length - 1]; }
+  else if (ok.length === 1) lane[cxOf(ok[0]) < 0.5 ? 0 : 1] = ok[0];
+  B.count = ok.length;
+  B.players.forEach((P, i) => { if (lane[i]) P.feed(lane[i], dt); else P.clear(); });
+}
 
 // ---- カメラと小さい鏡 ----
 let video, cv, cx2, tip, pose = null, lastVT = -1, lastT = 0;
@@ -132,10 +153,10 @@ function buildMirror(corner){
   cx2 = cv.getContext('2d');
 }
 const LINES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]];
-function drawMirror(lm){
+function drawMirror(all){
   const w = cv.width = video.videoWidth || 640, h = cv.height = video.videoHeight || 480;
   cx2.clearRect(0, 0, w, h);
-  if (lm){
+  for (const lm of all){
     cx2.strokeStyle = '#fff'; cx2.lineWidth = 6; cx2.lineCap = 'round';
     LINES.forEach(([a, b]) => { if ((lm[a].visibility || 0) > 0.4 && (lm[b].visibility || 0) > 0.4){ cx2.beginPath(); cx2.moveTo((1 - lm[a].x) * w, lm[a].y * h); cx2.lineTo((1 - lm[b].x) * w, lm[b].y * h); cx2.stroke(); } });
     [[15, '#3bf'], [16, '#f55']].forEach(([i, col]) => { if ((lm[i].visibility || 0) > 0.4){ cx2.fillStyle = col; cx2.beginPath(); cx2.arc((1 - lm[i].x) * w, lm[i].y * h, 22, 0, 7); cx2.fill(); } });
@@ -143,17 +164,65 @@ function drawMirror(lm){
   const t = !B.ok ? 'カメラに うつってね' : (B.needFull && !B.full) ? 'もう少し はなれてね' : '';
   tip.textContent = t; tip.style.display = t ? 'block' : 'none';
 }
+// 読みとりは 重い（機械によっては 1回 数十ミリ秒 止まる）。かかった 時間を はかり、重い 機械では 間を あけて、
+// 読みとりに 使う 時間を 全体の 4わり くらいまでに おさえる（そのぶん ゲームの 絵が なめらかに なる）
+let cost = 0, nextAt = 0;
 function loop(ts){
   requestAnimationFrame(loop);
-  if (!pose || video.readyState < 2 || video.currentTime === lastVT) return;
+  if (!pose || video.readyState < 2 || video.currentTime === lastVT || ts < nextAt) return;
   const now = ts / 1000, dt = lastT ? Math.min(0.2, now - lastT) : 0.033;
   lastVT = video.currentTime; lastT = now;
-  let res = null;
-  try { res = pose.detectForVideo(video, ts); } catch (e) { return; }
-  const lm = res && res.landmarks && res.landmarks[0];
-  if (lm) B.feed(lm, dt); else clear();
-  drawMirror(lm);
+  const t0 = performance.now();
+  let all = null;
+  // ふたりで：0.5秒ごとに 左半分・右半分を 別々に読み、2人いたら そのあいだは 毎回 半分ずつ読む
+  if (B.people > 1 && halves && (two || ts >= halfAt)){
+    halfAt = ts + 500;
+    const r = readHalves(ts);
+    if (r){
+      const cxOf = lm => 1 - (lm[11].x + lm[12].x) / 2;
+      if (r[0] && r[1] && cxOf(r[0]) < 0.45 && cxOf(r[1]) > 0.55) lastTwo = ts;
+      two = ts - lastTwo < 1000;
+      if (two) all = r;
+    }
+  }
+  if (!all){
+    let res = null;
+    try { res = pose.detectForVideo(video, ts); } catch (e) { return; }
+    all = (res && res.landmarks) || [];
+  }
+  cost += (performance.now() - t0 - cost) * 0.2; B.cost = cost; nextAt = ts + Math.min(125, cost * 2.5);
+  const found = all.filter(Boolean);
+  // 2人 うつっていたら、大きく（近くに）うつっている人を 主役にする
+  const size = lm => Math.hypot(lm[11].x - lm[12].x, lm[11].y - lm[12].y);
+  const lm = found.length > 1 ? found.reduce((a, b) => size(b) > size(a) ? b : a) : found[0];
+  if (lm) B.feed(lm, dt); else B.clear();
+  if (B.people > 1){
+    if (two){                                   // 半分ずつ読んだ：左半分の人が players[0]、右半分の人が players[1]
+      B.count = found.length;
+      B.players.forEach((P, i) => { if (all[i]) P.feed(all[i], dt); else P.clear(); });
+    } else feedPlayers(found, dt);
+    B.emit('poses', { all: found, dt, asp });
+  }
+  drawMirror(found);
 }
+// 2人を 1度に 探す設定（numPoses 2）は 20倍以上 おそいので、画面を 左右半分に 切って 1人ずつ 読む
+let halves = null, halfCv = null, halfCx = null, halfAt = 0, lastTwo = -9999, two = false;
+function readHalves(ts){
+  const vw = video.videoWidth || 640, vh = video.videoHeight || 480, hw = Math.floor(vw / 2);
+  if (!halfCv){ halfCv = [0, 1].map(() => { const c = document.createElement('canvas'); c.width = hw; c.height = vh; return c; }); halfCx = halfCv.map(c => c.getContext('2d')); }
+  // 鏡うつしの 画面の左＝カメラ映像の右半分
+  const out = [null, null];
+  try {
+    [[0, hw], [1, 0]].forEach(([i, sx]) => {
+      halfCx[i].drawImage(video, sx, 0, hw, vh, 0, 0, hw, vh);
+      const res = halves[i].detectForVideo(halfCv[i], ts);
+      const lm = res && res.landmarks && res.landmarks[0];
+      if (lm) out[i] = lm.map(p => ({ x: sx / vw + p.x * hw / vw, y: p.y, z: p.z, visibility: p.visibility }));
+    });
+  } catch (e){ console.error(e); return null; }
+  return out;
+}
+const CAM_OPT = { video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } } };
 B.start = async function(say, corner){
   say = say || (() => {});
   if (pose){ B.mode = 'cam'; return true; }
@@ -161,7 +230,7 @@ B.start = async function(say, corner){
   if (!video){
     say('カメラを じゅんび中…');
     let stream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 60 } } }); }
+    try { stream = await navigator.mediaDevices.getUserMedia(CAM_OPT); }
     catch (e){ say('カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'); return false; }
     buildMirror(corner);
     video.srcObject = stream;
@@ -179,6 +248,7 @@ B.start = async function(say, corner){
       const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
       where = 'モデル';
       try { pose = await make('GPU'); } catch (e){ pose = await make('CPU'); }
+      if (B.people > 1) try { halves = [await make('GPU').catch(() => make('CPU')), await make('GPU').catch(() => make('CPU'))]; } catch (e){ console.error(e); halves = null; }
     } catch (e){ err = e; console.error(e); if (n === 0) say('よみこみに しっぱい。もういちど ためしています…'); }
   }
   if (!pose){ say(`うごきを 見る しくみを よみこめませんでした。もういちど「カメラで あそぶ」を おすか、Safari や Chrome で ひらいてね。［${where}：${String((err && err.message) || err).slice(0, 90)}］`); return false; }
@@ -186,6 +256,16 @@ B.start = async function(say, corner){
   B.mode = 'cam';
   requestAnimationFrame(loop);
   return true;
+};
+// 別のゲームを 上に かさねて開く間、カメラを はなす（スマホは 同じカメラを 2か所で 使えないことがある）。resume で つなぎなおす
+B.pause = function(){
+  if (!video || !video.srcObject) return;
+  video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; B.clear();
+};
+B.resume = async function(){
+  if (!video || video.srcObject) return true;
+  try { video.srcObject = await navigator.mediaDevices.getUserMedia(CAM_OPT); await video.play(); lastT = 0; lastVT = -1; return true; }
+  catch (e){ console.error(e); return false; }
 };
 
 // ---- 入口の画面 ----

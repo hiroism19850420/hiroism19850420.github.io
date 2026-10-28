@@ -21,7 +21,7 @@
   /* カメラの映像は 小さく 右上に。主役は ゲーム画面 */
   #bodyMirror{width:min(19vw,136px)!important}
 </style>
-<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+</head>
 <body>
 <div id="game"></div>
 <div id="rotate"><div class="ph"></div>よこむきに してね</div>
@@ -68,6 +68,14 @@ const TUNE = {
 };
 let SCENE = null, zenTest = false, fake = null;   // fake：?dbg で 手の高さを 合成する とき
 const ZEN = () => Body.mode === 'cam' || zenTest;
+// ふたりで：カメラに 2人 うつす。画面の左に立つ人が 1P、右の人が 2P。
+// 同じ コースを じゅんばんに はしり、がけに 近く とめた ほうが ラウンドの かち（先に 2かち）
+Body.people = 2;
+const PCOL = ['#2cb', '#f6c'], PCART = ['sky', 'pink'];   // 1P・2P の 色と トロッコの 色
+const VS_ROUNDS = 3;
+const VS_KEYS = [['KeyZ', 'KeyX'], ['KeyL', 'KeyK', 'ArrowDown']];   // カメラなし：1P は 左がわ、2P は 右がわの キー
+let seen2At = -9;                                                     // 最後に 2人 うつっていた 時刻
+const people = () => performance.now() / 1000 - seen2At < 1 ? 2 : 1;
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const damp = (k, dt) => 1 - Math.exp(-k * dt);
@@ -642,6 +650,15 @@ class Main extends Phaser.Scene {
       pose: (a, b = null, unit = 0.16) => { fake = null; const lm = synthPose(a, b, unit); for (let i = 0; i < 6; i++) Body.feed(lm, 0.033, performance.now() / 1000 + i * 0.033); return this.hs.map(h => ({ vis: h.vis, h: +h.h.toFixed(3), armed: h.armed })); },
       get state() { return s.state; }, get lever() { return +s.levA.toFixed(2); }, get pressed() { return !!s.pressed; },
       get hands() { return s.hs; }, get speed() { return s.speed; }, get lamp() { return s.lamp; },
+      // ふたりで：vs() で はじめる。pose2(1Pの左,1Pの右, 2Pの左,2Pの右) で 2人ぶんの 関節を 流す（1P が 画面の 左）
+      vs: () => { s.startVs(); return s.state; },
+      get V() { return s.V; },
+      pose2: (a1, b1, a2, b2, unit = 0.12) => {
+        fake = null; const A = synthPose(a1, b1, unit, 0.25), B = synthPose(a2, b2, unit, -0.25);
+        for (let i = 0; i < 6; i++) { Body.feedPlayers([A, B], 0.033); Body.feed(A, 0.033, performance.now() / 1000 + i * 0.033); Body.emit('poses', { all: [A, B], dt: 0.033, asp: 4 / 3 }); }
+        return this.hs.map(h => ({ vis: h.vis, h: +h.h.toFixed(3), armed: h.armed }));
+      },
+      key: code => s.onKey(code),
       result: () => s.state === 'result' ? { text: s.resVal.text, rank: s.resRank.text, d: s.P ? finalD(s.course, s.P) : null } : null,
       TUNE, findPress, compile, simFinal, finalD, genCourse, rng, TOUR, SV
     };
@@ -737,6 +754,8 @@ class Main extends Phaser.Scene {
     this.introC.add([this.introG, this.introSample, this.introT1, this.introT2, this.introT3, this.introT4]);
     this.tweens.add({ targets: this.introT4, alpha: 0.45, duration: 520, yoyo: true, repeat: -1 });
 
+    // ふたりで の さいごの 画面
+    this.vsC = Ui(this.add.container(0, 0), 45).setVisible(false);
     this.refreshChips();
   }
 
@@ -756,7 +775,7 @@ class Main extends Phaser.Scene {
 
   // ───── 画面 ─────
   hideScreens() {
-    [this.titleC, this.mapC, this.shopC, this.hudC, this.resC, this.resBtnC, this.introC].forEach(c => c.setVisible(false));
+    [this.titleC, this.mapC, this.shopC, this.hudC, this.resC, this.resBtnC, this.introC, this.vsC].forEach(c => c.setVisible(false));
     this.readyT.setVisible(false); this.readySub.setVisible(false);
     this.retry.setVisible(false); this.hint.setVisible(false); this.gaugeG.setVisible(false); this.gaugeT.setVisible(false);
   }
@@ -776,17 +795,28 @@ class Main extends Phaser.Scene {
     const t3 = this.T(640, 274, ZEN() ? '手を こしから かたへ ぐっと ひいて ピタッと' : 'ネコの トロッコを がけの ふちで ピタッと', 22);
     const t4 = this.T(872, 84, 'ぜんしん版', 22, '#ffffff', { backgroundColor: '#ff7a2f', padding: { x: 12, y: 4 } });
     C.add([t1, t2, t3, t4]);
+    this.titleClap = null;
     if (ZEN()) {
       const t5 = this.T(720, 400, '👏 てを たたくと スタート', 34, '#ffffff', { stroke: '#5b3a29', strokeThickness: 9 });
       C.add(t5); this.tweens.add({ targets: t5, alpha: 0.5, duration: 600, yoyo: true, repeat: -1 });
+      this.titleClap = t5; this.titleTwo = null; this.updTitleClap();
     }
     this.tweens.add({ targets: t2, angle: { from: -2, to: 2 }, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.inOut' });
-    this.btn(C, 330, 610, 230, 92, 'ツアー', () => this.showMap(), { sub: '★ ' + this.totalStars() + ' / 45', color: 0xffd75e, size: 32 });
-    this.btn(C, 570, 610, 230, 92, 'れんぞく', () => this.startEndless(), { sub: 'ベスト ' + SV.endlessBest, color: 0xf7a8c8, size: 32 });
+    this.btn(C, 170, 610, 216, 92, 'ツアー', () => this.showMap(), { sub: '★ ' + this.totalStars() + ' / 45', color: 0xffd75e, size: 32 });
+    this.btn(C, 405, 610, 216, 92, 'れんぞく', () => this.startEndless(), { sub: 'ベスト ' + SV.endlessBest, color: 0xf7a8c8, size: 32 });
     const dd = SV.daily && SV.daily.date === todayKey() ? SV.daily : null;
-    this.btn(C, 810, 610, 230, 92, 'きょうの1本', () => this.startDaily(), { sub: dd && dd.best != null ? this.fmt(dd.best) : 'まいにち かわる', color: 0x9fd8f0, size: 30 });
-    this.btn(C, 1050, 610, 200, 92, 'きせかえ', () => this.showShop(), { sub: 'ぼうし・いろ', color: 0xb5e48c, size: 30 });
+    this.btn(C, 640, 610, 216, 92, 'きょうの1本', () => this.startDaily(), { sub: dd && dd.best != null ? this.fmt(dd.best) : 'まいにち かわる', color: 0x9fd8f0, size: 28 });
+    this.btn(C, 875, 610, 216, 92, 'ふたりで', () => this.startVs(), { sub: ZEN() ? '2人 うつって 👏' : 'キー 2', color: 0xe9a6f0, size: 30 });
+    this.btn(C, 1110, 610, 216, 92, 'きせかえ', () => this.showShop(), { sub: 'ぼうし・いろ', color: 0xb5e48c, size: 30 });
     this.refreshChips();
+  }
+
+  // タイトルの 手たたきの 案内（2人 うつって いれば ふたりで）
+  updTitleClap() {
+    const t = this.titleClap; if (!t || !this.titleC.visible) return;
+    const two = people() >= 2; if (two === this.titleTwo) return;
+    this.titleTwo = two;
+    t.setText(two ? '👏 てを たたくと ふたりで スタート' : '👏 てを たたくと スタート（2人 うつれば ふたりで）').setFontSize(two ? 34 : 28).setColor(two ? '#ff99e6' : '#ffffff');
   }
 
   showMap() {
@@ -840,7 +870,8 @@ class Main extends Phaser.Scene {
     save(); this.applyLook(); this.showShop();
   }
   applyLook() {
-    this.cartBody.setTexture('body_' + SV.color); this.ghostBody.setTexture('body_' + SV.color);
+    const vs = this.mode === 'vs' && this.V;   // ふたりで：1P は みずいろ、2P は ピンクの トロッコ
+    this.cartBody.setTexture('body_' + (vs ? PCART[this.V.turn] : SV.color)); this.ghostBody.setTexture('body_' + (vs ? PCART[0] : SV.color));
     this.catExpr = ''; this.setCat(this._expr || 'norm');
   }
 
@@ -882,7 +913,26 @@ class Main extends Phaser.Scene {
   // ───── 入力 ─────
   setupInput() {
     this.input.on('pointerdown', p => this.onTap(performance.now(), p.x, p.y));
-    this.input.keyboard.on('keydown', e => { if (e.repeat) return; if (e.code === 'Space' || e.code === 'Enter' || e.code === 'ArrowDown') this.onTap(performance.now(), -1, -1); });
+    this.input.keyboard.on('keydown', e => { if (e.repeat) return; this.onKey(e.code); });
+  }
+  onKey(code) {
+    const now = performance.now();
+    if (this.state === 'menu' && this.titleC.visible) {   // タイトル：1＝ひとりで（ツアー）、2＝ふたりで
+      if (code === 'Digit2' || code === 'Numpad2') { AU.init(); AU.tick(); this.startVs(); return; }
+      if (code === 'Digit1' || code === 'Numpad1') { AU.init(); AU.tick(); this.startCourse(this.nextTour(), 'tour'); return; }
+    }
+    if (this.state === 'vsEnd') {
+      if (this.time.now - this.resAt < 800) return;
+      if (code === 'Escape') this.showTitle(); else if (code === 'Space' || code === 'Enter') this.startVs();
+      return;
+    }
+    if (this.mode === 'vs') {   // ふたりで：はしっている 間は じぶんの キーだけ
+      const k = VS_KEYS.findIndex(ks => ks.includes(code));
+      if (this.state === 'run') { if (k === this.V.turn) this.onTap(now, -1, -1); return; }
+      if (k >= 0 || code === 'Space' || code === 'Enter') this.onTap(now, -1, -1);
+      return;
+    }
+    if (code === 'Space' || code === 'Enter' || code === 'ArrowDown') this.onTap(now, -1, -1);
   }
   onTap(now, px, py) {
     AU.init(); if (px >= 0) window._tapped = true;
@@ -897,13 +947,21 @@ class Main extends Phaser.Scene {
     }
     if (this.state === 'menu') { AU.bgmOn(); return; }
     if (this.state === 'intro') { this.introC.setVisible(false); this.beginRun(); return; }
-    if (this.state === 'run' && !this.pressed) { this.press(now); return; }
+    if (this.state === 'run' && !this.pressed) {
+      if (this.mode === 'vs' && px >= 0 && (px < W / 2 ? 0 : 1) !== this.V.turn) return;   // ふたりで：1P は 左がわ、2P は 右がわを タップ
+      this.press(now); return;
+    }
     if (this.state === 'result' && this.time.now - this.resAt > 350) this.afterResult();
   }
   // 手を たたく：はじめる・もういちど
   onClap() {
     AU.init();
-    if (this.state === 'menu') { if (this.titleC.visible || this.mapC.visible) { AU.tick(); this.startCourse(this.nextTour(), 'tour'); } return; }
+    if (this.state === 'menu') {
+      if (this.titleC.visible && people() >= 2) { AU.tick(); this.startVs(); return; }   // 2人 うつって いれば ふたりで
+      if (this.titleC.visible || this.mapC.visible) { AU.tick(); this.startCourse(this.nextTour(), 'tour'); }
+      return;
+    }
+    if (this.state === 'vsEnd') { if (this.time.now - this.resAt > 800) this.startVs(); return; }
     if (this.state === 'intro') { this.introC.setVisible(false); this.beginRun(); return; }
     if (this.state === 'result' && this.time.now - this.resAt > 800) {
       if (this.mode === 'endless' && this.E.over) this.startEndless(); else this.afterResult();
@@ -933,12 +991,19 @@ class Main extends Phaser.Scene {
 
   // 3・2・1：手を こしに かまえている 間だけ 数える
   updReady(dtR) {
-    const ok = this.hs.some(q => q.vis && q.h < TUNE.READY);
+    // カメラなしの ふたりで は、「〇P の ばん」を 見せてから 3・2・1
+    const ok = ZEN() ? this.hs.some(q => q.vis && q.h < TUNE.READY) : true;
+    const vs = this.mode === 'vs', who = vs ? (this.V.turn + 1) + 'P' : '';
     if (!this.cdOn) {
-      this.readyT.setText('✋').setFontSize(110);
-      this.readySub.setText('かたほうの 手を こしに かまえてね');
+      if (vs) {
+        this.readyT.setText(who).setFontSize(120).setColor(PCOL[this.V.turn]);
+        this.readySub.setText(ZEN() ? who + '：かたほうの 手を こしに かまえてね' : who + ' の ばん');
+      } else {
+        this.readyT.setText('✋').setFontSize(110);
+        this.readySub.setText('かたほうの 手を こしに かまえてね');
+      }
       this.cdHold = ok ? this.cdHold + dtR : 0;
-      if (this.cdHold > 0.3) { this.cdOn = true; this.cdT = 0; this.cdN = 0; this.cdLost = 0; }
+      if (this.cdHold > (ZEN() ? 0.3 : 1.0)) { this.cdOn = true; this.cdT = 0; this.cdN = 0; this.cdLost = 0; this.readyT.setColor('#ffd75e'); }
       return;
     }
     this.cdLost = ok ? 0 : this.cdLost + dtR;
@@ -949,7 +1014,9 @@ class Main extends Phaser.Scene {
       this.cdN = n;
       if (n > 0) { AU.tone(880, 0.16, { type: 'triangle', vol: 0.22 }); this.readyT.setText(String(n)).setFontSize(150).setScale(1.25); this.tweens.add({ targets: this.readyT, scale: 1, duration: 220, ease: 'Back.out' }); }
     }
-    this.readySub.setText('そのまま… がけが 見えたら 手を かたへ！');
+    this.readySub.setText(!vs ? 'そのまま… がけが 見えたら 手を かたへ！'
+      : ZEN() ? who + '：そのまま… がけが 見えたら 手を かたへ！'
+      : who + '：' + (this.V.turn ? 'L・K・↓ か 右がわを タップで' : 'Z・X か 左がわを タップで') + ' ブレーキ');
     if (n <= 0) this.go();
   }
   go() {
@@ -1007,7 +1074,7 @@ class Main extends Phaser.Scene {
     // 手（青い丸）は 握りに そって 手の高さの 所に
     if (handA != null) {
       const [hx, hy] = pt(handA, L - 16);
-      c.beginPath(); c.arc(hx, hy, 11, 0, 7); c.fillStyle = '#3bb8ff'; c.fill(); c.lineWidth = 3.5; c.strokeStyle = '#ffffff'; c.stroke();
+      c.beginPath(); c.arc(hx, hy, 11, 0, 7); c.fillStyle = this.mode === 'vs' && this.V ? PCOL[this.V.turn] : '#3bb8ff'; c.fill(); c.lineWidth = 3.5; c.strokeStyle = '#ffffff'; c.stroke();
       c.lineWidth = 1.5; c.strokeStyle = OLc; c.beginPath(); c.arc(hx, hy, 13, 0, 7); c.stroke();
     }
     // ランプ：みどり＝はしる、あか＝とまった、きいろ＝まって
@@ -1017,6 +1084,7 @@ class Main extends Phaser.Scene {
     c.beginPath(); c.arc(lx, ly, 14, 0, 7); c.fillStyle = LC[0]; c.fill(); c.lineWidth = 3; c.strokeStyle = OLc; c.stroke();
     c.beginPath(); c.arc(lx - 4, ly - 4, 4, 0, 7); c.fillStyle = 'rgba(255,255,255,0.7)'; c.fill();
     c.fillStyle = OLc; c.font = '900 13px ' + FONT; c.fillText(LC[1], lx, ly + 26);
+    if (this.mode === 'vs' && this.V) { c.fillStyle = PCOL[this.V.turn]; c.font = '900 24px ' + FONT; c.fillText((this.V.turn + 1) + 'P', 32, 30); }   // いま ひいている 人
     this.levTex.refresh();
   }
   snapLever() {
@@ -1180,12 +1248,15 @@ class Main extends Phaser.Scene {
     this.P = mkBody(c); this.simT = 0; this.ts = 1; this.tsT = 1; this.pressed = false;
     // 体の 動きの おくれを 考えて、元より ゆっくり 走らせる（きょりは 同じ。時間だけ のばす）
     const SE = TUNE.SPEED_ENDLESS;
-    this.speed = mode === 'tour' ? (TUNE.SPEED[def.stage] || 0.9) : mode === 'daily' ? TUNE.SPEED_DAILY : Math.min(SE[2], SE[0] + SE[1] * this.E.L);
+    this.speed = mode === 'tour' ? (TUNE.SPEED[def.stage] || 0.9) : mode === 'daily' || mode === 'vs' ? TUNE.SPEED_DAILY : Math.min(SE[2], SE[0] + SE[1] * this.E.L);
+    this.hs.forEach(h => { h.vis = false; h.armed = false; });   // ふたりで：前の人の 手を のこさない
     this.levSnap = -1; this.levA = TUNE.LEVER_DOWN; this.lamp = 'go'; this.cdOn = false; this.cdHold = 0;
     this.tweens.killTweensOf(this.gachanT); this.gachanT.setVisible(false);
     if (DBG && this.autoD != null) this.P.tPress = findPress(c, this.autoD);
-    const gt = mode === 'daily' ? (SV.daily && SV.daily.date === todayKey() ? SV.daily.ghost : null) : mode === 'tour' ? SV.ghost[def.id] : null;
+    // ゴースト：ふたりで の 2P の ばんは 1P の はしり
+    const gt = mode === 'vs' ? (this.V.turn === 1 ? this.V.tp[0] : null) : mode === 'daily' ? (SV.daily && SV.daily.date === todayKey() ? SV.daily.ghost : null) : mode === 'tour' ? SV.ghost[def.id] : null;
     this.G = gt != null ? mkBody(c, gt) : null;
+    this.ghostT.setText(mode === 'vs' ? '1P' : 'ベスト').setColor(mode === 'vs' ? PCOL[0] : '#ffffff');
     this.ghost.setVisible(!!this.G); this.ghostT.setVisible(!!this.G);
     if (this.G) { this.placeOnRail(this.ghost, c.x0); this.ghostT.setPosition(c.x0, this.ghost.y - 130); }
     // 1-1 のチュートリアル帯
@@ -1210,6 +1281,10 @@ class Main extends Phaser.Scene {
       const dt = new Date(), dd = SV.daily && SV.daily.date === todayKey() ? SV.daily : null;
       this.courseT.setText('きょうの1本  ' + (dt.getMonth() + 1) + '/' + dt.getDate());
       this.subT.setText('きょうの ベスト ' + this.fmt(dd ? dd.best : null) + (dd ? '   ' + (dd.tries + 1) + 'かいめ' : ''));
+    } else if (mode === 'vs') {
+      const V = this.V;
+      this.courseT.setText('ふたりで  ラウンド ' + (V.round + 1) + ' / ' + VS_ROUNDS + '   ' + (V.turn + 1) + 'P の ばん');
+      this.subT.setText('1P  ' + V.wins[0] + ' － ' + V.wins[1] + '  2P');
     } else {
       this.courseT.setText('れんぞく  No.' + (this.E.L + 1));
       this.subT.setText('スコア ' + this.E.score + (this.E.streak >= 1 ? '   ×' + this.mult().toFixed(1) : ''));
@@ -1221,7 +1296,7 @@ class Main extends Phaser.Scene {
   beginRun() {
     this.hint.setText(ZEN() ? '手を かたまで ぐっと ひく！（1かいだけ）' : 'タップで ブレーキ！（1かいだけ）');
     this.guideT.setText(ZEN() ? 'ここで ブレーキ！' : 'ここで タップ！');
-    if (ZEN()) {   // カメラの ときは、手を こしに かまえてから 3・2・1
+    if (ZEN() || this.mode === 'vs') {   // カメラの ときは、手を こしに かまえてから 3・2・1（ふたりで は カメラなしでも）
       this.state = 'ready'; this.lamp = 'wait'; this.setCat('norm'); this.cdOn = false; this.cdHold = 0;
       this.readyT.setVisible(true).setAlpha(1).setScale(1); this.readySub.setVisible(true);
       this.updReady(0);
@@ -1268,6 +1343,7 @@ class Main extends Phaser.Scene {
     this.lastUpd = performance.now();
     if (!this.course) return;
     if (ZEN() && fake) this.handIn(fake);
+    if (this.titleClap) this.updTitleClap();
     if (this.state === 'ready') this.updReady(dtR);
     this.drawLever(dtR);
     this.drawFlag(t);
@@ -1496,7 +1572,7 @@ class Main extends Phaser.Scene {
     const c = this.course, fell = kind === 'fall';
     this.gaugeG.setVisible(false); this.gaugeT.setVisible(false); this.hint.setVisible(false);
     const stars = fell ? 0 : this.starsFor(d), fishGot = fell ? 0 : this.runFish;
-    SV.fish += fishGot;
+    if (this.mode !== 'vs') SV.fish += fishGot;   // ふたりで は さかなを ふやさない
     let rank = '', color = '#ffd75e', sub = '', sub2 = '', newRec = false;
     if (!fell) {
       const front = this.cart.x + HALF; this.drawRuler(front, c.edge);
@@ -1504,10 +1580,10 @@ class Main extends Phaser.Scene {
       this.tweens.add({ targets: this.camK, x: mid - 260 / z, y: RY - 110, z, duration: 700, ease: 'Sine.out' });
     }
     if (fell) {
-      this.resLabel.setText(''); this.resVal.setText('おっこちた〜').setFontSize(62).setColor('#ffffff');
+      this.resLabel.setText('').setColor('#5b3a29'); this.resVal.setText('おっこちた〜').setFontSize(62).setColor('#ffffff');
       sub = '（ネコは ぶじです）'; AU.sad();
     } else {
-      this.resLabel.setText(d < 0 ? 'ふちから はみだし' : 'がけまで');
+      this.resLabel.setText(d < 0 ? 'ふちから はみだし' : 'がけまで').setColor('#5b3a29');
       const J = TUNE.JUDGE;
       this.resVal.setText(Math.abs(d).toFixed(1) + 'cm').setFontSize(76).setColor(d < J.PERFECT ? '#ffd75e' : '#ffffff');
       const front = this.cart.x + HALF;
@@ -1540,6 +1616,24 @@ class Main extends Phaser.Scene {
       btns.push(['タイトル', () => this.showTitle(), 0xfff3df]);
       if (SV.daily.best != null) btns.push(['シェア', () => this.share(), 0x9fd8f0]);
       this.retry.setText(this.again('もういちど'));
+    } else if (this.mode === 'vs') {
+      // ふたりで：1P の あと 2P。2P が おわったら ラウンドの かちまけ
+      const V = this.V, i = V.turn;
+      V.tp[i] = this.P.tPress; V.sc[i] = fell ? -1 : this.pts(d); V.d[i] = fell ? null : d;
+      this.resLabel.setText((i + 1) + 'P  ' + this.resLabel.text).setColor(PCOL[i]);
+      this.resFish.setText('');
+      const f = x => x == null ? 'おっこちた' : this.fmt(x);
+      if (i === 0) { sub2 = 'つぎは 2P の ばん'; this.retry.setText(this.again('つぎへ')); }
+      else {
+        const w = V.sc[0] > V.sc[1] ? 0 : V.sc[1] > V.sc[0] ? 1 : -1;
+        if (w >= 0) V.wins[w]++;
+        V.log.push(w);
+        sub = 'ラウンド ' + (V.round + 1) + '：' + (w < 0 ? 'ひきわけ' : (w + 1) + 'P の かち！');
+        sub2 = '1P ' + f(V.d[0]) + '  ／  2P ' + f(V.d[1]);
+        this.subT.setText('1P  ' + V.wins[0] + ' － ' + V.wins[1] + '  2P');
+        const over = V.round + 1 >= VS_ROUNDS || V.wins.some(n => n * 2 > VS_ROUNDS);
+        this.retry.setText(this.again(over ? 'けっかへ' : 'つぎの ラウンド'));
+      }
     } else {
       const E = this.E, fail = fell || d >= TUNE.JUDGE.OK;
       if (fail) { E.hearts--; E.streak = 0; if (!fell) sub = 'ハートが へった'; }
@@ -1559,8 +1653,9 @@ class Main extends Phaser.Scene {
     this.resRank.setText(rank).setColor(color);
     this.resSub.setText(sub); this.resSub2.setText(sub2);
     this.resRec.setVisible(newRec && !fell);
-    this.resStars.forEach(s => s.setTexture('starOff').setScale(1).setVisible(this.mode !== 'endless'));
-    if (this.mode !== 'endless') for (let i = 0; i < stars; i++) this.time.delayedCall(380 + i * 170, () => { if (this.state !== 'result') return; this.resStars[i].setTexture('starOn').setScale(0.2); this.tweens.add({ targets: this.resStars[i], scale: 1, duration: 300, ease: 'Back.out' }); AU.star(i); });
+    const starOn = this.mode === 'tour' || this.mode === 'daily';
+    this.resStars.forEach(s => s.setTexture('starOff').setScale(1).setVisible(starOn));
+    if (starOn) for (let i = 0; i < stars; i++) this.time.delayedCall(380 + i * 170, () => { if (this.state !== 'result') return; this.resStars[i].setTexture('starOn').setScale(0.2); this.tweens.add({ targets: this.resStars[i], scale: 1, duration: 300, ease: 'Back.out' }); AU.star(i); });
     this.resC.setVisible(true).setScale(0.6).setAlpha(0);
     this.tweens.add({ targets: this.resC, scale: 1, alpha: 1, duration: 380, ease: 'Back.out' });
     this.clearButtons(this.resBtnC); this.resBtnC.setVisible(true);
@@ -1577,6 +1672,7 @@ class Main extends Phaser.Scene {
   }
 
   afterResult() {
+    if (this.mode === 'vs') { this.vsNext(); return; }
     if (this.mode === 'endless') { if (!this.E.over) this.nextEndless(); return; }
     this.startCourse(this.def, this.mode);
   }
@@ -1602,6 +1698,34 @@ class Main extends Phaser.Scene {
     if (E.newBest) { AU.fanfare(); this.confE.emitParticleAt(300, 140, 60); } else AU.soft();
   }
 
+  // ───── ふたりで ─────
+  startVs() {
+    this.V = { round: 0, turn: 0, wins: [0, 0], tp: [null, null], sc: [0, 0], d: [null, null], log: [], seed: (Math.random() * 1e9) | 0 };
+    this.V.def = this.vsDef(); this.startCourse(this.V.def, 'vs');
+  }
+  vsDef() { const V = this.V; return genCourse(rng(V.seed + V.round * 7919), [1, 3, 5][V.round] || 5, 'vs', 'ふたりで'); }
+  vsNext() {
+    const V = this.V;
+    if (V.turn === 0) { V.turn = 1; this.startCourse(V.def, 'vs'); return; }
+    V.round++;
+    if (V.round >= VS_ROUNDS || V.wins.some(n => n * 2 > VS_ROUNDS)) { this.showVsEnd(); return; }
+    V.turn = 0; V.tp = [null, null]; V.d = [null, null]; V.def = this.vsDef(); this.startCourse(V.def, 'vs');
+  }
+  showVsEnd() {
+    const V = this.V, w = V.wins[0] > V.wins[1] ? 0 : V.wins[1] > V.wins[0] ? 1 : -1;
+    this.hideScreens(); this.state = 'vsEnd'; this.resAt = this.time.now; this.levImg.setVisible(false);
+    const C = this.vsC; this.clearButtons(C); C.setVisible(true);
+    const g = this.add.graphics(); this.panel(g, 330, 90, 620, 440, 36); C.add(g);
+    C.add(this.T(640, 150, 'ふたりで', 30));
+    C.add(this.T(640, 240, w < 0 ? 'ひきわけ' : (w + 1) + 'P の勝ち!', 76, w < 0 ? '#ffffff' : PCOL[w], { stroke: '#5b3a29', strokeThickness: 12 }));
+    C.add(this.T(640, 340, V.wins[0] + ' － ' + V.wins[1], 60, '#5b3a29'));
+    C.add(this.T(640, 410, V.log.map((x, i) => 'R' + (i + 1) + ' ' + (x < 0 ? 'ひきわけ' : (x + 1) + 'P')).join('　'), 22, '#7a5a44'));
+    C.add(this.T(640, 470, ZEN() ? '👏 てを たたくと もういちど' : 'スペースで もういちど ／ Esc で タイトルへ', 22, '#7a5a44'));
+    this.btn(C, 510, 610, 240, 84, 'もういちど', () => this.startVs(), { sub: 'スペース', color: 0xf7a8c8, size: 30 });
+    this.btn(C, 770, 610, 240, 84, 'タイトルへ', () => this.showTitle(), { sub: 'Esc', color: 0xfff3df, size: 30 });
+    if (w >= 0) { AU.fanfare(); this.confE.emitParticleAt(640, 140, 60); } else AU.soft();
+  }
+
   // ───── きょうの1本 ─────
   startDaily() { this.startCourse(genCourse(rng(todayKey()), 7, 'daily', 'きょうの1本'), 'daily'); }
   share() {
@@ -1618,27 +1742,36 @@ class Main extends Phaser.Scene {
 
 // ───────── ぜんしん版：カメラ → 手の高さ ─────────
 // 手の高さ h：0＝こし 〜 1＝かた。手首と かたの 高さの差を 肩はばで わって はかる（Body.hands[i].py）
-let waistRef = TUNE.WAIST;
-function readHands() {
-  const lm = Body.lm, u = Body.unit;
-  if (!Body.ok || !lm) return [{ vis: false, h: 0 }, { vis: false, h: 0 }];
+// B：読む 体（ひとりは Body、ふたりで は Body.players[i]）。こしの 高さは 人ごとに おぼえる
+function readHands(B) {
+  const lm = B.lm, u = B.unit;
+  if (!B.ok || !lm) return [{ vis: false, h: 0 }, { vis: false, h: 0 }];
+  if (B.waistRef == null) B.waistRef = TUNE.WAIST;
   if (TUNE.USE_HIP && lm[23].visibility > 0.5 && lm[24].visibility > 0.5) {
     const hip = ((lm[23].y - lm[11].y) + (lm[24].y - lm[12].y)) / 2 / u * TUNE.HIP_K;
-    waistRef += (clamp(hip, 0.9, 2.2) - waistRef) * 0.1;
+    B.waistRef += (clamp(hip, 0.9, 2.2) - B.waistRef) * 0.1;
   }
-  return Body.hands.map((h, i) => {
+  const waistRef = B.waistRef;
+  return B.hands.map((h, i) => {
     const w = lm[15 + i], E = TUNE.EDGE;
     const inFrame = w.x > E && w.x < 1 - E && w.y > E && w.y < 1 - E && (w.visibility == null ? 1 : w.visibility) >= TUNE.VIS;
     if (!h.vis || !inFrame) return { vis: false, h: 0 };
     return { vis: true, h: (waistRef - h.py) / (waistRef - TUNE.TOP) };
   });
 }
-Body.on('pose', () => { if (SCENE && ZEN() && !fake) SCENE.handIn(readHands()); });
+Body.on('pose', () => { if (SCENE && ZEN() && !fake && SCENE.mode !== 'vs') SCENE.handIn(readHands(Body)); });
 Body.on('clap', () => { if (SCENE && ZEN()) SCENE.onClap(); });
+// ふたりで：いまの ばんの 人（Body.players[0]＝画面の左の人＝1P、[1]＝2P）の 手だけで レバーを ひく
+Body.players.forEach((P, i) => {
+  P.on('pose', () => { if (SCENE && ZEN() && !fake && SCENE.mode === 'vs' && SCENE.V && SCENE.V.turn === i) SCENE.handIn(readHands(P)); });
+  P.on('clap', () => { if (SCENE && ZEN()) SCENE.onClap(); });
+});
+Body.on('poses', () => { if (Body.count >= 2) seen2At = performance.now() / 1000; });
 // 確認用：まっすぐ 立った 人の 関節を 作る（a・b は 左がわ・右がわの 手の高さ。null＝見えない、'out'＝画面の外）
-function synthPose(a, b, unit) {
+// ox：横の ずれ（映像の x。鏡うつし前なので ＋は 画面の 左）
+function synthPose(a, b, unit, ox = 0) {
   const lm = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, z: 0, visibility: 0 }));
-  const sy = 0.3, half = unit / Body.asp / 2, set = (i, x, y, v = 1) => { lm[i] = { x, y, z: 0, visibility: v }; };
+  const sy = 0.3, half = unit / Body.asp / 2, set = (i, x, y, v = 1) => { lm[i] = { x: x + ox, y, z: 0, visibility: v }; };
   set(0, 0.5, sy - unit * 0.9);
   set(11, 0.5 + half, sy); set(12, 0.5 - half, sy);       // 鏡うつしなので 11（左がた）が 画面の 左に くる
   set(23, 0.5 + half * 0.8, sy + TUNE.WAIST * unit); set(24, 0.5 - half * 0.8, sy + TUNE.WAIST * unit);
@@ -1660,7 +1793,8 @@ Body.gate({
     '⤴ その手を <b>かたの 高さ</b>まで ぐっと 引きあげる … <b>ハンドブレーキ！</b>（1かいだけ）',
     'がけの ふち ギリギリで とめよう。さかなを あつめて ★を ねらう',
     '👏 手を たたく … はじめる・もういちど',
-    'はじまる前に 手を こしに かまえると 3・2・1 が はじまる'
+    'はじまる前に 手を こしに かまえると 3・2・1 が はじまる',
+    '👥 <b>2人</b> うつると ふたりで じゅんばんに たいけつ（左の人が 1P）'
   ],
   onStart: () => { AU.init(); if (SCENE) { if (SCENE.titleC.visible) SCENE.showTitle(); SCENE.refreshChips(); AU.bgmOn(); } }
 });

@@ -25,8 +25,14 @@
   button:active{transform:translateY(3px);box-shadow:0 2px 0 #b98f00}
   #bgmBtn{position:fixed;right:10px;bottom:10px;width:44px;height:44px;margin:0;padding:0;font-size:20px;border-radius:50%;background:#e9c98a;box-shadow:0 3px 0 #7a4a1e;z-index:5}
   #bgmBtn.off{opacity:.45}
+  body.two #c{width:min(100vw,124vh)}
+  #start2Btn{background:#f6c;color:#fff;box-shadow:0 5px 0 #a3368a}
+  #toTitleBtn{background:#9bb;box-shadow:0 5px 0 #577}
+  #twoNote{font-size:14px;margin:6px 0 0}
+  .panel{overflow-y:auto;justify-content:safe center}
+  #camHint{font-size:18px;font-weight:bold;margin:8px 0 0;min-height:1em}
 </style>
-<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+</head>
 <body>
 <div id="wrap"><canvas id="c"></canvas></div>
 
@@ -35,7 +41,10 @@
   <h1>かたむきボール</h1>
   <p class="sub" id="subText">スマホを たてに もって ハンドルのように<br>左右に かたむけると 台が かたむくよ<br>1こでも おくの ゴールに<br>入れば せいこう！</p>
   <div id="lvBtns"></div>
-  <button id="startBtn">はじめる</button>
+  <button id="startBtn">ひとりで</button>
+  <button id="start2Btn">ふたりで</button>
+  <p class="sub" id="twoNote">ふたりで：それぞれの 台で きょうそう。ゴールに 入れた数が 多い方の 勝ち<br>1P は A D と W（スタート）／ 2P は ← → と ↑</p>
+  <p class="sub" id="camHint"></p>
 </div>
 
 <button id="bgmBtn" aria-label="おんがく">♪</button>
@@ -44,6 +53,7 @@
   <h1 id="resTitle"></h1>
   <p class="big" id="resText"></p>
   <button id="againBtn">もういちど</button>
+  <button id="toTitleBtn" style="display:none">タイトルへ</button>
 </div>
 
 <script src="body.js"></script>
@@ -110,6 +120,7 @@ function inPoly(x, y){
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
 const W = 360; let viewH = 640, S = 4, ox = 0, oy = 0;
+let NP = 1, drawOff = 0;   // NP：台の数（ふたりでは 2）。drawOff：いま かいている 台（左が 0）
 const BX0 = Math.min(...POLY.map(p => p[0])) - 6, BX1 = Math.max(...POLY.map(p => p[0])) + 6;
 const BY0 = -6, BY1 = 139;
 function resize(){
@@ -117,7 +128,7 @@ function resize(){
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   cv.width = Math.max(1, Math.round(r.width * dpr));
   cv.height = Math.max(1, Math.round(r.height * dpr));
-  viewH = W * cv.height / cv.width;
+  viewH = W * cv.height / (cv.width / NP);
   S = Math.min((W - 16) / (BX1 - BX0), (viewH - 164) / (BY1 - BY0));
   ox = (W - (BX1 - BX0) * S) / 2; oy = 46 + ((viewH - 164) - (BY1 - BY0) * S) / 2;
   setCam(); buildBg();
@@ -145,8 +156,8 @@ const flat = y => camH / (Math.max(-CAM_D * .7, y) + CAM_D);   // 台の上の �
 // ---- 背景（ジャングルの屋台）。動かないので、画面の大きさが変わったときだけ描く ----
 const bgCv = document.createElement('canvas');
 function buildBg(){
-  bgCv.width = cv.width; bgCv.height = cv.height;
-  const c = bgCv.getContext('2d'), sc = cv.width / W;
+  bgCv.width = Math.round(cv.width / NP); bgCv.height = cv.height;
+  const c = bgCv.getContext('2d'), sc = bgCv.width / W;
   c.setTransform(sc, 0, 0, sc, 0, 0);
   pjRoll = 0;
   let seed = 20261009; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
@@ -235,16 +246,17 @@ function buildBg(){
 }
 
 // ---- 入力 ----
-const input = {tilt:0, gotTilt:false, key:0, touch:0, hold:0, override:null};
+const mkIn = () => ({tilt:0, gotTilt:false, key:0, touch:0, hold:0, override:null});
+const in1 = mkIn(); let input = in1;   // ふたりでは 1人ずつ 入れかえる
 function onOrient(e){
   if (e.gamma == null || e.beta == null) return;
-  input.gotTilt = true;
+  in1.gotTilt = true;
   const b = e.beta * Math.PI / 180, g = e.gamma * Math.PI / 180;
   // 重力の「画面の横向き」の成分。ねかせても立てても同じように使える
   let gx = Math.cos(b) * Math.sin(g), gy = Math.sin(b);
   const ang = (screen.orientation && screen.orientation.angle) || 0;
   if (ang === 90) gx = -gy; else if (ang === 270) gx = gy; else if (ang === 180) gx = -gx;
-  input.tilt = gx;
+  in1.tilt = gx;
 }
 let tiltAsked = false, tiltDenied = false;
 function listenTilt(){ if (!tiltAsked) { tiltAsked = true; window.addEventListener('deviceorientation', onOrient); } }
@@ -261,11 +273,13 @@ function askTilt(){
   try { if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(()=>{}); } catch(e){}
 }
 window.addEventListener('keydown', e => {
+  if (NP === 2) return key2(e, true);
   if (e.key === 'ArrowLeft') input.key = -1;
   if (e.key === 'ArrowRight') input.key = 1;
   if (e.key === ' ' && T.state === 'ready') release();
 });
 window.addEventListener('keyup', e => {
+  if (NP === 2) return key2(e, false);
   if (e.key === 'ArrowLeft' && input.key < 0) input.key = 0;
   if (e.key === 'ArrowRight' && input.key > 0) input.key = 0;
 });
@@ -277,11 +291,13 @@ function placeAt(px){
   setBallAtStart();
 }
 cv.addEventListener('pointerdown', e => {
+  if (NP !== 1) return;
   if (T.state === 'ready') { placing = true; placeAt(pointerX(e)); }
   else input.touch = pointerX(e) < W / 2 ? -1 : 1;
 });
-cv.addEventListener('pointermove', e => { if (placing && T.state === 'ready') placeAt(pointerX(e)); });
+cv.addEventListener('pointermove', e => { if (NP === 1 && placing && T.state === 'ready') placeAt(pointerX(e)); });
 ['pointerup','pointercancel','pointerleave'].forEach(n => cv.addEventListener(n, () => {
+  if (NP !== 1) return;
   input.touch = 0;
   if (placing) { placing = false; if (T.state === 'ready') release(); }
 }));
@@ -328,7 +344,7 @@ function audioOn(){
   } catch(e){}
 }
 // 許可のダイアログや画面の切りかえで音が止まることがあるので、さわるたびに起こし直す
-['pointerdown','touchend','click'].forEach(n => window.addEventListener(n, () => { if (ac && !input.gotTilt) askTilt(); if (ac) audioOn(); }, true));
+['pointerdown','touchend','click'].forEach(n => window.addEventListener(n, () => { if (ac && !in1.gotTilt) askTilt(); if (ac) audioOn(); }, true));
 document.addEventListener('visibilitychange', () => { if (ac && !document.hidden) audioOn(); });
 function startBgm(){
   if (!ac || bgmSrc || !bufs.bgm) return;
@@ -394,10 +410,11 @@ const sfx = {
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 
 // ---- ゲームの状態 ----
-const T = {
+const T1 = {
   state:'title', x:0, y:0, vx:0, vy:0, roll:0, startX:START_X_MIN,
   ball:0, wins:0, results:[], endT:0, endKind:'', railCool:0, time:0,
 };
+let T = T1;   // ふたりでは 1人ずつ 入れかえる
 function setBallAtStart(){ T.x = T.startX; T.y = START_Y; T.vx = T.vy = 0; T.maxY = 0; T.wait = 0; }
 function newGame(){ T.ball = 0; T.wins = 0; T.results = []; T.startX = START_X_MIN; nextBall(); show(null); }
 function nextBall(){ T.state = 'ready'; T.time = 0; setBallAtStart(); }
@@ -456,7 +473,7 @@ function step(dt){
 
 function update(dt){
   T.railCool -= dt;
-  sfx.roll(T.state === 'roll' ? Math.hypot(T.vx, T.vy) : 0);
+  if (NP === 1) sfx.roll(T.state === 'roll' ? Math.hypot(T.vx, T.vy) : 0);
   T.roll += (targetRoll(dt) - T.roll) * Math.min(1, dt / ROLL_LAG);
   if (T.state === 'ready') {
     if (input.key && !placing) { T.startX = clamp(T.startX + input.key * 8 * dt, START_X_MIN, START_X_MAX); setBallAtStart(); }
@@ -472,7 +489,7 @@ function update(dt){
     else { T.x += T.vx * dt * .5; T.y += T.vy * dt * .5; }
     if (T.endT > 1.5) {
       T.ball++;
-      if (T.ball >= BALLS) { T.state = 'result'; showResult(); } else nextBall();
+      if (T.ball >= BALLS) { T.state = 'result'; if (NP === 1) showResult(); } else nextBall();
     }
   }
 }
@@ -480,8 +497,8 @@ function update(dt){
 // ---- 描画 ----
 function path(pts){ ctx.beginPath(); pts.forEach((p, i) => { const q = PJ(p[0], p[1]); i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1]); }); ctx.closePath(); }
 function draw(){
-  const sc = cv.width / W;
-  ctx.setTransform(sc, 0, 0, sc, 0, 0);
+  const sc = cv.width / NP / W;
+  ctx.setTransform(sc, 0, 0, sc, drawOff * W * sc, 0);
   ctx.drawImage(bgCv, 0, 0, W, viewH);
   pjRoll = T.roll * TILT_SHOW;   // 台が かたむくと、かたむいた側が 下がって 見える
 
@@ -590,7 +607,8 @@ function hud(){
   ctx.restore();
   text('左', hx - 52, hy + 6, 15, '#fff', 'center'); text('右', hx + 52, hy + 6, 15, '#fff', 'center');
 
-  if (T.state === 'ready') {
+  if (NP === 2) hud2();
+  else if (T.state === 'ready') {
     text('ボールを おく ばしょを きめて', W / 2, viewH - 100, 15, '#fff', 'center');
     text('ゆびを はなすと スタート', W / 2, viewH - 80, 15, '#ffd84a', 'center');
   } else if (T.state === 'roll' && !input.gotTilt && T.time < 4) {
@@ -608,11 +626,12 @@ function hud(){
 const $ = id => document.getElementById(id);
 function show(id){ ['title','result'].forEach(p => $(p).classList.toggle('hide', p !== id)); }
 function showResult(){
+  $('resTitle').style.color = ''; $('toTitleBtn').style.display = 'none';
   $('resTitle').textContent = T.wins > 0 ? 'せいこう！' : 'ざんねん…';
   $('resText').innerHTML = BALLS + 'この うち ' + T.wins + 'こ ゴール' + (T.wins > 0 ? '<br>けいひん ゲット！' : '<br>もういちど ちょうせん しよう');
   show('result');
 }
-function begin(){ askTilt(); audioOn(); newGame(); }
+function begin(){ askTilt(); audioOn(); setNP(1); T = T1; input = in1; newGame(); }
 function setLevel(id){
   LV = LEVELS.find(l => l.id === id) || LEVELS[1]; BALLS = LV.balls;
   try { localStorage.setItem('katamukiBallZenshinLevel', LV.id); } catch (e) {}
@@ -624,7 +643,7 @@ $('lvBtns').insertAdjacentHTML('afterend', '<p class="sub" id="lvNote" style="ma
 let savedLv = 'easy'; try { savedLv = localStorage.getItem('katamukiBallZenshinLevel') || 'easy'; } catch (e) {}
 setLevel(savedLv);
 $('startBtn').addEventListener('click', begin);
-$('againBtn').addEventListener('click', begin);
+$('againBtn').addEventListener('click', () => NP === 2 ? begin2() : begin());
 $('bgmBtn').classList.toggle('off', !bgmOn);
 $('bgmBtn').addEventListener('click', () => { audioOn(); setBgm(!bgmOn); $('bgmBtn').classList.toggle('off', !bgmOn); });
 
@@ -632,7 +651,8 @@ $('bgmBtn').addEventListener('click', () => { audioOn(); setBgm(!bgmOn); $('bgmB
 let last = 0;
 function frame(t){
   const dt = Math.min(.05, (t - last) / 1000 || 0); last = t;
-  if (!T.manual) { update(dt); draw(); }
+  if (!T1.manual) { if (NP === 2) { update2(dt); draw2(); } else { update(dt); draw(); } }
+  if (!$('title').classList.contains('hide')) titleHint();
   requestAnimationFrame(frame);
 }
 resize(); draw();
@@ -643,25 +663,133 @@ const WHEEL_FULL = 30;     // ハンドルを これだけ（度）かたむけ�
 const WHEEL_DEAD = 3;      // これより小さい かたむきは まっすぐ とみなす（度）
 const WHEEL_GAP = 0.5;     // りょう手の間が これより はなれていれば ハンドルを 持っている（肩はば単位）
 const cam = () => Body.mode === 'cam';
-let wheel = 0;
-Body.on('pose', () => {
-  if (!cam()) return;
-  if (T.state === 'ready') { T.startX = clamp(START_X_MIN + (Body.pos + .5) * (START_X_MAX - START_X_MIN), START_X_MIN, START_X_MAX); setBallAtStart(); input.override = 0; wheel = 0; return; }
+const wheels = [0, 0, 0];   // 0：1P、1：2P、2：ひとりで
+// B：見る体、pos：その人の 左右の位置（-1〜1）、k：wheels の 番号
+function camPose(B, pos, k){
+  if (T.state === 'ready') { T.startX = clamp(START_X_MIN + (pos + .5) * (START_X_MAX - START_X_MIN), START_X_MIN, START_X_MAX); setBallAtStart(); input.override = 0; wheels[k] = 0; return; }
   // りょう手を結んだ線の かたむきだけを 見る（体や 肩が かたむいても 反応しない）。手が見えない間は 直前の かたむきを 保つ
-  if (Body.both && Body.gap > WHEEL_GAP) {
-    const deg = Body.angle * 180 / Math.PI, a = Math.abs(deg) < WHEEL_DEAD ? 0 : deg - Math.sign(deg) * WHEEL_DEAD;
-    wheel += (a - wheel) * .5;
+  if (B.both && B.gap > WHEEL_GAP) {
+    const deg = B.angle * 180 / Math.PI, a = Math.abs(deg) < WHEEL_DEAD ? 0 : deg - Math.sign(deg) * WHEEL_DEAD;
+    wheels[k] += (a - wheels[k]) * .5;
   }
-  input.override = clamp(wheel / (WHEEL_FULL - WHEEL_DEAD) * ROLL_MAX, -ROLL_MAX, ROLL_MAX);
-});
+  input.override = clamp(wheels[k] / (WHEEL_FULL - WHEEL_DEAD) * ROLL_MAX, -ROLL_MAX, ROLL_MAX);
+}
+Body.people = 2;   // 2人まで 読む（ひとりのときは 大きくうつる人が 主役）
+Body.on('pose', () => { if (cam() && NP === 1) camPose(Body, Body.pos, 2); });
+const panelOpen = () => !$('title').classList.contains('hide') || !$('result').classList.contains('hide');
+function camGo(){   // 手をたたいて はじめる・もういちど
+  if (!$('title').classList.contains('hide')) { if (people() >= 2) begin2(); else begin(); return true; }
+  if (!$('result').classList.contains('hide')) { if (NP === 2) { if (performance.now() - overAt2 > 1500) begin2(); } else begin(); return true; }
+  return false;
+}
 Body.on('clap', () => {
   if (!cam()) return;
-  if (!$('title').classList.contains('hide') || !$('result').classList.contains('hide')) begin();
-  else if (T.state === 'ready') release();
+  if (camGo()) return;
+  if (NP === 1 && T.state === 'ready') release();
 });
-Body.gate({title:'かたむきボール', corner:'tr', lines:['↔ <b>立つ場所</b>を 左右に かえる … ボールを おく場所を えらぶ','👏 <b>手を たたく</b> … ボールを 出す','🚗 <b>りょう手で ハンドルを 持つ</b>ように かまえて、かたむける … 台が かたむく','👏 手を たたく … はじめる・もういちど'],
+Body.gate({title:'かたむきボール', corner:'tr', lines:['↔ <b>立つ場所</b>を 左右に かえる … ボールを おく場所を えらぶ','👏 <b>手を たたく</b> … ボールを 出す','🚗 <b>りょう手で ハンドルを 持つ</b>ように かまえて、かたむける … 台が かたむく','👥 <b>2人</b> うつると ふたりで きょうそう（左の人が 1P）','👏 手を たたく … はじめる・もういちど'],
   onStart: m => { if (m === 'cam') $('subText').innerHTML = '手を たたくと ボールが 出るよ<br>りょう手で ハンドルを 持つように かまえて<br>かたむけると 台が かたむくよ<br>1こでも ゴールに 入れば せいこう！'; }});
-window.KB = {LEVELS, setLevel, get LV(){ return LV; }, audio: () => ({state: ac && ac.state, bgm: !!bgmSrc, loaded: Object.keys(bufs), bgmOn}), T, input, update, draw, begin, release, setBallAtStart, START_X_MIN, START_X_MAX};  // 確認用
+// ---- ふたりで：台を 2つ ならべて きょうそう。左が 1P（カメラの 左に立つ人）、右が 2P。ボールを 入れた数が 多い方の 勝ち ----
+const PCOL = ['#2cb', '#f6c'];
+const mkT = () => ({ state:'title', x:0, y:0, vx:0, vy:0, roll:0, startX:START_X_MIN, ball:0, wins:0, results:[], endT:0, endKind:'', railCool:0, time:0 });
+const T2 = [mkT(), mkT()], in2 = [mkIn(), mkIn()], placing2 = [false, false];
+let done2 = false, overAt2 = 0, startAt2 = 0;
+function withP(i, fn){ const t = T, n = input; T = T2[i]; input = in2[i]; drawOff = i; try { return fn(); } finally { T = t; input = n; drawOff = 0; } }
+function setNP(n){ if (NP === n) return; NP = n; document.body.classList.toggle('two', n === 2); resize(); }
+function begin2(){
+  askTilt(); audioOn(); setNP(2); done2 = false; startAt2 = performance.now();
+  in2.forEach(n => { n.key = n.touch = n.hold = 0; n.override = null; }); wheels[0] = wheels[1] = 0;
+  for (let i = 0; i < 2; i++) withP(i, newGame);
+}
+function toTitle2(){ setNP(1); T = T1; input = in1; T1.state = 'title'; show('title'); }
+function update2(dt){
+  let sp = 0;
+  for (let i = 0; i < 2; i++) withP(i, () => { update(dt); if (T.state === 'roll') sp = Math.max(sp, Math.hypot(T.vx, T.vy)); });
+  sfx.roll(sp);
+  if (!done2 && T2.every(t => t.state === 'result')) { done2 = true; showResult2(); }
+}
+function draw2(){
+  for (let i = 0; i < 2; i++) withP(i, draw);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#111'; ctx.fillRect(cv.width / 2 - 3, 0, 6, cv.height);   // 1P と 2P の しきり
+}
+function hud2(){   // ふたりでの 台ごとの 表示（draw の中で、その台の 位置に かく）
+  const i = drawOff, c = PCOL[i];
+  ctx.strokeStyle = c; ctx.lineWidth = 4; ctx.strokeRect(2, 2, W - 4, viewH - 4);
+  text((i + 1) + 'P', 22, viewH - 22, 30, c);
+  if (T.state === 'ready') {
+    text(cam() ? '立つ場所で ボールを うごかす' : (i ? '← → で うごかす' : 'A D で うごかす'), W / 2, viewH - 100, 15, '#fff', 'center');
+    text(cam() ? '👏 手を たたくと スタート' : (i ? '↑ で スタート' : 'W で スタート'), W / 2, viewH - 80, 16, c, 'center');
+  } else if (T.state === 'result') {
+    text('おわり！ ' + T.wins + 'こ ゴール', W / 2, viewH * .42, 28, '#ffd84a', 'center');
+    if (!done2) text('あいてを まってね', W / 2, viewH * .42 + 34, 16, '#fff', 'center');
+  }
+}
+function showResult2(){
+  const a = T2[0].wins, b = T2[1].wins, w = a === b ? -1 : a > b ? 0 : 1;
+  $('resTitle').textContent = w < 0 ? 'ひきわけ' : (w + 1) + 'P の勝ち!';
+  $('resTitle').style.color = w < 0 ? '' : PCOL[w];
+  $('resText').innerHTML = '<span style="color:#2cb">1P</span> ' + a + 'こ ゴール ／ <span style="color:#f6c">2P</span> ' + b + 'こ ゴール';
+  $('toTitleBtn').style.display = 'block'; overAt2 = performance.now(); show('result');
+}
+$('start2Btn').addEventListener('click', begin2);
+$('toTitleBtn').addEventListener('click', toTitle2);
+// キーボード：1P は A D（かたむけ）と W（スタート）、2P は ← → と ↑
+const K2 = [{l:'a', r:'d', go:'w'}, {l:'arrowleft', r:'arrowright', go:'arrowup'}];
+function key2(e, down){
+  if (panelOpen()) return;
+  const k = e.key.toLowerCase();
+  K2.forEach((m, i) => {
+    const n = in2[i];
+    if (k === m.l) { if (down) n.key = -1; else if (n.key < 0) n.key = 0; }
+    if (k === m.r) { if (down) n.key = 1; else if (n.key > 0) n.key = 0; }
+    if (k === m.go && down && !e.repeat) withP(i, release);
+  });
+  if (k.startsWith('arrow')) e.preventDefault();
+}
+window.addEventListener('keydown', e => {
+  if (!$('title').classList.contains('hide')) { if (e.key === '1') begin(); else if (e.key === '2') begin2(); }
+  else if (NP === 2 && !$('result').classList.contains('hide') && performance.now() - overAt2 > 800) {
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); begin2(); } else if (e.key === 'Escape') toTitle2();
+  }
+});
+// タッチ：画面の 左半分が 1P、右半分が 2P（おく場所を えらんで はなすと スタート、ころがる間は 左右を おす）
+const ptr2 = new Map();
+function px2(e){ const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * 2 * W, i = x < W ? 0 : 1; return [i, x - i * W]; }
+function place2(lx){ T.startX = clamp((lx - W / 2) / PJ(0, START_Y)[2], START_X_MIN, START_X_MAX); setBallAtStart(); }
+cv.addEventListener('pointerdown', e => {
+  if (NP !== 2) return;
+  const [i, lx] = px2(e); ptr2.set(e.pointerId, i);
+  try { cv.setPointerCapture(e.pointerId); } catch (er) {}
+  withP(i, () => { if (T.state === 'ready') { placing2[i] = true; place2(lx); } else input.touch = lx < W / 2 ? -1 : 1; });
+});
+cv.addEventListener('pointermove', e => {
+  if (NP !== 2 || !ptr2.has(e.pointerId)) return;
+  const i = ptr2.get(e.pointerId), lx = px2(e)[1] + (px2(e)[0] - i) * W;
+  withP(i, () => { if (placing2[i] && T.state === 'ready') place2(lx); });
+});
+['pointerup', 'pointercancel'].forEach(n => cv.addEventListener(n, e => {
+  if (NP !== 2 || !ptr2.has(e.pointerId)) return;
+  const i = ptr2.get(e.pointerId); ptr2.delete(e.pointerId); in2[i].touch = 0;
+  if (placing2[i]) { placing2[i] = false; withP(i, release); }
+}));
+// カメラ：Body.players[0]（画面の左の人）が 1P、[1]（右の人）が 2P。立つ場所は 自分の 半分の中で 見る
+let seen2At = -9;
+function people(){ return performance.now() / 1000 - seen2At < 1 ? 2 : 1; }
+Body.on('poses', () => { if (Body.count >= 2) seen2At = performance.now() / 1000; });
+Body.players.forEach((B2, i) => {
+  B2.on('pose', () => { if (cam() && NP === 2) withP(i, () => camPose(B2, ((B2.cx - i * .5) * 2 - .5) * 2, i)); });
+  B2.on('clap', () => {
+    if (!cam()) return;
+    if (camGo()) return;
+    if (NP === 2 && performance.now() - startAt2 > 1000) withP(i, release);
+  });
+});
+let lastHint = '';
+function titleHint(){
+  const t = !cam() ? '' : people() >= 2 ? '👏 手をたたくと ふたりで スタート' : '👏 手をたたいて スタート（2人 うつれば ふたりで）';
+  if (t !== lastHint) { lastHint = t; $('camHint').textContent = t; $('camHint').style.color = people() >= 2 ? '#f6c' : '#fff'; }
+}
+window.KB = {LEVELS, setLevel, get LV(){ return LV; }, audio: () => ({state: ac && ac.state, bgm: !!bgmSrc, loaded: Object.keys(bufs), bgmOn}), get T(){ return T; }, T1, T2, in2, begin2, update2, draw2, get NP(){ return NP; }, get input(){ return input; }, update, draw, begin, release, setBallAtStart, START_X_MIN, START_X_MAX};  // 確認用
 })();
 </script>
 </body>

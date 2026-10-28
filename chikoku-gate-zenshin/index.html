@@ -8,6 +8,7 @@
 html,body{margin:0;height:100%;background:#111;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
 body{display:flex;align-items:center;justify-content:center}
 canvas{width:min(100vw,66.667vh);height:auto;display:block}
+canvas.two{width:min(100vw,133.333vh)}
 </style>
 <script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
 <body>
@@ -284,10 +285,10 @@ function finish(type){
 }
 function toOver(){
   state='over';overAt=performance.now();newBest=false;
-  if(score>best){best=score;newBest=true;try{localStorage.setItem('chikoku_bishi_best',best)}catch(e){}}
+  if(mode===1&&score>best){best=score;newBest=true;try{localStorage.setItem('chikoku_bishi_best',best)}catch(e){}}
 }
 
-function update(dt){
+function update1(dt){
   clock+=dt;
   popups.forEach(p=>p.t+=dt);popups=popups.filter(p=>p.t<p.life);
   parts.forEach(p=>{p.t+=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy-=520*dt;});parts=parts.filter(p=>p.t<p.life);
@@ -783,7 +784,7 @@ function drawButtons(){
     if(down){ctx.beginPath();ctx.arc(cx,BTN_Y+7-off,BTN_R-6,0,Math.PI*2);ctx.fillStyle=t.color;ctx.fill();}
     ctx.fillStyle='rgba(255,255,255,.3)';ctx.beginPath();ctx.ellipse(cx-14,BTN_Y-14-off,13,8,-0.5,0,Math.PI*2);ctx.fill();
     bigText(t.label,cx,BTN_Y+7-off,17,'#fff','rgba(0,0,0,.6)');
-    text(t.sub,cx,BTN_Y+72,12,'#aab','center');
+    text(subOf(i),cx,BTN_Y+72,12,'#aab','center');
   });
 }
 function drawOverlay(){
@@ -797,8 +798,10 @@ function drawOverlay(){
     text('あそびかた',CX,322,18,'#e33','center');
     (Body.mode==='cam'?['① その場で かけ足！ ダッシュ！','② しゃがんで 角度をためる','③ 黄色い帯の中で とびあがって ジャンプ！','④ 門→家→電柱→東京タワー→…→宇宙！']:['① 赤と青を こうごに 連打！ ダッシュ！','② 緑を おしっぱなしで 角度をためる','③ 黄色い帯の中で はなして ジャンプ！','④ 門→家→電柱→東京タワー→…→宇宙！']).forEach((s,i)=>text(s,CX,355+i*28,15,'#223','center'));
     text('その先は どこまで高く とべるか勝負！',CX,458,14,'#e33','center');
-    if(blink)bigText(Body.mode==='cam'?'手を たたいて スタート！':'ボタンを おして スタート！',CX,505,24,'#ffe14d');
-    if(best>0)text('BEST '+best,CX,532,14,'#fff','center');
+    menuBtn(CX-112,478,200,46,'ひとりで','1 か スペース','#e8402a',()=>{setMode(1);press(0);});
+    menuBtn(CX+112,478,200,46,'ふたりで','1P: Z X C ／ 2P: J K L','#c4c',()=>{setMode(2);newGame2();});
+    if(Body.mode==='cam')bigText(people()>=2?'👏 手をたたくと ふたりで スタート':'👏 手をたたいて スタート（2人 うつれば ふたりで）',CX,288,people()>=2?20:16,people()>=2?'#f6c':'#fff');
+    else if(best>0)text('BEST '+best,CX,288,14,'#fff','center');
   }
   if(state==='preview'){
     ctx.fillStyle='rgba(20,20,60,.6)';rr(50,300,380,100,14);ctx.fill();
@@ -838,6 +841,14 @@ function drawOverlay(){
   if(state==='over'){
     ctx.fillStyle='rgba(20,10,50,.78)';ctx.fillRect(0,0,W,PANEL_Y);
     const sky=res&&res.type==='sky';
+    if(mode===2){
+      if(vsDone)return;
+      bigText(sky?'おつかれさま！':'おしまい',CX,150,44,sky?'#7dff6a':'#ff5a5a');
+      text('STAGE '+stage+'（'+st.name+'）まで',CX,225,19,'#fff','center');
+      bigText('SCORE '+score,CX,275,30,'#ffe14d');
+      if(!vsDone&&blink)bigText('あいてを まってね',CX,360,26,'#fff');
+      return;
+    }
     bigText(sky?'おつかれさま！':'ゲームオーバー',CX,150,44,sky?'#7dff6a':'#ff5a5a');
     text(sky?'最高到達点 '+fmtM(skyAlt):'STAGE '+stage+'（'+st.name+'）まで とうたつ',CX,225,19,'#fff','center');
     bigText('SCORE '+score,CX,275,30,'#ffe14d');
@@ -845,7 +856,7 @@ function drawOverlay(){
     if(performance.now()-overAt>800&&blink)bigText(Body.mode==='cam'?'手を たたいて もう一回！':'ボタンで もう一回！',CX,410,26,'#fff');
   }
 }
-function draw(){
+function draw1(){
   ctx.clearRect(0,0,W,H);
   ctx.save();
   if(shake>0)ctx.translate((Math.random()-.5)*9,(Math.random()-.5)*9);
@@ -861,28 +872,124 @@ function draw(){
 }
 
 // ---------- 入力 ----------
-const ptrMap=new Map(),greenKeys=new Set();
-function refreshGreen(){
-  const any=greenKeys.size>0||[...ptrMap.values()].includes(1);
-  if(greenDown&&!any){greenDown=false;release(1);}else greenDown=any;
-}
+const ptrMap=new Map(),greenKeys=[new Set(),new Set()];
 cv.addEventListener('pointerdown',e=>{
   e.preventDefault();try{cv.setPointerCapture(e.pointerId)}catch(_){}
-  const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*W/r.width;
-  const i=Math.max(0,Math.min(2,Math.floor(x/BW)));
-  ptrMap.set(e.pointerId,i);if(i===1)greenDown=true;press(i);
+  const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*FW/r.width,y=(e.clientY-r.top)*H/r.height;
+  initAudio();
+  if(mode===1&&state==='title'){const b=btns.find(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);if(b){b.act();return;}}
+  if(vsDone){if(performance.now()-overAt>800){const b=btns.find(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);if(b)b.act();}return;}
+  if(y<PANEL_Y&&state==='title')return;
+  const li=Math.min(mode-1,Math.floor(x/W)),i=Math.max(0,Math.min(2,Math.floor((x-li*W)/BW)));
+  ptrMap.set(e.pointerId,{li,i});
+  if(mode===1){if(i===1)greenDown=true;press(i);}
+  else{if(i===1)pl[li].greenDown=true;pressP(li,i);}
 });
-const pUp=e=>{if(!ptrMap.has(e.pointerId))return;const i=ptrMap.get(e.pointerId);ptrMap.delete(e.pointerId);if(i===1)refreshGreen();};
+const pUp=e=>{
+  if(!ptrMap.has(e.pointerId))return;const {li,i}=ptrMap.get(e.pointerId);ptrMap.delete(e.pointerId);
+  if(i===1)refreshGreen(li);
+};
 cv.addEventListener('pointerup',pUp);cv.addEventListener('pointercancel',pUp);
 cv.addEventListener('contextmenu',e=>e.preventDefault());
+const KEYS2=[['z','x','c'],['j','k','l']],KEYS2B=[['a','s','d'],['arrowleft','arrowdown','arrowright']];   // ふたりで：1P / 2P
 window.addEventListener('keydown',e=>{
-  if(e.repeat)return;const k=e.key.toLowerCase();
-  if(k===' '||k==='enter'){e.preventDefault();if(state==='title'||state==='over')press(0);return;}
-  const i=TYPES.findIndex(t=>t.keys.includes(k));if(i<0)return;
-  if(i===1){greenKeys.add(k);greenDown=true;}
-  press(i);
+  if(e.repeat)return;const k=e.key.toLowerCase();initAudio();
+  if(vsDone){
+    if(performance.now()-overAt<=800)return;
+    if(k===' '||k==='enter'){e.preventDefault();newGame2();}else if(k==='escape')toTitle();
+    return;
+  }
+  if(mode===1&&state==='title'&&k==='2'){setMode(2);newGame2();return;}
+  if(mode===1&&state==='over'&&k==='escape'){toTitle();return;}
+  if(k===' '||k==='enter'){e.preventDefault();if(mode===1&&(state==='title'||state==='over'))press(0);return;}
+  if(mode===1){
+    const i=TYPES.findIndex(t=>t.keys.includes(k));if(i<0)return;
+    if(i===1){greenKeys[0].add(k);greenDown=true;}
+    press(i);return;
+  }
+  [0,1].forEach(li=>{
+    let i=KEYS2[li].indexOf(k);if(i<0)i=KEYS2B[li].indexOf(k);if(i<0)return;
+    e.preventDefault();
+    if(i===1){greenKeys[li].add(k);pl[li].greenDown=true;}
+    pressP(li,i);
+  });
 });
-window.addEventListener('keyup',e=>{const k=e.key.toLowerCase();if(greenKeys.has(k)){greenKeys.delete(k);refreshGreen();}});
+window.addEventListener('keyup',e=>{const k=e.key.toLowerCase();[0,1].forEach(li=>{if(greenKeys[li].has(k)){greenKeys[li].delete(k);refreshGreen(li);}});});
+
+// ---------- ふたりで（画面を 左右に わける。1P が左、2P が右。同じ ステージを それぞれ すすみ、点数で 勝負） ----------
+// 1人ぶんの 状態を まとめて 入れかえて、ひとりで用の update1 / draw1 を そのまま使う
+const PCOL=['#2cb','#f6c'];
+let mode=1,FW=W,pl=[],vsDone=false,winner=-1,btns=[],curLane=0;
+function saveP(p){Object.assign(p,{state,stage,lives,score,st,skyAlt,gx,v,lastRB,holding,ang,angDir,jumped,timeLeft,runPhase,camOff,camX,camY,camVy,readyT,prevT,beeped,resT,fl,res,shake,goT,dustT,sweatT,mood,flash,greenDown,popups,parts,newBest,legH,legT});}
+function loadP(p){({state,stage,lives,score,st,skyAlt,gx,v,lastRB,holding,ang,angDir,jumped,timeLeft,runPhase,camOff,camX,camY,camVy,readyT,prevT,beeped,resT,fl,res,shake,goT,dustT,sweatT,mood,flash,greenDown,popups,parts,newBest,legH,legT}=p);}
+function withP(li,fn){const p=pl[li];if(!p)return;loadP(p);curLane=li;try{fn();}finally{saveP(p);}}
+function setMode(m){
+  mode=m;FW=W*m;if(cv.width!==FW)cv.width=FW;cv.classList.toggle('two',m===2);
+  vsDone=false;winner=-1;pl=[];greenKeys[0].clear();greenKeys[1].clear();
+  if(m===2)for(let i=0;i<2;i++){pl.push({});flash=[0,0,0];popups=[];parts=[];legH=[];legT=0;state='title';greenDown=false;saveP(pl[i]);}
+  else{state='title';flash=[0,0,0];popups=[];parts=[];greenDown=false;legH=[];}
+}
+function newGame2(){
+  if(mode!==2)setMode(2);
+  vsDone=false;winner=-1;
+  pl.forEach((p,li)=>withP(li,()=>{flash=[0,0,0];greenDown=false;legH=[];newGame();}));
+}
+function toTitle(){setMode(1);newGame();state='title';camX=gx;camY=0;}
+function pressP(li,i){withP(li,()=>{if(state==='title'||state==='over'){flash[i]=0.12;return;}press(i);});}
+function releaseP(li,i){withP(li,()=>release(i));}
+function refreshGreen(li){
+  const any=greenKeys[li].size>0||[...ptrMap.values()].some(o=>o.li===li&&o.i===1);
+  if(mode===1){if(greenDown&&!any){greenDown=false;release(1);}else greenDown=any;return;}
+  const p=pl[li];if(!p)return;
+  if(p.greenDown&&!any){p.greenDown=false;releaseP(li,1);}else p.greenDown=any;
+}
+function subOf(i){
+  if(mode===1||cam())return TYPES[i].sub;
+  return [['Z','長押し X','C'],['J','長押し K','L']][curLane][i];
+}
+function update(dt){
+  if(mode===1){update1(dt);return;}
+  const c=clock;
+  pl.forEach((p,li)=>withP(li,()=>{clock=c;update1(dt);}));
+  clock=c+dt;
+  if(!vsDone&&pl.every(p=>p.state==='over')){
+    vsDone=true;overAt=performance.now();
+    winner=pl[0].score===pl[1].score?-1:pl[0].score>pl[1].score?0:1;
+    winner>=0?playClear():playFail();
+  }
+}
+function menuBtn(x,y,w,h,label,sub,col,act){
+  ctx.fillStyle='rgba(0,0,0,.35)';rr(x-w/2,y+4,w,h,14);ctx.fill();
+  ctx.fillStyle=col;rr(x-w/2,y,w,h,14);ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=3;rr(x-w/2,y,w,h,14);ctx.stroke();
+  bigText(label,x,y+h/2-6,22,'#fff');
+  text(sub,x,y+h-9,11,'#fff','center');
+  btns.push({x:x-w/2,y,w,h,act});
+}
+function draw(){
+  btns=[];
+  if(mode===1){draw1();return;}
+  ctx.clearRect(0,0,FW,H);
+  pl.forEach((p,li)=>{
+    loadP(p);curLane=li;
+    ctx.save();ctx.translate(li*W,0);ctx.beginPath();ctx.rect(0,0,W,H);ctx.clip();
+    draw1();
+    if(state!=='over')bigText((li+1)+'P',W/2,124,30,PCOL[li]);
+    ctx.restore();
+  });
+  ctx.fillStyle='#ffe14d';ctx.fillRect(W-3,0,6,H);                   // 1P と 2P のしきり
+  if(vsDone){
+    const C=FW/2;
+    ctx.fillStyle='rgba(20,10,50,.82)';ctx.fillRect(0,0,FW,H);
+    bigText(winner<0?'ひきわけ':(winner+1)+'P の勝ち!',C,170,60,winner<0?'#fff':PCOL[winner]);
+    bigText('SCORE  '+pl[0].score+' － '+pl[1].score,C,250,32,'#ffe14d');
+    text('1P: STAGE '+pl[0].stage+'　／　2P: STAGE '+pl[1].stage,C,295,18,'#fff','center');
+    text(cam()?'カメラの 左に立つ人が 1P、右の人が 2P':'1P: Z X C ／ 2P: J K L（← ↓ →）',C,335,16,'#ccd','center');
+    menuBtn(C,380,260,58,'もういちど','スペース','#e70',()=>newGame2());
+    menuBtn(C,456,260,58,'タイトルへ','Esc','#567',toTitle);
+    if(cam())bigText(people()>=2?'👏 手をたたくと ふたりで もういちど':'👏 手をたたいて スタート（2人 うつれば ふたりで）',C,560,people()>=2?24:19,people()>=2?'#f6c':'#fff');
+  }
+}
 
 // ---------- ループ ----------
 let last=performance.now();
@@ -891,30 +998,49 @@ requestAnimationFrame(loop);
 
 // ---------- ぜんしん版：かけ足＝ダッシュ、しゃがむ＝角度をためる、とびあがる＝ジャンプ ----------
 const cam=()=>Body.mode==='cam';
-Body.on('step',e=>{if(cam()&&state==='play')press(e.side==='L'?0:2);});
+// ふたりで：カメラに 2人 うつす。画面の左に立つ人が 1P、右の人が 2P（Body.players[0] / [1]）
+Body.people=2;
+let seen2At=-9;                                                      // 最後に 2人 うつっていた時刻
+function people(){return performance.now()/1000-seen2At<1?2:1;}
 // 足が 少しでも動いていれば 走る（「1歩」と数えられるのを 待たない）。
 // ひざ・足首が 腰から見て 上下に どれだけ動いたかを 直前 WIN 秒ぶん 見る（肩はば単位）。足が うつらないときは 手首で代用。
 // MIN：これより小さい動きは 無視（立っているだけの ゆれ）、FULL：これ以上で 全力、ACC：全力のときの 加速
 const RUN={WIN:0.3,MIN:0.1,FULL:0.35,ACC:1.3*VMAX+40};
 let legH=[],legT=0;
-Body.on('pose',()=>{
-  if(!cam())return;
-  const lm=Body.lm,u=Body.unit,see=i=>lm[i].visibility==null||lm[i].visibility>0.5;
+function legRun(B){
+  const lm=B.lm,u=B.unit,see=i=>lm[i].visibility==null||lm[i].visibility>0.5;
   let ids=[25,26,27,28].filter(see);if(!ids.length)ids=[15,16].filter(see);
-  const hy=(lm[23].y+lm[24].y)/2,now=Body.now,dt=Math.min(0.1,Math.max(0.001,now-legT)),row={t:now};legT=now;
+  const hy=(lm[23].y+lm[24].y)/2,now=B.now,dt=Math.min(0.1,Math.max(0.001,now-legT)),row={t:now};legT=now;
   ids.forEach(i=>row[i]=(lm[i].y-hy)/u);
   legH.push(row);while(legH.length&&now-legH[0].t>RUN.WIN)legH.shift();
   let m=0;
   ids.forEach(i=>{let lo=9,hi=-9;legH.forEach(r=>{if(r[i]!=null){lo=Math.min(lo,r[i]);hi=Math.max(hi,r[i]);}});m=Math.max(m,hi-lo);});
   if(state!=='play'||jumped||m<RUN.MIN)return;
   v=Math.min(VMAX,v+RUN.ACC*clamp(m/RUN.FULL,0.5,1)*dt);
+}
+function camStart(){
+  if(!cam())return;initAudio();
+  const go=()=>{if(people()>=2){setMode(2);newGame2();}else{setMode(1);press(0);}};
+  if(mode===1&&state==='title')go();
+  else if(mode===1&&state==='over'){if(performance.now()-overAt>800)go();}
+  else if(vsDone&&performance.now()-overAt>800)go();
+}
+Body.on('step',e=>{if(cam()&&mode===1&&state==='play')press(e.side==='L'?0:2);});
+Body.on('pose',()=>{if(cam()&&mode===1)legRun(Body);});
+Body.on('squat',()=>{if(cam()&&mode===1&&state==='play'){greenDown=true;press(1);}});
+Body.on('stand',()=>{if(cam()&&mode===1&&greenDown){greenDown=false;release(1);}});
+Body.on('clap',camStart);
+Body.players.forEach((P,li)=>{
+  P.on('step',e=>{if(cam()&&mode===2)withP(li,()=>{if(state==='play')press(e.side==='L'?0:2);});});
+  P.on('pose',()=>{if(cam()&&mode===2)withP(li,()=>legRun(P));});
+  P.on('squat',()=>{if(cam()&&mode===2)withP(li,()=>{if(state==='play'){greenDown=true;press(1);}});});
+  P.on('stand',()=>{if(cam()&&mode===2)withP(li,()=>{if(greenDown){greenDown=false;release(1);}});});
+  P.on('clap',camStart);
 });
-Body.on('squat',()=>{if(cam()&&state==='play'){greenDown=true;press(1);}});
-Body.on('stand',()=>{if(cam()&&greenDown){greenDown=false;release(1);}});
-Body.on('clap',()=>{if(cam()&&(state==='title'||state==='over'))press(0);});
-Body.gate({title:'ちこくだ！チャイムだ！門ジャンプ！',corner:'tr',needFull:true,lines:['🏃 その場で <b>かけ足</b> … ダッシュ（ひざを高く）','🧎 <b>しゃがむ</b> … ジャンプの角度をためる','🦘 黄色い帯の中で <b>とびあがる</b> … ジャンプ！','👏 手を たたく … スタート・もう一回'],
+Body.on('poses',()=>{if(Body.count>=2)seen2At=performance.now()/1000;});
+Body.gate({title:'ちこくだ！チャイムだ！門ジャンプ！',corner:'tr',needFull:true,lines:['🏃 その場で <b>かけ足</b> … ダッシュ（ひざを高く）','🧎 <b>しゃがむ</b> … ジャンプの角度をためる','🦘 黄色い帯の中で <b>とびあがる</b> … ジャンプ！','👥 <b>2人</b> うつると ふたりで（左の人が 1P）','👏 手を たたく … スタート・もう一回'],
  onStart:m=>{if(m==='cam'){TYPES[0].sub=TYPES[2].sub='かけ足';TYPES[1].sub='しゃがむ → とぶ';}}});
-window.__game={press,release,get state(){return state;},get v(){return v;}};
+window.__game={press,release,pressP,releaseP,setMode,newGame2,update,draw,people,get state(){return state;},get v(){return v;},get mode(){return mode;},get pl(){return pl;},get vsDone(){return vsDone;},get winner(){return winner;}};
 </script>
 </body>
 </html>

@@ -34,6 +34,12 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
 .btn:active{transform:translateY(3px);box-shadow:0 1px 0 #5a1206}
 .hint{font-size:12px;opacity:.8;margin-top:8px;text-align:center;line-height:1.6}
 #diffs{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+#pmode{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;margin:8px 0}
+.vs .pc{border:3px solid;border-radius:12px;padding:8px;text-align:center}
+.vs .pc .rscore{font-size:clamp(24px,7vw,40px)}
+.vs .pc .rgrid{grid-template-columns:1fr 1fr;gap:2px 10px;font-size:clamp(12px,3.2vw,15px);margin:4px 0}
+#camHint{display:none;text-align:center;font-weight:bold;margin-top:8px;font-size:15px}
 .diff{border:3px solid rgba(255,255,255,.35);border-radius:12px;padding:12px 4px;text-align:center;font-weight:bold;font-size:16px;cursor:pointer;opacity:.55}
 .diff.sel{opacity:1;border-color:#fff;box-shadow:0 0 14px rgba(255,255,255,.7)}
 .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0;font-size:15px;min-height:40px}
@@ -61,7 +67,7 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
 .rbtns{display:flex;gap:10px;justify-content:center}
 .rbtns .btn{flex:1;padding:12px 6px}
 </style>
-<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+</head>
 <body>
 <canvas id="cv"></canvas>
 <div id="safe"></div>
@@ -79,7 +85,11 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
       <div class="hint">曲を選んで「演奏開始！」　自分の曲ファイルも追加可能<br>追加した曲はこの端末のブラウザ内に保存</div>
     </div>
     <div class="panel opts">
-      <div class="ptitle">難易度</div>
+      <div class="ptitle">あそぶ人数</div>
+      <div id="pmode"><div class="diff" data-m="1" style="background:#2a9">ひとりで</div><div class="diff" data-m="2" style="background:#c4c">ふたりで</div></div>
+      <div class="hint">ふたりで：画面を 左右に わけて 同じ曲を たたき、点数で 勝負<br>1P（左）：D＝カッ F＝ドン　／　2P（右）：J＝カッ K＝ドン</div>
+      <div id="camHint"></div>
+      <div class="ptitle" style="margin-top:12px">難易度</div>
       <div id="diffs"></div>
       <div class="ptitle" style="margin-top:12px">設定</div>
       <div class="row">スクロール速度
@@ -127,6 +137,9 @@ function layout(){
  cv.width=Math.round(W*DPR);cv.height=Math.round(H*DPR);X.setTransform(DPR,0,0,DPR,0,0);
  const cs=getComputedStyle($('safe'));
  sT=parseFloat(cs.paddingTop)||0;sR=parseFloat(cs.paddingRight)||0;sB=parseFloat(cs.paddingBottom)||0;sL=parseFloat(cs.paddingLeft)||0;
+ layout2();
+}
+function layout2(){   /* W・sL・sR から 中の配置を決める（ふたりでは 半分の幅で 1人ずつ よぶ） */
  compact=H<520;
  R=clamp(Math.min(W,H)*0.06,16,30);BR=R*1.45;
  gx=12+sL;gw=W-gx-44-sR;gy=sT+(compact?40:48);gh=compact?12:16;
@@ -135,7 +148,7 @@ function layout(){
  PT=LB+(compact?38:62);
  setPps();
 }
-function setPps(){if(!G.chart)return;const beatPx=Math.max((W-JX)/3.9,R*5);G.pps=G.chart.bpm/60*beatPx*S.speed;}
+function setPps(){if(!G.chart)return;const w=mode===2?W/2:W,jx=sL+Math.max(BR+16,w*0.15),beatPx=Math.max((w-jx)/3.9,R*5);G.pps=G.chart.bpm/60*beatPx*S.speed;}
 
 /* ===== 難易度 ===== */
 const DIFF={
@@ -303,6 +316,7 @@ const G={state:'menu',song:null,chart:null,notes:[],src:null,startAt:0,paused:fa
  score:0,shownScore:0,combo:0,maxCombo:0,great:0,good:0,bad:0,rollHits:0,gauge:0,inc:1,clear:70,total:0,head:0,
  fx:[],flies:[],popups:[],judgeTxt:null,flash:{},laneFlash:null,lastBig:null,pps:300,offset:0,auto:false,
  endShown:false,endT:0,lastEnd:0,tapN:0};
+let mode=1,P=[],needFinish=false;   /* ふたりで */
 const xOf=(t,st)=>JX+(t-st)*G.pps;
 const isNote=n=>n.type==='don'||n.type==='ka';
 const nowR=()=>performance.now()/1000;
@@ -317,6 +331,7 @@ function beginPlay(){
  setPps();G.offset=S.offset/1000;G.auto=S.auto;setVolumes();
  const src=actx.createBufferSource();src.buffer=G.song.buffer;src.connect(musicGain);
  G.startAt=actx.currentTime+LEAD;src.start(G.startAt);G.src=src;lastCt=-1;
+ if(mode===2)initP();
  G.state='play';show(null);
 }
 function stopMusic(){if(G.src){try{G.src.stop();}catch(_){}try{G.src.disconnect();}catch(_){}G.src=null;}}
@@ -505,6 +520,7 @@ function draw(st,rt){
 
 /* ===== リザルト ===== */
 function finish(){
+ if(mode===2){needFinish=true;return;}
  if(G.state!=='play')return;G.state='result';G.pausedSt=songTime();stopMusic();
  const cl=G.gauge>=G.clear,fc=G.bad===0&&G.total>0,ap=fc&&G.good===0;
  const stamp=ap?['全良','#ffd23a']:fc?['フルコンボ','#ffd23a']:cl?['ノルマクリア','#ff7a2a']:['ノルマ失敗','#6ab4ff'];
@@ -516,12 +532,19 @@ function finish(){
  <div class="rbtns"><button class="btn" id="rRetry">もう一度</button><button class="btn" id="rQuit">曲選択へ</button></div>`;
  $('rRetry').onclick=beginPlay;$('rQuit').onclick=toMenu;show('result');if(actx)(cl?playFanfare:playSad)();
 }
-function toMenu(){stopMusic();G.state='menu';G.paused=false;if(actx&&actx.state==='suspended')actx.resume();show('menu');}
+function toMenu(){stopMusic();updMode();G.state='menu';G.paused=false;if(actx&&actx.state==='suspended')actx.resume();show('menu');}
 function show(id){document.querySelectorAll('.screen').forEach(e=>e.classList.remove('show'));if(id)$(id).classList.add('show');
  $('pbtn').style.display=(!id&&G.state==='play')?'block':'none';}
 
 /* ===== ループ ===== */
 function loop(){requestAnimationFrame(loop);const rt=nowR();
+ if(G.state==='menu'&&Body.mode==='cam')camHintUpd();
+ if(mode===2){
+  if(G.state==='play'){if(G.paused){draw2(G.pausedSt,rt);return;}const st=songTime();update2(st,rt);if(G.state==='play')draw2(st,rt);}
+  else if(G.state==='result')draw2(G.pausedSt,rt);
+  else{X.clearRect(0,0,W,H);}
+  return;
+ }
  if(G.state==='play'){if(G.paused){draw(G.pausedSt,rt);return;}const st=songTime();update(st,rt);if(G.state==='play')draw(st,rt);}
  else if(G.state==='result')draw(G.pausedSt,rt);
  else{X.clearRect(0,0,W,H);}
@@ -530,16 +553,26 @@ function loop(){requestAnimationFrame(loop);const rt=nowR();
 /* ===== 入力 ===== */
 const KEYS={d:'ka',f:'ka',j:'don',k:'don'};
 const lagOf=e=>{const l=(performance.now()-e.timeStamp)/1000;return isFinite(l)?clamp(l,0,0.1):0;};
+const KEYS2=[{d:'ka',f:'don'},{j:'ka',k:'don'}];   /* ふたりで：1P / 2P（左の キー＝カッ、右の キー＝ドン） */
 addEventListener('keydown',e=>{
+ if(G.state==='menu'&&!e.repeat&&(e.key==='1'||e.key==='2')){setMode(+e.key);$('start').click();return;}
+ if(G.state==='result'&&mode===2){
+  if(e.key==='Escape'){e.preventDefault();toMenu();}
+  else if(e.key===' '||e.key==='Enter'){e.preventDefault();beginPlay();}
+  return;
+ }
  if(G.state!=='play')return;
  if(e.key==='Escape'){e.preventDefault();G.paused?resume():pause();return;}
- if(e.repeat)return;const m=KEYS[e.key.toLowerCase()];if(!m)return;e.preventDefault();
+ if(e.repeat)return;const k=e.key.toLowerCase();
+ if(mode===2){KEYS2.forEach((ks,i)=>{if(ks[k]){e.preventDefault();inputP(i,ks[k],lagOf(e));}});return;}
+ const m=KEYS[k];if(!m)return;e.preventDefault();
  input(m,lagOf(e));
 });
 /* 画面の左半分＝カッ、右半分＝ドン（パッドの外でも反応） */
 cv.addEventListener('pointerdown',e=>{
  e.preventDefault();
  if(G.state!=='play'||G.paused)return;
+ if(mode===2){const i=e.clientX<W/2?0:1,lx=e.clientX-i*W/2;inputP(i,lx<W/4?'ka':'don',lagOf(e));return;}
  input(e.clientX<W/2?'ka':'don',lagOf(e));
 });
 for(const ev of ['contextmenu','gesturestart','dblclick'])document.addEventListener(ev,e=>e.preventDefault());
@@ -609,10 +642,76 @@ addEventListener('resize',layout);addEventListener('orientationchange',()=>setTi
 layout();requestAnimationFrame(loop);loadSongs();
 
 /* ===== ぜんしん版：左手を ふりおろす＝カッ、右手を ふりおろす＝ドン ===== */
-Body.on('swing',e=>{if(e.dy>0.3)input(e.side==='L'?'ka':'don',Body.cfg.LAG);});
-Body.gate({title:'ドンカ道場',corner:'tr',lines:['🥁 <b>左手</b>を ふりおろす … カッ（青）','🥁 <b>右手</b>を ふりおろす … ドン（赤）','大きい音符は りょう手で いっしょに','れんだは 左右 こうごに どんどん'],
+/* ===== ふたりで：画面を 左右に わけ、同じ譜面を 1P（左）と 2P（右）が たたく ===== */
+/* 1人ぶんの 記録（音符の 判定・点数・コンボ など）を G に 入れかえて、ひとりで用の input / update / draw を そのまま使う */
+const PCOL=['#2cb','#f6c'];
+const PKEYS=['notes','score','shownScore','combo','maxCombo','great','good','bad','rollHits','gauge','head','fx','flies','popups','judgeTxt','flash','laneFlash','lastBig','tapN','endShown','endT'];
+function freshP(){const o={};PKEYS.forEach(k=>o[k]=G[k]);o.notes=G.notes.map(n=>Object.assign({},n));o.fx=[];o.flies=[];o.popups=[];o.flash={};o.tapN=0;return o;}
+function initP(){P=[freshP(),freshP()];}
+function withP(i,fn){const p=P[i];if(!p)return;PKEYS.forEach(k=>G[k]=p[k]);try{return fn();}finally{PKEYS.forEach(k=>p[k]=G[k]);}}
+function inputP(i,type,lag){if(mode===2)withP(i,()=>input(type,lag));}
+function update2(st,rt){
+ needFinish=false;
+ for(let i=0;i<2;i++)withP(i,()=>update(st,rt));
+ if(needFinish)finish2();
+}
+function draw2(st,rt){
+ const fw=W,l0=sL,r0=sR,hw=W/2;
+ for(let i=0;i<2;i++){
+  W=hw;sL=i===0?l0:0;sR=i===1?r0:0;const pps=G.pps;layout2();G.pps=pps;
+  X.save();X.translate(i*hw,0);X.beginPath();X.rect(0,0,hw,H);X.clip();
+  withP(i,()=>draw(st,rt));
+  X.strokeStyle=PCOL[i];X.lineWidth=4;X.strokeRect(2,2,hw-4,H-4);
+  sText((i+1)+'P',W/2,LB+(PT-LB)*0.42,`900 ${compact?22:30}px sans-serif`,PCOL[i],'#000',5);
+  X.restore();
+ }
+ {const pps=G.pps;W=fw;sL=l0;sR=r0;layout2();G.pps=pps;}
+ X.fillStyle='#000';X.fillRect(W/2-2,0,4,H);
+}
+function finish2(){
+ if(G.state!=='play')return;G.state='result';G.pausedSt=songTime();stopMusic();
+ const sc=P.map(p=>p.score),win=sc[0]===sc[1]?-1:sc[0]>sc[1]?0:1;
+ const card=(p,i)=>{const fc=p.bad===0&&G.total>0,st=fc&&p.good===0?'全良':fc?'フルコンボ':p.gauge>=G.clear?'ノルマクリア':'';
+  return `<div class="pc" style="border-color:${PCOL[i]}"><div class="stamp" style="color:${PCOL[i]};font-size:clamp(20px,6vw,30px)">${i+1}P${win===i?' 👑':''}</div>
+  <div class="rscore">${p.score}点</div>${st?`<div style="color:#ffd23a;font-weight:bold">${st}</div>`:''}
+  <div class="rgrid"><div><span>良</span><b>${p.great}</b></div><div><span>可</span><b>${p.good}</b></div><div><span>不可</span><b>${p.bad}</b></div><div><span>最大コンボ</span><b>${p.maxCombo}</b></div><div><span>連打数</span><b>${p.rollHits}</b></div></div></div>`;};
+ $('rbox').innerHTML=`<div class="btitle">${esc(G.song.name)}（${DIFF[G.diff].name}）</div>
+ <div class="stamp" style="color:${win<0?'#fff':PCOL[win]}">${win<0?'ひきわけ':(win+1)+'P の勝ち!'}</div>
+ <div class="vs">${card(P[0],0)}${card(P[1],1)}</div>
+ <div class="rbtns"><button class="btn" id="rRetry">もういちど</button><button class="btn" id="rQuit">曲選択へ（Esc）</button></div>`;
+ $('rRetry').onclick=beginPlay;$('rQuit').onclick=toMenu;show('result');if(actx)(win>=0?playFanfare:playSad)();
+}
+function setMode(m){mode=m;updMode();}
+function updMode(){document.querySelectorAll('#pmode .diff').forEach(d=>d.classList.toggle('sel',+d.dataset.m===mode));}
+document.querySelectorAll('#pmode .diff').forEach(d=>d.onclick=()=>setMode(+d.dataset.m));
+updMode();
+
+/* ===== ぜんしん版：左手を ふりおろす＝カッ、右手を ふりおろす＝ドン ===== */
+/* ふたりで：カメラに 2人 うつす。画面の左に立つ人が 1P、右の人が 2P（Body.players[0] / [1]） */
+Body.people=2;
+let seen2At=-9;                                                      /* 最後に 2人 うつっていた時刻 */
+function people(){return performance.now()/1000-seen2At<1?2:1;}
+let lastHint='';
+function camHintUpd(){
+ const t=people()>=2?'👏 手をたたくと ふたりで スタート':'👏 手をたたいて スタート（2人 うつれば ふたりで）';
+ if(t!==lastHint){lastHint=t;const h=$('camHint');h.textContent=t;h.style.display='block';h.style.color=people()>=2?'#f6c':'#fff';}
+}
+let clapAt=0;
+function camClap(){
+ if(Body.mode!=='cam'||performance.now()-clapAt<1500)return;
+ if(G.state==='menu'&&$('menu').classList.contains('show')){clapAt=performance.now();setMode(people());$('start').click();}
+ else if(G.state==='result'){clapAt=performance.now();if(mode===2&&people()<2)setMode(1);beginPlay();}
+}
+Body.on('swing',e=>{if(mode===1&&e.dy>0.3)input(e.side==='L'?'ka':'don',Body.cfg.LAG);});
+Body.on('clap',camClap);
+Body.players.forEach((B,i)=>{
+ B.on('swing',e=>{if(mode===2&&e.dy>0.3)inputP(i,e.side==='L'?'ka':'don',Body.cfg.LAG);});
+ B.on('clap',camClap);
+});
+Body.on('poses',()=>{if(Body.count>=2)seen2At=performance.now()/1000;});
+Body.gate({title:'ドンカ道場',corner:'tr',lines:['🥁 <b>左手</b>を ふりおろす … カッ（青）','🥁 <b>右手</b>を ふりおろす … ドン（赤）','大きい音符は りょう手で いっしょに','れんだは 左右 こうごに どんどん','👥 <b>2人</b> うつると ふたりで（左の人が 1P）','👏 曲えらびで 手を たたく … スタート'],
  onStart:m=>{if(m==='cam'){GREAT=0.085;GOOD=0.15;BAD=0.2;}}});
-window.__game={G,input};
+window.__game={G,input,inputP,setMode,get mode(){return mode;},get P(){return P;},update2,draw2,finish2,beginPlay,people};
 })();
 </script>
 </body>

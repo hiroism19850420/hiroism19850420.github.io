@@ -22,8 +22,20 @@ const TYPES=[
 ];
 let ents=[],effects=[],misses=0,score=0,elapsed=0,spawnT=0.5,state='title',best=0,overAt=0;
 let pressed=[0,0,0],shake=0,face='normal',faceT=0;
+// ふたりで：画面を 左右に わけて 1人ずつ 子どもと やさいを 持つ。やさいは 2人に 同じものが 同じ時に 来る
+const KEYS2=[[['1','z'],['2','x'],['3','c']],[['8','j'],['9','k'],['0','l']]];  // 1P / 2P
+const PCOL=['#2cb','#f6c'];
+let mode=1,FW=W,out=false,pl=[],winner=-1,startAt=0,btns=[];
+function mkLane(){return {ents:[],effects:[],misses:0,score:0,pressed:[0,0,0],shake:0,face:'normal',faceT:0,out:false};}
+function saveP(p){Object.assign(p,{ents,effects,misses,score,pressed,shake,face,faceT,out});}
+function loadP(p){({ents,effects,misses,score,pressed,shake,face,faceT,out}=p);}
+function withP(i,fn){loadP(pl[i]);try{return fn();}finally{saveP(pl[i]);}}
+function setMode(m){mode=m;FW=W*m;if(cv.width!==FW)cv.width=FW;pl=[];for(let i=0;i<m;i++)pl.push(mkLane());}
 
-function reset(){ents=[];effects=[];misses=0;score=0;elapsed=0;spawnT=0.5;state='play';face='normal';faceT=0;}
+function reset(){ents=[];effects=[];misses=0;score=0;elapsed=0;spawnT=0.5;state='play';face='normal';faceT=0;
+  out=false;winner=-1;startAt=performance.now();pressed=[0,0,0];
+  if(mode===2){setMode(2);loadP(pl[0]);}}
+function toTitle(){setMode(1);reset();state='title';}
 
 // ---------- 効果音 ----------
 let actx=null,noiseBuf=null;
@@ -220,23 +232,25 @@ function fx(x,y,text,color,size){
   effects.push({x,y,text,color,size,life:0.7,rot:(Math.random()-0.5)*0.3});
 }
 
-function spawn(){
+function spawn(){ents.push(mkEnt());}
+function mkEnt(){
   const fruit=elapsed>15&&Math.random()<0.15;                       // 15秒後から果物が混ざる
   const dur=Math.max(1.1,4.2-elapsed*0.035)*(0.85+Math.random()*0.3)*(fruit?0.8:1); // 時間経過で速くなる
   const sx=50+Math.random()*(W-100);
-  ents.push({color:Math.floor(Math.random()*3),fruit,sx,x:sx,y:-40,p:0,s:0.55,dur,
-    state:'move',t:0,ph:Math.random()*6,rot:0,vx:0,vy:0,vr:0});
+  return {color:Math.floor(Math.random()*3),fruit,sx,x:sx,y:-40,p:0,s:0.55,dur,
+    state:'move',t:0,ph:Math.random()*6,rot:0,vx:0,vy:0,vr:0};
 }
 
 function miss(){
   misses++;shake=0.3;
   playCry();
+  if(misses>=3&&mode===2){out=true;face='yuck';faceT=1e9;return;}   // ふたりで：この人は おしまい
   if(misses>=3){state='over';best=Math.max(best,score);overAt=performance.now();face='yuck';faceT=1e9;}
 }
 
 function press(i){
   pressed[i]=0.12;
-  if(state!=='play')return;
+  if(state!=='play'||out)return;
   let tg=null;
   for(const e of ents)
     if(e.state==='move'&&e.color===i&&(!tg||e.p>tg.p))tg=e;        // 同じ色で一番口に近い相手
@@ -254,11 +268,13 @@ function update(dt){
   if(faceT>0){faceT-=dt;if(faceT<=0)face='normal';}
   effects.forEach(f=>{f.life-=dt;f.y-=30*dt;});
   effects=effects.filter(f=>f.life>0);
-  if(state!=='play')return;
-  elapsed+=dt;spawnT-=dt;
-  if(spawnT<=0){
-    spawn();
-    spawnT=Math.max(0.15,0.7-elapsed*0.0075)*(0.7+Math.random()*0.6); // 時間経過で数が増える（倍の出現数）
+  if(state!=='play'||out)return;
+  if(mode===1){
+    elapsed+=dt;spawnT-=dt;
+    if(spawnT<=0){
+      spawn();
+      spawnT=nextSpawn();
+    }
   }
   for(const e of ents){
     e.t+=dt;
@@ -276,9 +292,33 @@ function update(dt){
     }else if(e.state==='slap'){
       e.x+=e.vx*dt;e.vy+=1400*dt;e.y+=e.vy*dt;e.rot+=e.vr*dt;
     }
-    if(state!=='play')break;
+    if(state!=='play'||out)break;
   }
   ents=ents.filter(e=>e.state==='move'||(e.state==='slap'&&e.t<1.2&&e.y<H+60));
+}
+
+function nextSpawn(){return Math.max(0.15,0.7-elapsed*0.0075)*(0.7+Math.random()*0.6);} // 時間経過で数が増える（倍の出現数）
+function update2(dt){            // ふたりで：出てくる時間と やさいは 2人 同じ
+  if(state==='play'){
+    elapsed+=dt;spawnT-=dt;
+    if(spawnT<=0){const e=mkEnt();pl.forEach(p=>{if(!p.out)p.ents.push({...e});});spawnT=nextSpawn();}
+  }
+  pl.forEach((p,i)=>withP(i,()=>update(dt)));
+  if(state==='play'&&pl.some(p=>p.out)){
+    state='over';overAt=performance.now();
+    winner=pl.every(p=>p.out)?-1:pl[0].out?1:0;
+    if(winner>=0)playWin();
+  }
+}
+function playWin(){
+  if(!actx)return;
+  const t=actx.currentTime;
+  [523,659,784,1047].forEach((f,i)=>{
+    const o=actx.createOscillator();o.type='triangle';o.frequency.value=f;
+    const g=actx.createGain();const s=t+i*0.11;
+    g.gain.setValueAtTime(0.25,s);g.gain.exponentialRampToValueAtTime(0.001,s+(i===3?0.6:0.25));
+    o.connect(g);g.connect(actx.destination);o.start(s);o.stop(s+0.65);
+  });
 }
 
 function drawEnt(e){
@@ -301,7 +341,7 @@ function drawButtons(){
   });
 }
 
-function draw(){
+function drawLane(li){
   ctx.save();
   if(shake>0)ctx.translate((Math.random()-0.5)*14,(Math.random()-0.5)*14);
   for(let y=0;y<BTN_Y;y+=40)for(let x=0;x<W;x+=40){         // ギンガムチェックのテーブルクロス
@@ -318,26 +358,69 @@ function draw(){
   }
   ctx.restore();
 
-  bigText('点数 '+score,80,34,24,'#fc3');
+  if(mode===1){
+    bigText('点数 '+score,80,34,24,'#fc3');
+  }else{
+    bigText((li+1)+'P',36,34,30,PCOL[li]);
+    bigText('点数 '+score,140,34,22,'#fc3');
+    if(out&&state==='play'){ctx.fillStyle='rgba(0,0,0,0.4)';ctx.fillRect(0,0,W,H);bigText('ごちそうさま…',W/2,300,40,'#fc3');}
+    if(state==='play'&&performance.now()-startAt<2500&&Body.mode!=='cam')bigText('キー '+KEYS2[li].map(k=>k[1].toUpperCase()).join(' '),W/2,420,28,PCOL[li]);
+  }
   bigText('♥'.repeat(Math.max(0,3-misses)),W-60,34,26,'#f45');
+}
+
+function rr(x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function menuBtn(x,y,w,h,label,sub,col,act){
+  ctx.fillStyle='#222';rr(x-w/2,y+5,w,h,16);ctx.fill();
+  ctx.fillStyle=col;rr(x-w/2,y,w,h,16);ctx.fill();
+  ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.stroke();
+  bigText(label,x,y+h/2-7,26,'#fff');
+  ctx.fillStyle='#fff';ctx.font='bold 13px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(sub,x,y+h-12);
+  btns.push({x:x-w/2,y,w,h,act});
+}
+
+function draw(){
+  btns=[];
+  if(mode===1)drawLane(0);
+  else pl.forEach((p,li)=>withP(li,()=>{
+    ctx.save();ctx.translate(li*W,0);
+    ctx.beginPath();ctx.rect(0,0,W,H);ctx.clip();
+    drawLane(li);
+    ctx.restore();
+  }));
+  if(mode===2){ctx.fillStyle='#222';ctx.fillRect(W-3,0,6,H);}           // 1P と 2P の しきり
 
   if(state!=='play'){
-    ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(0,0,W,H);
+    const C=FW/2;
+    ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(0,0,FW,H);
     const wob=Math.sin(performance.now()/200)*0.05;
     if(state==='title'){
-      bigText('ピーマン！',W/2,150,56,'#3b3',-0.08+wob);
-      bigText('トマトに！',W/2,225,56,'#e33',0.06-wob);
-      bigText('ナスビンタ！',W/2,305,60,'#93c',-0.04+wob);
+      bigText('ピーマン！',C,150,56,'#3b3',-0.08+wob);
+      bigText('トマトに！',C,225,56,'#e33',0.06-wob);
+      bigText('ナスビンタ！',C,305,60,'#93c',-0.04+wob);
+    }else if(mode===1){
+      bigText('ごちそうさま…',C,190,44,'#fc3',wob);
+      bigText('点数 '+score,C,260,36,'#fff');
+      bigText('ベスト '+best,C,310,26,'#fff');
     }else{
-      bigText('ごちそうさま…',W/2,190,44,'#fc3',wob);
-      bigText('点数 '+score,W/2,260,36,'#fff');
-      bigText('ベスト '+best,W/2,310,26,'#fff');
+      bigText(winner<0?'ひきわけ':(winner+1)+'P の勝ち!',C,180,64,winner<0?'#fff':PCOL[winner],wob);
+      bigText('点数 '+pl[0].score+' － '+pl[1].score,C,265,36,'#fff');
     }
+    const camT=Body.mode==='cam';
     ctx.fillStyle='#fff';ctx.font='18px sans-serif';ctx.textAlign='center';ctx.textBaseline='alphabetic';
-    ctx.fillText('同じ色のボタンで野菜をビンタ！',W/2,380);
-    ctx.fillText('イチゴ・メロン・ブドウは叩かず食べるとボーナス',W/2,408);
-    ctx.fillText('キー: 1 2 3 / Z X C / J K L',W/2,436);
-    bigText(Body.mode==='cam'?'手を たたいて スタート':'スペース か タップでスタート',W/2,485,24,'#fff');
+    ctx.fillText('同じ色のボタンで野菜をビンタ！',C,380);
+    ctx.fillText('イチゴ・メロン・ブドウは叩かず食べるとボーナス',C,408);
+    if(state==='title'){
+      ctx.fillText('ふたりで：先に ♥が なくなった方の まけ',C,436);
+      menuBtn(C,462,280,64,'ひとりで','キー 1 か スペース','#2a9',()=>{setMode(1);reset();});
+      menuBtn(C,542,280,64,'ふたりで','1P は Z X C ／ 2P は J K L','#c4c',()=>{setMode(2);reset();});
+    }else{
+      ctx.fillText(camT?(mode===1?'左手・手をたたく・右手で ビンタ':'カメラの 左に立つ人が 1P、右の人が 2P'):mode===1?'キー: 1 2 3 / Z X C / J K L':'1P: Z X C ／ 2P: J K L',C,436);
+      menuBtn(C,462,280,64,'もういちど','スペース','#e70',()=>reset());
+      menuBtn(C,542,280,64,'タイトルへ','Esc','#567',toTitle);
+    }
+    if(camT)bigText(people()>=2?'👏 手をたたくと ふたりで スタート':'👏 手をたたいて スタート（2人 うつれば ふたりで）',C,650,people()>=2?24:19,people()>=2?'#f6c':'#fff');
   }
 }
 
@@ -346,34 +429,68 @@ function canStart(){return state==='title'||(state==='over'&&performance.now()-o
 addEventListener('keydown',e=>{
   initAudio();
   if(state!=='play'){
-    if((e.key===' '||e.key==='Enter')&&canStart()){e.preventDefault();reset();}
+    if(!canStart())return;
+    if(state==='title'){
+      if(e.key===' '||e.key==='Enter'||e.key==='1'){e.preventDefault();setMode(1);reset();}
+      else if(e.key==='2'){setMode(2);reset();}
+    }else{
+      if(e.key===' '||e.key==='Enter'){e.preventDefault();reset();}
+      else if(e.key==='Escape')toTitle();
+    }
     return;
   }
+  if(e.repeat&&mode===2)return;
   const k=e.key.toLowerCase();
-  TYPES.forEach((t,i)=>{if(t.keys.includes(k))press(i);});
+  if(mode===1)TYPES.forEach((t,i)=>{if(t.keys.includes(k))press(i);});
+  else KEYS2.forEach((ks,pi)=>ks.forEach((kk,i)=>{if(kk.includes(k))withP(pi,()=>press(i));}));
 });
 
 cv.addEventListener('pointerdown',ev=>{
   initAudio();
-  if(state!=='play'){if(canStart())reset();return;}
   const r=cv.getBoundingClientRect();
-  const x=(ev.clientX-r.left)*W/r.width,y=(ev.clientY-r.top)*H/r.height;
-  if(y>BTN_Y)press(Math.min(2,Math.floor(x/(W/3))));
+  const x=(ev.clientX-r.left)*FW/r.width,y=(ev.clientY-r.top)*H/r.height;
+  if(state!=='play'){
+    if(!canStart())return;
+    const b=btns.find(b=>x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h);
+    if(b)b.act();
+    return;
+  }
+  if(y>BTN_Y){
+    const li=Math.min(mode-1,Math.floor(x/W)),lx=x-li*W,bi=Math.min(2,Math.floor(lx/(W/3)));
+    if(mode===1)press(bi);else withP(li,()=>press(bi));
+  }
 });
 
 let last=performance.now();
 function loop(now){
   const dt=Math.min(0.05,(now-last)/1000);last=now;
-  update(dt);draw();requestAnimationFrame(loop);
+  if(mode===2)update2(dt);else update(dt);
+  draw();requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
 // ---------- ぜんしん版：左手をふる＝左、手をたたく（ジャンプでも）＝まん中、右手をふる＝右 ----------
+Body.people=2;                                                       // 2人まで 読む（ひとりのときは 大きくうつる人が 主役）
+let seen2At=-9;                                                      // 最後に 2人 うつっていた時刻
+function people(){return performance.now()/1000-seen2At<1?2:1;}
+Body.on('poses',()=>{if(Body.count>=2)seen2At=performance.now()/1000;});
+function camStart(){if(Body.mode==='cam'&&state!=='play'&&canStart()){initAudio();setMode(people());reset();}}
 Body.three(i=>{
   if(Body.mode!=='cam')return;
   initAudio();
-  if(state!=='play'){if(canStart())reset();return;}
-  press(i);
+  if(state!=='play'){camStart();return;}
+  if(mode===1)press(i);
+});
+// ふたりで：Body.players[0]（画面の左の人）が 1P、[1]（右の人）が 2P。Body.three と 同じ 見わけかた
+Body.players.forEach((P,pi)=>{
+  const fn=i=>{
+    if(Body.mode!=='cam')return;
+    if(state!=='play'){camStart();return;}
+    if(mode===2&&performance.now()-startAt>600)withP(pi,()=>press(i));
+  };
+  P.on('swing',e=>{if((e.i?-e.dx:e.dx)>0.5||e.dy<-0.5||P.now-(P.clapAt||-9)<0.45)return;fn(e.i?2:0);});
+  P.on('clap',()=>fn(1));
+  P.on('jump',()=>fn(1));
 });
 const drawButtons0=drawButtons;
 drawButtons=function(){
@@ -384,8 +501,8 @@ drawButtons=function(){
     ctx.strokeText(t,W/6+i*W/3,BTN_Y+22);ctx.fillText(t,W/6+i*W/3,BTN_Y+22);
   });
 };
-Body.gate({title:'ピーマン！トマトに！ナスビンタ！',corner:'tr',lines:['やさいが 口に 入るまえに 同じ色で ビンタ！','👈 <b>左手</b>で ビンタ … 左（赤）','👏 <b>手を たたく</b>（ジャンプでも）… まん中（緑）','👉 <b>右手</b>で ビンタ … 右（むらさき）','くだものは たたかない','はじめる・もういちど … 手を たたく']});
-window.__game={press,get state(){return state;},get score(){return score;}};
+Body.gate({title:'ピーマン！トマトに！ナスビンタ！',corner:'tr',lines:['やさいが 口に 入るまえに 同じ色で ビンタ！','👈 <b>左手</b>で ビンタ … 左（赤）','👏 <b>手を たたく</b>（ジャンプでも）… まん中（緑）','👉 <b>右手</b>で ビンタ … 右（むらさき）','くだものは たたかない','👥 <b>2人</b> うつると ふたりで きょうそう（左の人が 1P）','はじめる・もういちど … 手を たたく']});
+window.__game={press,get state(){return state;},get score(){return score;},get mode(){return mode;},get pl(){return pl;},get winner(){return winner;},setMode,reset,toTitle,update,update2,draw,withP};
 </script>
 </body>
 </html>
