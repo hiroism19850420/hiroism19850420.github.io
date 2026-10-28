@@ -123,7 +123,7 @@ B.feed = function(lm, dt, t){
 return B;
 }
 const B = makeBody();
-B.people = 1;    // 何人まで 読むか。カメラを はじめる前に 2 にすると、ふたりで あそべる
+B.people = 1;    // カメラを はじめる前に 2 にすると、ふたりで あそべる（2人 うつると 左右半分ずつ 読む）
 B.count = 0;     // いま カメラに うつっている人数（people が 2 のとき）
 B.players = [makeBody(), makeBody()];   // people が 2 のとき：画面の左に立つ人・右に立つ人（1人だけなら 立っている がわ）
 const seen = lm => (lm[11].visibility == null ? 1 : lm[11].visibility) > 0.5 && (lm[12].visibility == null ? 1 : lm[12].visibility) > 0.5;
@@ -172,17 +172,59 @@ function loop(ts){
   if (!pose || video.readyState < 2 || video.currentTime === lastVT || ts < nextAt) return;
   const now = ts / 1000, dt = lastT ? Math.min(0.2, now - lastT) : 0.033;
   lastVT = video.currentTime; lastT = now;
-  let res = null;
   const t0 = performance.now();
-  try { res = pose.detectForVideo(video, ts); } catch (e) { return; }
-  cost += (performance.now() - t0 - cost) * 0.2; B.cost = cost; nextAt = ts + Math.min(125, cost * 2.5);
-  const all = (res && res.landmarks) || [];
-  // 何人か うつっていたら、いちばん大きく（近くに）うつっている人を 主役にする
+  let all = null, probe = 0;
+  // ふたりで：0.8秒ごとに 左半分・右半分を 別々に読み、2人いたら そのあいだは 毎回 半分ずつ読む
+  if (B.people > 1 && halves && (two || ts >= halfAt)){
+    halfAt = ts + 800;
+    const th = performance.now();
+    const r = readHalves(ts);
+    B.costHalf = performance.now() - th;
+    if (r){
+      const cxOf = lm => 1 - (lm[11].x + lm[12].x) / 2;
+      if (r[0] && r[1] && cxOf(r[0]) < 0.45 && cxOf(r[1]) > 0.55) lastTwo = ts;
+      two = ts - lastTwo < 1000;
+      if (two) all = r; else probe = B.costHalf;   // 見まわりだけの時間は 重さの はかりに 入れない
+    }
+  }
+  if (!all){
+    let res = null;
+    const tf = performance.now();
+    try { res = pose.detectForVideo(video, ts); } catch (e) { return; }
+    B.costFull = performance.now() - tf;
+    all = (res && res.landmarks) || [];
+  }
+  cost += (performance.now() - t0 - probe - cost) * 0.2; B.cost = cost; nextAt = ts + Math.min(125, cost * 2.5);
+  const found = all.filter(Boolean);
+  // 2人 うつっていたら、大きく（近くに）うつっている人を 主役にする
   const size = lm => Math.hypot(lm[11].x - lm[12].x, lm[11].y - lm[12].y);
-  const lm = all.length > 1 ? all.reduce((a, b) => size(b) > size(a) ? b : a) : all[0];
+  const lm = found.length > 1 ? found.reduce((a, b) => size(b) > size(a) ? b : a) : found[0];
   if (lm) B.feed(lm, dt); else B.clear();
-  if (B.people > 1){ feedPlayers(all, dt); B.emit('poses', { all, dt, asp }); }
-  drawMirror(all);
+  if (B.people > 1){
+    if (two){                                   // 半分ずつ読んだ：左半分の人が players[0]、右半分の人が players[1]
+      B.count = found.length;
+      B.players.forEach((P, i) => { if (all[i]) P.feed(all[i], dt); else P.clear(); });
+    } else feedPlayers(found, dt);
+    B.emit('poses', { all: found, dt, asp });
+  }
+  drawMirror(found);
+}
+// 2人を 1度に 探す設定（numPoses 2）は 20倍以上 おそいので、画面を 左右半分に 切って 1人ずつ 読む
+let halves = null, halfCv = null, halfCx = null, halfAt = 0, lastTwo = -9999, two = false;
+function readHalves(ts){
+  const vw = video.videoWidth || 640, vh = video.videoHeight || 480, hw = Math.floor(vw / 2);
+  if (!halfCv){ halfCv = [0, 1].map(() => { const c = document.createElement('canvas'); c.width = hw; c.height = vh; return c; }); halfCx = halfCv.map(c => c.getContext('2d')); }
+  // 鏡うつしの 画面の左＝カメラ映像の右半分
+  const out = [null, null];
+  try {
+    [[0, hw], [1, 0]].forEach(([i, sx]) => {
+      halfCx[i].drawImage(video, sx, 0, hw, vh, 0, 0, hw, vh);
+      const res = halves[i].detectForVideo(halfCv[i], ts);
+      const lm = res && res.landmarks && res.landmarks[0];
+      if (lm) out[i] = lm.map(p => ({ x: sx / vw + p.x * hw / vw, y: p.y, z: p.z, visibility: p.visibility }));
+    });
+  } catch (e){ console.error(e); return null; }
+  return out;
 }
 const CAM_OPT = { video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 } } };
 B.start = async function(say, corner){
@@ -207,9 +249,10 @@ B.start = async function(say, corner){
       const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
       where = 'wasm';
       const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
-      const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: Math.max(1, B.people | 0) });
+      const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
       where = 'モデル';
       try { pose = await make('GPU'); } catch (e){ pose = await make('CPU'); }
+      if (B.people > 1) try { halves = [await make('GPU').catch(() => make('CPU')), await make('GPU').catch(() => make('CPU'))]; } catch (e){ console.error(e); halves = null; }
     } catch (e){ err = e; console.error(e); if (n === 0) say('よみこみに しっぱい。もういちど ためしています…'); }
   }
   if (!pose){ say(`うごきを 見る しくみを よみこめませんでした。もういちど「カメラで あそぶ」を おすか、Safari や Chrome で ひらいてね。［${where}：${String((err && err.message) || err).slice(0, 90)}］`); return false; }

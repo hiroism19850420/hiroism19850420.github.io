@@ -173,24 +173,28 @@ function loop(ts){
   const now = ts / 1000, dt = lastT ? Math.min(0.2, now - lastT) : 0.033;
   lastVT = video.currentTime; lastT = now;
   const t0 = performance.now();
-  let all = null;
-  // ふたりで：0.5秒ごとに 左半分・右半分を 別々に読み、2人いたら そのあいだは 毎回 半分ずつ読む
+  let all = null, probe = 0;
+  // ふたりで：0.8秒ごとに 左半分・右半分を 別々に読み、2人いたら そのあいだは 毎回 半分ずつ読む
   if (B.people > 1 && halves && (two || ts >= halfAt)){
-    halfAt = ts + 500;
+    halfAt = ts + 800;
+    const th = performance.now();
     const r = readHalves(ts);
+    B.costHalf = performance.now() - th;
     if (r){
       const cxOf = lm => 1 - (lm[11].x + lm[12].x) / 2;
       if (r[0] && r[1] && cxOf(r[0]) < 0.45 && cxOf(r[1]) > 0.55) lastTwo = ts;
       two = ts - lastTwo < 1000;
-      if (two) all = r;
+      if (two) all = r; else probe = B.costHalf;   // 見まわりだけの時間は 重さの はかりに 入れない
     }
   }
   if (!all){
     let res = null;
+    const tf = performance.now();
     try { res = pose.detectForVideo(video, ts); } catch (e) { return; }
+    B.costFull = performance.now() - tf;
     all = (res && res.landmarks) || [];
   }
-  cost += (performance.now() - t0 - cost) * 0.2; B.cost = cost; nextAt = ts + Math.min(125, cost * 2.5);
+  cost += (performance.now() - t0 - probe - cost) * 0.2; B.cost = cost; nextAt = ts + Math.min(125, cost * 2.5);
   const found = all.filter(Boolean);
   // 2人 うつっていたら、大きく（近くに）うつっている人を 主役にする
   const size = lm => Math.hypot(lm[11].x - lm[12].x, lm[11].y - lm[12].y);
