@@ -128,7 +128,7 @@ window.addEventListener('resize', resize);
 
 // ---- 状態 ----
 const S = { scene: 'title', players: 1, mode: 'kids', cam: false, plays: 0, audioOn: false, t: 0 };
-const G = { T: 0, skew: 0, t0: 0, src: 'perf', chart: [], res: [], act: -1, hold: [0, 0], figIdx: -2, from: POSE.stand, to: POSE.stand, morphT: -9, auto: false, forced: null, ended: false, endAt: 0, bpm0: 100, bpm1: 110, seq: null, flash: [0, 0], countStart: 0, guideOk: 0, guideAt: 0 };
+const G = { shots: [], T: 0, skew: 0, t0: 0, src: 'perf', chart: [], res: [], act: -1, hold: [0, 0], figIdx: -2, from: POSE.stand, to: POSE.stand, morphT: -9, auto: false, forced: null, ended: false, endAt: 0, bpm0: 100, bpm1: 110, seq: null, flash: [0, 0], countStart: 0, guideOk: 0, guideAt: 0 };
 let figNow = POSE.stand;
 const mouse = { x: 0, y: 0, on: false };
 const hover = {};
@@ -363,6 +363,7 @@ function startPlay(){
   G.chart = buildChart(G.kids); prepChart(G.kids);
   G.cue = new Set(G.chart.map(e => e.beat));
   G.res = G.chart.map(() => [0, 0]);
+  G.shots = G.chart.map(() => [null, null]);
   G.act = -1; G.hold = [0, 0]; G.figIdx = -2; G.from = POSE.stand; G.to = poseOf('wave', 'R'); G.morphT = -9;
   G.ended = false; G.skew = 0; G.flash = [0, 0]; G.target = null;
   G.src = (AC && AC.state === 'running') ? 'audio' : 'perf';
@@ -391,6 +392,26 @@ function popText(txt, col){
   pops.push({ txt, col, t0: S.t });
 }
 
+// ポーズが きまった しゅんかんの 写真（その人だけ ちかく きりとる。この ブラウザの 中だけで つかい、どこにも おくらない）
+function snap(P){
+  const v = document.querySelector('#bodyMirror video');
+  if (!v || !v.videoWidth || !P || !P.lm) return null;
+  const lm = P.lm, vw = v.videoWidth, vh = v.videoHeight;
+  let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+  [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28].forEach(i => {
+    if ((lm[i].visibility == null ? 1 : lm[i].visibility) < 0.3) return;
+    x0 = Math.min(x0, lm[i].x); x1 = Math.max(x1, lm[i].x); y0 = Math.min(y0, lm[i].y); y1 = Math.max(y1, lm[i].y);
+  });
+  if (x1 <= x0 || y1 <= y0) return null;
+  let bw = (x1 - x0) * vw * 1.3, bh = (y1 - y0) * vh * 1.25;
+  if (bw / bh > 0.75) bh = bw / 0.75; else bw = bh * 0.75;
+  const k = Math.min(1, vw / bw, vh / bh); bw *= k; bh *= k;
+  const sx = clamp((x0 + x1) / 2 * vw - bw / 2, 0, vw - bw), sy = clamp((y0 + y1) / 2 * vh - bh / 2, 0, vh - bh);
+  const c = document.createElement('canvas'); c.width = 150; c.height = 200;
+  const x = c.getContext('2d');
+  try { x.translate(150, 0); x.scale(-1, 1); x.drawImage(v, sx, sy, bw, bh, 0, 0, 150, 200); } catch (e){ return null; }
+  return c;
+}
 function updatePlay(dt){
   G.T = clockNow() - G.t0 + G.skew;
   const T = G.T, ch = G.chart;
@@ -416,6 +437,7 @@ function updatePlay(dt){
       const need = e.pose === 'jump' ? 0 : TUNE.hold;
       if (L > 0 && G.hold[p] >= need && G.res[ai][p] < L){
         G.res[ai][p] = L; G.flash[p] = 0.5;
+        if (S.cam){ const sh = snap(P); if (sh) G.shots[ai][p] = sh; }
         popText(L >= 2 ? 'ばっちり！' : 'いいね！', L >= 2 ? '#e9546b' : '#2f9fe0');
         sfxGood(L);
         addStars((L >= 2 ? 7 : 3) + Math.floor(T / 15), p);
@@ -729,22 +751,31 @@ function drawResult(dt){
   const bands = two ? 2 : 1, top = H * 0.2, bh = (H * 0.56) / bands;
   for (let p = 0; p < bands; p++){
     const list = [];
-    G.chart.forEach((e, i) => { if (G.res[i][p] > 0) list.push(e); });
+    G.chart.forEach((e, i) => { if (G.res[i][p] > 0) list.push({ pose: e.pose, side: e.side, shot: (G.shots[i] || [])[p] }); });
     if (!list.length) list.push({ pose: 'banzai', side: 'R' });
     const bw = W * 0.9, ox0 = W * 0.05, y0 = top + p * bh;
+    const photo = list.some(e => e.shot), asp = photo ? 0.75 : 0.68;   // 1まいの たて÷よこ の はんたい（よこ / たて）
     let best = null;
     for (let rows = 1; rows <= 4; rows++){
       const cols = Math.ceil(list.length / rows), cw = bw / cols, rh = bh / rows;
-      const s = Math.min(cw / 1.7, rh / 2.5);
-      if (!best || s > best.s) best = { rows, cols, cw, rh, s };
+      const ph = Math.min(rh * 0.94, cw * 0.94 / asp), s = photo ? ph : Math.min(cw / 1.7, rh / 2.5);
+      if (!best || s > best.s) best = { rows, cols, cw, rh, s, ph };
     }
     if (two){ g.fillStyle = PCOL[p]; g.beginPath(); g.arc(ox0 - 4, y0 + 14, 11, 0, 7); g.fill(); txt(g, (p + 1) + 'P', ox0 - 4, y0 + 14, 11, '#fff'); }
     list.forEach((e, i) => {
       const r = Math.floor(i / best.cols), c = i % best.cols;
       const cnt = Math.min(best.cols, list.length - r * best.cols), off = (best.cols - cnt) * best.cw / 2;
-      const x = ox0 + off + c * best.cw + best.cw / 2, y = y0 + r * best.rh + best.rh * 0.94;
-      const pp = Math.min(1, Math.max(0, (S.t - i * 0.05) / 0.3));
-      drawFig(g, poseOf(e.pose, e.side), x, y, best.s * (0.4 + 0.6 * (1 - Math.pow(1 - pp, 3))), two ? PCOL[p] : INK, 0, pp);
+      const x = ox0 + off + c * best.cw + best.cw / 2, yb = y0 + r * best.rh + best.rh * 0.94;
+      const pp = Math.min(1, Math.max(0, (S.t - i * 0.05) / 0.3)), z = 0.4 + 0.6 * (1 - Math.pow(1 - pp, 3));
+      if (e.shot){
+        const h = best.ph * z, w = h * asp, yy = yb - h, rot = ((i * 37) % 7 - 3) * 0.012;
+        g.save(); g.globalAlpha = pp; g.translate(x, yy + h / 2); g.rotate(rot);
+        g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 8; g.shadowOffsetY = 3;
+        g.fillStyle = two ? PCOL[p] : '#fff'; rr(g, -w / 2 - 3, -h / 2 - 3, w + 6, h + 6, 6); g.fill();
+        g.shadowColor = 'transparent';
+        g.save(); rr(g, -w / 2, -h / 2, w, h, 4); g.clip(); g.drawImage(e.shot, -w / 2, -h / 2, w, h); g.restore();
+        g.restore();
+      } else drawFig(g, poseOf(e.pose, e.side), x, yb, best.s * z, two ? PCOL[p] : INK, 0, pp);
     });
   }
   drawBtns(g);
