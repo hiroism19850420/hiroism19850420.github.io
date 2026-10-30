@@ -19,6 +19,15 @@ canvas{position:fixed;left:0;top:0;width:100%;height:100%;touch-action:none}
 #b1{background:#2f7fe0}#b2{background:#f08a24}
 #bn{background:#fff!important;color:#667!important;font-size:clamp(12px,2.6vh,18px)!important;padding:.5em 1.2em!important;box-shadow:0 2px 0 rgba(0,0,0,.12)!important}
 #msg{min-height:1.4em;font-size:clamp(12px,2.8vh,18px);color:#b25200;text-align:center;padding:0 5vw}
+#share{position:fixed;inset:0;z-index:9600;background:rgba(30,35,60,.82);display:none;align-items:center;justify-content:center;gap:4vw;padding:2vh 3vw;box-sizing:border-box}
+#share img{max-height:92vh;max-width:40vw;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.4);background:#fff}
+#share .col{display:flex;flex-direction:column;gap:1.4vh;min-width:30vw}
+#share h2{margin:0 0 .5vh;color:#fff;font:600 clamp(18px,4vh,30px) 'Klee One',sans-serif}
+#share .note{color:#dfe6ff;font-size:clamp(11px,2.3vh,15px);line-height:1.5}
+#share button{font:600 clamp(15px,3.4vh,24px) 'Klee One',sans-serif;border:0;border-radius:1.6em;padding:.6em 1em;color:#fff;cursor:pointer}
+#shNative{background:#3cb371}#shX{background:#111}#shLine{background:#06c755}#shSave{background:#2f7fe0}#shClose{background:#fff3;font-size:clamp(13px,2.8vh,18px)!important}
+#shareMsg{min-height:1.4em;color:#ffe08a;font-size:clamp(12px,2.6vh,16px)}
+@media (max-aspect-ratio:1/1){#share{flex-direction:column}#share img{max-width:80vw;max-height:50vh}}
 #rot{position:fixed;inset:0;z-index:9900;background:#eaf3fb;display:none;align-items:center;justify-content:center;flex-direction:column;font-size:26px;color:#333}
 #rot .ph{width:60px;height:100px;border:6px solid #333;border-radius:12px;animation:rt 2.4s ease-in-out infinite;margin-bottom:24px}
 @keyframes rt{0%,20%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
@@ -32,6 +41,19 @@ canvas{position:fixed;left:0;top:0;width:100%;height:100%;touch-action:none}
   <div class="row"><button id="b1">ひとりで あそぶ</button><button id="b2">ふたりで あそぶ</button></div>
   <button id="bn">カメラなしで ためす</button>
   <div id="msg"></div>
+</div>
+<div id="share">
+  <img id="shareImg" alt="">
+  <div class="col">
+    <h2>しゃしんを シェアする？</h2>
+    <button id="shNative">スマホで シェア（LINE・Xなど）</button>
+    <button id="shX">Xに ポスト</button>
+    <button id="shLine">LINEで おくる</button>
+    <button id="shSave">がぞうを ほぞん</button>
+    <div id="shareMsg"></div>
+    <div class="note">シェアは おした ときだけ。かおが うつっているので、だれに みせるか きをつけてね。<br>XやLINEの ボタンは ことばだけ ひらくよ。しゃしんは「がぞうを ほぞん」してから つけてね。</div>
+    <button id="shClose">とじる</button>
+  </div>
 </div>
 <div id="rot"><div class="ph"></div>よこに してね</div>
 <script src="body.js"></script>
@@ -59,16 +81,18 @@ const TUNE = {
   hold: 0.15,           // 条件が これだけ つづいたら「合った」
   kids: {
     bpm: 100, winA: 0.5, winB: 0.9,
-    banzai: [0.25, 0.9],              // 手首が 肩より 上に（ok, great は あたまより上）
-    hiroge: [1.1, 0.9, 1.7, 0.45],     // 肩から よこ きょり・たて ずれ（ok, great）
+    banzai: [0.25, 0.9],              // 手首が 肩より 上に（ok）
+    slack: 0.5,                       // 「ばっちり」＝手首が あたま（鼻）の たかさから これだけ 下まで OK（大きいほど ゆるい）
+    hiroge: [1.1, 0.9, 1.4, 0.7],      // 肩から よこ きょり・たて ずれ（ok, great）
     katate: [0.4, 0.2],               // 片手が 肩より 上に／もう片方の 手が これより下
-    squat:  [0.5, 0.3, 0.3, 0.6],     // ひざ/たいかん比の しきい（ok, ok-up, great, great-up）
-    jump:   [0.15, 0.35],
+    squat:  [0.5, 0.3, 0.38, 0.5],    // ひざ/たいかん比の しきい（ok, ok-up, great, great-up）
+    jump:   [0.15, 0.28],
     ashi:   [0.1, -0.3]
   },
   adult: {
     bpm: 120, winA: 0.35, winB: 0.65,
     banzai: [0.5, 0.9],
+    slack: -0.1,
     hiroge: [1.4, 0.7, 1.8, 0.45],
     katate: [0.7, 0.2],
     squat:  [0.4, 0.45, 0.28, 0.7],
@@ -137,6 +161,7 @@ const pops = [], stars = [], fire = [];
 let keyForce = null;
 
 function setScene(n){
+  if (shareOpen) closeShare();
   S.scene = n; S.t = 0; btns = []; for (const k in hover) delete hover[k];
   ui.style.display = n === 'title' ? 'flex' : 'none';
   if (n === 'mode') btns = [
@@ -144,8 +169,9 @@ function setScene(n){
     { id: 'adult', x: .54, y: .3, w: .34, h: .42, label: 'おとな', sub: 'はやめ ・ 6つの ポーズ', col: '#e8704a', on: () => chooseMode('adult') }
   ];
   if (n === 'result') btns = [
-    { id: 'again', x: .12, y: .8, w: .32, h: .14, label: 'もういちど', col: '#2f9fe0', small: true, on: () => setScene('mode') },
-    { id: 'end', x: .56, y: .8, w: .32, h: .14, label: 'おわる', col: '#8a8f98', small: true, on: () => location.reload() }
+    { id: 'again', x: .04, y: .8, w: .28, h: .14, label: 'もういちど', col: '#2f9fe0', small: true, on: () => setScene('mode') },
+    { id: 'share', x: .36, y: .8, w: .28, h: .14, label: 'シェア', col: '#3cb371', small: true, on: () => openShare() },
+    { id: 'end', x: .68, y: .8, w: .28, h: .14, label: 'おわる', col: '#8a8f98', small: true, on: () => location.reload() }
   ];
   if (n === 'guide'){ G.guideOk = 0; G.guideAt = 0; }
   if (n === 'count') G.countStart = 0;
@@ -304,7 +330,7 @@ function lvl(P, pose){
       if (!wv[0] || !wv[1]) return 0;
       const up = Math.min(sy - wy[0], sy - wy[1]) / u;
       if (up < T.banzai[0]) return 0;
-      return Math.max(wy[0], wy[1]) < ny - 0.1 * u ? 2 : 1;
+      return Math.max(wy[0], wy[1]) < ny + T.slack * u ? 2 : 1;
     }
     case 'hiroge': {
       if (!wv[0] || !wv[1]) return 0;
@@ -318,7 +344,7 @@ function lvl(P, pose){
         if (!wv[i] || wy[i] > sy - k * u) continue;
         const o2 = 1 - i;
         if (wv[o2] && wy[o2] < low) continue;
-        return wy[i] < ny - 0.1 * u ? 2 : 1;
+        return wy[i] < ny + T.slack * u ? 2 : 1;
       }
       return 0;
     }
@@ -444,6 +470,10 @@ function updatePlay(dt){
         addStars((L >= 2 ? 7 : 3) + Math.floor(T / 15), p);
       }
     });
+  }
+  // ポーズが 合っていなくても、判定窓の まん中（拍の すこし あと）で 1まい 撮る
+  if (S.cam && ai >= 0 && T >= ch[ai].t + 0.2){
+    players().forEach((P, p) => { if (!G.shots[ai][p]){ const sh = snap(P.ok ? P : null); if (sh) G.shots[ai][p] = sh; } });
   }
   G.flash = G.flash.map(v => Math.max(0, v - dt));
   if (!G.ended && T >= bt(END_BEAT) + 0.1){
@@ -744,44 +774,97 @@ function drawPlay(dt){
 }
 
 // ---- 結果：決めた ポーズを 並べた 1まいの 絵 ----
+// 写真（カメラなしは 棒人間）を ならべる。画面にも、シェアの 画像にも つかう
+function drawStrip(c, ox0, top, bw, totH, t, f){
+  const two = S.players === 2, bands = two ? 2 : 1, bh = totH / bands;
+  for (let p = 0; p < bands; p++){
+    let list = [];
+    G.chart.forEach((e, i) => { const sh = (G.shots[i] || [])[p]; if (sh || (!S.cam && G.res[i][p] > 0)) list.push({ pose: e.pose, side: e.side, shot: sh }); });
+    if (!list.length) list = [{ pose: 'banzai', side: 'R' }];
+    const y0 = top + p * bh;
+    const photo = list.some(e => e.shot), asp = photo ? 0.75 : 0.68;
+    let best = null;
+    for (let rows = 1; rows <= 4; rows++){
+      const cols = Math.ceil(list.length / rows), cw = bw / cols, rh = bh / rows;
+      const ph = Math.min(rh * 0.94, cw * 0.94 / asp), s2 = photo ? ph : Math.min(cw / 1.7, rh / 2.5);
+      if (!best || s2 > best.s) best = { rows, cols, cw, rh, s: s2, ph };
+    }
+    if (two){ c.fillStyle = PCOL[p]; c.beginPath(); c.arc(ox0 - 4 * f, y0 + 14 * f, 11 * f, 0, 7); c.fill(); txt(c, (p + 1) + 'P', ox0 - 4 * f, y0 + 14 * f, 11 * f, '#fff'); }
+    list.forEach((e, i) => {
+      const r = Math.floor(i / best.cols), cc = i % best.cols;
+      const cnt = Math.min(best.cols, list.length - r * best.cols), off = (best.cols - cnt) * best.cw / 2;
+      const x = ox0 + off + cc * best.cw + best.cw / 2, yb = y0 + r * best.rh + best.rh * 0.94;
+      const pp = Math.min(1, Math.max(0, (t - i * 0.05) / 0.3)), z = 0.4 + 0.6 * (1 - Math.pow(1 - pp, 3));
+      if (e.shot){
+        const h = best.ph * z, w = h * asp, yy = yb - h, rot = ((i * 37) % 7 - 3) * 0.012;
+        c.save(); c.globalAlpha = pp; c.translate(x, yy + h / 2); c.rotate(rot);
+        c.shadowColor = 'rgba(0,0,0,.25)'; c.shadowBlur = 8 * f; c.shadowOffsetY = 3 * f;
+        c.fillStyle = two ? PCOL[p] : '#fff'; rr(c, -w / 2 - 3 * f, -h / 2 - 3 * f, w + 6 * f, h + 6 * f, 6 * f); c.fill();
+        c.shadowColor = 'transparent';
+        c.save(); rr(c, -w / 2, -h / 2, w, h, 4 * f); c.clip(); c.drawImage(e.shot, -w / 2, -h / 2, w, h); c.restore();
+        c.restore();
+      } else drawFig(c, poseOf(e.pose, e.side), x, yb, best.s * z, two ? PCOL[p] : INK, 0, pp);
+    });
+  }
+}
+
+// ---- シェア（えらんだ ときだけ、がぞうを そとに だす）----
+const SHARE_URL = 'https://hiroism19850420.github.io/manekko-dance/';
+const SHARE_TEXT = 'まねっこ ダンスで おどったよ！';
+let shareOpen = false, shareBlob = null, shareCv = null;
+const getBlob = () => shareBlob ? Promise.resolve(shareBlob) : new Promise(res => shareCv.toBlob(b => { shareBlob = b; res(b); }, 'image/png'));
+function makeShareImage(){
+  const Wd = 1080, Hd = 1350, c = document.createElement('canvas'); c.width = Wd; c.height = Hd;
+  const x = c.getContext('2d'), two = S.players === 2;
+  const gr = x.createLinearGradient(0, 0, 0, Hd); gr.addColorStop(0, '#fde2ee'); gr.addColorStop(1, '#fff3c8');
+  x.fillStyle = gr; x.fillRect(0, 0, Wd, Hd);
+  txt(x, 'まねっこ ダンス', Wd / 2, 110, 92, INK);
+  txt(x, two ? 'ふたりとも ばっちり！' : 'よく できました！', Wd / 2, 215, 70, '#e9546b', 'center', '#fff');
+  drawStrip(x, 70, 290, Wd - 140, 880, 9, 2.2);
+  txt(x, 'hiroism19850420.github.io/manekko-dance', Wd / 2, 1275, 38, '#667');
+  return c;
+}
+function openShare(){
+  const c = shareCv = makeShareImage(); shareOpen = true; shareBlob = null;
+  document.getElementById('shareImg').src = c.toDataURL('image/png');
+  document.getElementById('shareMsg').textContent = '';
+  document.getElementById('share').style.display = 'flex';
+  c.toBlob(b => { shareBlob = b; }, 'image/png');
+}
+function closeShare(){ shareOpen = false; document.getElementById('share').style.display = 'none'; }
+const shareMsg = t => { document.getElementById('shareMsg').textContent = t; };
+async function saveShare(){
+  const blob = await getBlob(); if (!blob) return;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'manekko-dance.png';
+  document.body.appendChild(a); a.click(); a.remove();
+  shareMsg('がぞうを ほぞんしたよ。Xや LINEの とうこうに つけてね');
+}
+async function shareNative(){
+  const blob = await getBlob(); if (!blob) return;
+  const file = new File([blob], 'manekko-dance.png', { type: 'image/png' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })){ await navigator.share({ files: [file], text: SHARE_TEXT + ' ' + SHARE_URL }); return; }
+    if (navigator.share){ await navigator.share({ text: SHARE_TEXT, url: SHARE_URL }); shareMsg('しゃしんは 「がぞうを ほぞん」から つけてね'); return; }
+  } catch (e){ if (e && e.name === 'AbortError') return; }
+  shareMsg('この たんまつでは つかえないよ。「がぞうを ほぞん」を つかってね');
+}
+function shareX(){ window.open('https://twitter.com/intent/tweet?text=' + encodeURIComponent(SHARE_TEXT) + '&url=' + encodeURIComponent(SHARE_URL), '_blank', 'noopener'); shareMsg('しゃしんは 「がぞうを ほぞん」してから つけてね'); }
+function shareLine(){ window.open('https://line.me/R/msg/text/?' + encodeURIComponent(SHARE_TEXT + ' ' + SHARE_URL), '_blank', 'noopener'); shareMsg('しゃしんは 「がぞうを ほぞん」してから おくってね'); }
+document.getElementById('shNative').onclick = shareNative;
+document.getElementById('shX').onclick = shareX;
+document.getElementById('shLine').onclick = shareLine;
+document.getElementById('shSave').onclick = saveShare;
+document.getElementById('shClose').onclick = closeShare;
+
 function drawResult(dt){
   drawBG(1, S.t);
   placeMirror(false);
   const two = S.players === 2;
   txt(g, two ? 'ふたりとも ばっちり！' : 'よく できました！', W / 2, H * 0.1, H * 0.09, '#e9546b', 'center', '#fff');
-  const bands = two ? 2 : 1, top = H * 0.2, bh = (H * 0.56) / bands;
-  for (let p = 0; p < bands; p++){
-    const list = [];
-    G.chart.forEach((e, i) => { if (G.res[i][p] > 0) list.push({ pose: e.pose, side: e.side, shot: (G.shots[i] || [])[p] }); });
-    if (!list.length) list.push({ pose: 'banzai', side: 'R' });
-    const bw = W * 0.9, ox0 = W * 0.05, y0 = top + p * bh;
-    const photo = list.some(e => e.shot), asp = photo ? 0.75 : 0.68;   // 1まいの たて÷よこ の はんたい（よこ / たて）
-    let best = null;
-    for (let rows = 1; rows <= 4; rows++){
-      const cols = Math.ceil(list.length / rows), cw = bw / cols, rh = bh / rows;
-      const ph = Math.min(rh * 0.94, cw * 0.94 / asp), s = photo ? ph : Math.min(cw / 1.7, rh / 2.5);
-      if (!best || s > best.s) best = { rows, cols, cw, rh, s, ph };
-    }
-    if (two){ g.fillStyle = PCOL[p]; g.beginPath(); g.arc(ox0 - 4, y0 + 14, 11, 0, 7); g.fill(); txt(g, (p + 1) + 'P', ox0 - 4, y0 + 14, 11, '#fff'); }
-    list.forEach((e, i) => {
-      const r = Math.floor(i / best.cols), c = i % best.cols;
-      const cnt = Math.min(best.cols, list.length - r * best.cols), off = (best.cols - cnt) * best.cw / 2;
-      const x = ox0 + off + c * best.cw + best.cw / 2, yb = y0 + r * best.rh + best.rh * 0.94;
-      const pp = Math.min(1, Math.max(0, (S.t - i * 0.05) / 0.3)), z = 0.4 + 0.6 * (1 - Math.pow(1 - pp, 3));
-      if (e.shot){
-        const h = best.ph * z, w = h * asp, yy = yb - h, rot = ((i * 37) % 7 - 3) * 0.012;
-        g.save(); g.globalAlpha = pp; g.translate(x, yy + h / 2); g.rotate(rot);
-        g.shadowColor = 'rgba(0,0,0,.25)'; g.shadowBlur = 8; g.shadowOffsetY = 3;
-        g.fillStyle = two ? PCOL[p] : '#fff'; rr(g, -w / 2 - 3, -h / 2 - 3, w + 6, h + 6, 6); g.fill();
-        g.shadowColor = 'transparent';
-        g.save(); rr(g, -w / 2, -h / 2, w, h, 4); g.clip(); g.drawImage(e.shot, -w / 2, -h / 2, w, h); g.restore();
-        g.restore();
-      } else drawFig(g, poseOf(e.pose, e.side), x, yb, best.s * z, two ? PCOL[p] : INK, 0, pp);
-    });
-  }
+  drawStrip(g, W * 0.05, H * 0.2, W * 0.9, H * 0.56, S.t, 1);
   drawBtns(g);
   if (S.plays >= 3) txt(g, 'ちょっと やすもうか', W / 2, H * 0.78, H * 0.04, '#667');
-  updateBtns(dt);
+  if (!shareOpen) updateBtns(dt);
 }
 
 // ---- 粒 ----
@@ -847,6 +930,7 @@ document.getElementById('bn').onclick = () => begin(S.players, false);
 window.addEventListener('pointermove', e => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.on = true; });
 window.addEventListener('pointerdown', e => {
   mouse.x = e.clientX; mouse.y = e.clientY; mouse.on = true;
+  if (shareOpen) return;
   if (S.scene === 'guide' && e.target === cv) startCount();
   btns.forEach(b => { const q = btnBox(b); if (mouse.x > q.x && mouse.x < q.x + q.w && mouse.y > q.y && mouse.y < q.y + q.h && S.t > 0.3) b.on(); });
 });
