@@ -62,9 +62,11 @@ const WORD = { n: 'もぐら', b: 'もぐら！', l: 'もぉ〜ぐら', z: 'す�
 // ===== 音 =====
 let ac = null, master = null, noiseBuf = null;
 const clips = {};
+// タップの中で すぐ呼ぶ（await の前に AudioContext を作る。声の読みこみは うしろで続ける）
 async function ensureAudio() {
   if (ac) { if (ac.state === 'suspended') await ac.resume(); return; }
   ac = new (window.AudioContext || window.webkitAudioContext)();
+  if (ac.state === 'suspended') ac.resume();
   master = ac.createGain(); master.gain.value = 0.85; master.connect(ac.destination);
   const len = ac.sampleRate * 0.5; noiseBuf = ac.createBuffer(1, len, ac.sampleRate);
   const d = noiseBuf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
@@ -103,12 +105,16 @@ const SND = {
 const BASS = [98, 98, 131, 123.5];
 
 // ===== マイク =====
-let mic = null, micState = 'off';  // off / asking / on / denied / tap
+let mic = null, micState = 'off', micErr = '';  // off / asking / on / denied / tap
 let level = 0, floorLv = 0.006, voiced = false, quietSince = 0, segs = [], peakLoud = 0.12, normalPeak = 0;
+// かならず タップの中から、await より前に 呼ぶ（スマホは タップの直後でないと マイクを ことわる）
 async function startMic() {
-  micState = 'asking';
+  micState = 'asking'; micErr = '';
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { micState = 'denied'; micErr = 'nosupport'; return; }
+  const ask = navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false } });
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false } });
+    const stream = await ask;
+    if (ac.state !== 'running') await ac.resume();
     const src = ac.createMediaStreamSource(stream);
     const sp = ac.createScriptProcessor(512, 1, 1);
     const zero = ac.createGain(); zero.gain.value = 0;
@@ -119,7 +125,7 @@ async function startMic() {
       feed(Math.sqrt(s / d.length), ac.currentTime - TUNE.micLat);
     };
     mic = { stream, sp }; micState = 'on';
-  } catch (e) { console.warn(e); micState = 'denied'; }
+  } catch (e) { console.warn(e); micState = 'denied'; micErr = e && e.name || 'error'; }
 }
 // 声の区切りを見つける（大きさだけで判定。ことばは聞き取らない）
 function feed(rms, t) {
@@ -242,10 +248,10 @@ function score() { return Math.round(result.pts / plan.length); }
 
 // ===== 入力 =====
 function toLocal(e) { return { x: (e.clientX - ox) / scale, y: (e.clientY - oy) / scale }; }
-cv.addEventListener('pointerdown', async e => {
+cv.addEventListener('pointerdown', e => {
   e.preventDefault();
   const p = toLocal(e);
-  await ensureAudio();
+  ensureAudio();
   if (scene === 'play') { if (micState === 'tap') tapDown(now()); return; }
   for (const b of buttons) if (p.x > b.x && p.x < b.x + b.w && p.y > b.y && p.y < b.y + b.h) { b.fn(); return; }
 });
@@ -257,13 +263,19 @@ addEventListener('keydown', async e => {
 });
 addEventListener('keyup', e => { if (e.code === 'Space' && scene === 'play' && micState === 'tap') tapUp(now()); });
 
-async function goCheck(i) {
-  await ensureAudio();
+function goCheck(i) {
   st = STAGES[i]; st.i = i;
   if (micState === 'on') { startStage(i); return; }
   scene = 'check'; checkAt = now(); normalPeak = 0; segs = [];
-  if (micState !== 'tap') await startMic();
+  if (micState !== 'tap') startMic();
 }
+const MIC_ERR = {
+  NotAllowedError: ['マイクが ゆるされていません', 'アドレスバーの 🔒 や 設定から', 'このページの マイクを「許可」にしてね'],
+  SecurityError: ['マイクが ゆるされていません', 'アドレスバーの 🔒 や 設定から', 'このページの マイクを「許可」にしてね'],
+  NotFoundError: ['マイクが みつかりません', 'マイクや イヤホンを つないでね', ''],
+  NotReadableError: ['マイクを ほかのアプリが つかっています', '通話や 録音アプリを とじてね', ''],
+  nosupport: ['この ブラウザでは マイクが つかえません', 'LINE などの アプリの中で ひらいたときは', 'Safari か Chrome で ひらいてね'],
+};
 
 // ===== 描画 =====
 let bg = null;
@@ -430,13 +442,24 @@ function drawCheck(t) {
   buttons = [];
   g.fillStyle = 'rgba(255,255,255,0.9)'; g.strokeStyle = INK; g.lineWidth = 4; rr(30, 200, W - 60, 520, 26); g.fill(); g.stroke();
   if (micState === 'asking') { txt('マイクを つかって いい？', W / 2, 330, 30, INK); txt('画面の 「許可」を おしてね', W / 2, 380, 22, '#6b4b2c', 'center', 500); return; }
-  if (micState === 'denied') { txt('マイクが つかえませんでした', W / 2, 330, 28, INK); txt('タップで あそべます', W / 2, 380, 22, '#6b4b2c', 'center', 500); }
+  if (micState === 'denied') {
+    const m = MIC_ERR[micErr] || ['マイクが つかえませんでした', 'もういちど ためすか、', 'タップで あそんでね'];
+    txt(m[0], W / 2, 300, 28, INK);
+    txt(m[1], W / 2, 360, 21, '#6b4b2c', 'center', 500); txt(m[2], W / 2, 394, 21, '#6b4b2c', 'center', 500);
+    txt('（' + micErr + '）', W / 2, 440, 15, '#a09080', 'center', 500);
+    const x = 120, y = 500, w = 300, h = 80;
+    g.fillStyle = '#ffd84a'; g.strokeStyle = INK; g.lineWidth = 4; rr(x, y, w, h, 22); g.fill(); g.stroke();
+    txt('もういちど ためす', x + w / 2, y + 40, 28, INK);
+    buttons.push({ x, y, w, h, fn: () => { checkAt = now(); startMic(); } });
+    txt('「はじめる」で タップあそびに なります', W / 2, 640, 18, '#6b4b2c', 'center', 500);
+  }
   else if (micState === 'tap') { txt('タップで あそぶ', W / 2, 300, 32, INK); txt('おしているあいだが 声のかわり', W / 2, 350, 20, '#6b4b2c', 'center', 500); txt('ながく おすと「もぉ〜ぐら」', W / 2, 385, 20, '#6b4b2c', 'center', 500); }
   else {
     for (const s of segs) if (s.t0 > checkAt) normalPeak = Math.max(normalPeak, s.peak);
     txt('「もぐら」と いってみて', W / 2, 270, 32, INK);
+    g.save(); g.translate(W / 2 - HOLE_X, 420 - ROW_Y(4));
     drawMole(4, 1, voiced ? Math.min(1, level * 12) : 0, false, 'あなた');
-    g.save(); g.translate(0, 0); g.restore();
+    g.restore();
     const v = Math.min(1, level * 8);
     g.fillStyle = '#ddd'; rr(80, 560, W - 160, 26, 13); g.fill();
     g.fillStyle = voiced ? '#ffd84a' : '#9fd47f'; rr(80, 560, (W - 160) * v, 26, 13); g.fill();
