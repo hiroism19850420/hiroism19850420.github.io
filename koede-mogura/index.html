@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>こえで もぐら！</title>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;background:#3b2f25;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
+  canvas{display:block;width:100vw;height:100vh}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<canvas id="c"></canvas>
+<script>
+'use strict';
+const VOICE = {"n": "data:audio/mpeg;base64,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", "b": "data:audio/mpeg;base64,SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYzLjEuMTAyAAAAAAAAAAAAAAD/83DAAAAAAAAAAAAASW5mbwAAAA8AAAAMAAAG1QAtLS0tLS0tLUBAQEBAQEBAVFRUVFRUVFRnZ2dnZ2dnZ2d6enp6enp6eo2NjY2NjY2NoKCgoKCgoKCgs7Ozs7Ozs7PGxsbGxsbGxtnZ2dnZ2dnZ2ezs7Ozs7Ozs//////////8AAAAATGF2YzYzLjEuAAAAAAAAAAAAAAAAJAMoAAAAAAAABtUT5mfkAAAAAAAAAAAAAAAAAP/zUMQAFNAqsP9GGAAIa5LLcOGMAAACMPJpuH3qBAHwfPygIAgCDuXBwEAQBAMA+D4Pg+DgIOggD4Pg+D4E9/ggCAIOf0CD/4YB8HwfoKBjf//8HwfB8PoEAIHLwfD/BBUAACwNPW7f/f77ff/7hbwFulkCKlAhEBnTqDU2BFGguNj/81LEISJxtsZfmHgAM1NzV6OO49XbG2vF2ZAsB4puNoxl+hNlbGvWLhhhR7KajhDxusupaRdw48OI8zndr6pF1W2LZy533imPC+//v+bFt11jdp/rERvjh7d1gEiFSAqVQXYUoP6fGFmjCI0BHnemh/27VCw5BDZuEXbAHOxcaBlpAv/zUsQNHMmmoP/biABGT9TYeI40qZKkHSAGAmbRoRAZckes18PLIxkKEkByYkypjAceAug34mR3AixeMkTYbpfXolpbaSrsgkupJmqUcvWh6m6T9m9bO84i+tbOmbkH/eNn84zlAHV/++UC6hmaUTMMV/WqAusZbQPGvoZUSnQ2g9sn//NQxA8dga6wVtMG6YfWya0Q+kOPICQoIcByKG6kAioJXON2HgYEFnVFcKoAFSvjWMrub9hS37b7hOaSlThU9Ms+b9NCc03Jz/8v3k/yJ2goSN///2iNzDDzLzqHyDh4gfJJPJPLqPAzzwzw1ngrpJviPPCkBr//wWVOS71kvKcQO//zUsQOHFG6rPTWBjdYdNUKip2HDM07z6vywyB7XyqntTM6tJXQAEFkBCgYctgmDGaAJqTHS2nVkUosN146uFJjpMcik0VGXMGJZga1WNezEkBaUMbvZ17GnGiht7WuubIdNu+vm5zHLW4Wt97zv6xqB9uNwMBCPlyfgQq1HUA28G4t//NSxBIacfK8XsvQlnTflA1bf0W1MXBz3fMCJT+0WPfdwfIPQUhXrbsoyxk/HG+isb9X3TUf3KOe9cO9+kwQowVAXQkRjLORZf/k//Sv4r397d6eFd8Xbgww5G2IAx//9a3W8EIAO7f7/8Le7ciERLPiXYtOXIAMXyh0CU9zOHw0ivD/81DEHiDplsx+wV6p0niyXpVU21aRhENXC3NCOg1CxvNqRQKvNMPJndPDZHGf3Y1ejpq7zGIclFVCT6gZ4GZH87x/me8eTEDM8d5PmRlpgxJji3EdG6ZFrLFjWOb7Ju2j7vqcj9num7Xq+/q9X+2rvf7NgABtlwFk7jPs+xIPN5DQ//NSxA8ZQNK0vtDSzB66r68UYzaoBos3thopbNk8B09SWDZaC+lXY+Ak7oAdGYNj6izyDBRx0Hy4ZB8QA0YGhKHu+8XOoHBV5VCqZICZ5EbZndVbdSSTnOr06ikug8s6VlvpQIvwgrWYAoVT18njPLFvx3CNihY2+uLcUQxUCfU44br/81DEIBnpQsGewYcIBCHCmsLTQfi31ZW4cDLMRIAM1vdfHPJjUpPCwRHNPNS943cgIzOBSShA04CEFLMSTzQEU7WJ8T3rRtlz4fiDr/Y+A7BTsehKQgYcEZf/whFuVxMVCPETMpYKlpfqRT0bYGmbO44vCg87093r5ddVAADZAmLG//NSxC0aClbKH1goAKDSqpxFlaA4dKWutJXdFVs0ralL45zJPNqqG6Olvr5trqqqZbvdrolRxxwkocUPjgQJo1/7CEJRTYsK1UoEwYCk61a7XQ2NKjSXSImY9kyFgqwoCNGBBN4yKsBVZWOLwtJjV8JJMHTFYHPD58u1SxKlrbYUbML/81LEOijZ0qh/mngBVSZYaOeIcK73kyvuDo0Xt7Y9fWs1O+viSHaJPSaNl7qtcVWotfv1rqmNa1T7pSF8QsWtjV9Q4BKdkcHk2zx6OFVj00Fiho2X1JUIErJhAVMWj9RecFQuN///////58+emnCJMP+////bikkhASQAkBxH62FuHv/zUMQMFtjZ+APPGACiFOk8aTk2oa4qZDpmJRM2XsXD4gwEKPVf9mPVdV2Y1AQKGhEBQ2Cp3WCu+VcDRY8JVHgafqDv4lurOiXEqw1+IsSqPEff/87yv/6j3ESj1UxBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVU=", "l": "data:audio/mpeg;base64,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", "z": "data:audio/mpeg;base64,SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYzLjEuMTAyAAAAAAAAAAAAAAD/83DAAAAAAAAAAAAASW5mbwAAAA8AAAANAAAHWAAqKioqKioqPDw8PDw8PDxOTk5OTk5OTl9fX19fX19xcXFxcXFxcYODg4ODg4ODlZWVlZWVlaenp6enp6enuLi4uLi4uLjKysrKysrK3Nzc3Nzc3Nzu7u7u7u7u7v////////8AAAAATGF2YzYzLjEuAAAAAAAAAAAAAAAAJAP7AAAAAAAAB1h8oomAAAAAAAAAAAAAAAAAAP/zUMQAGHsmfllBEAARqC5tNwj5EAAxsfwAWAAPqc53/5znOc7//Oc///Od/yEJ//85zvU5CE/+QjfoQhAMDAzuQhFABDHDgZznIQhM8gGLdCBCEIc56EIRuc70IBgYsHwfD7vg+D4PggCAIBj4IJXa5ZbLZK43G0kABKtkxF2nSIb/81LEEx4y4sZdhigCIJ7ylDExxGGg4sMFxhxpoucQKKKrkUYQahFHOYdIcaQYXOouZDuxEZjzo0iGFB/8jr6bEkMkrOX/7G2/OyCSM32OoqCsXOqI+893HLdWNn1eHylgsaMhdygfEZcwIF/Pm03/Db5G66qZeHmPtWQnj9vApxmNF//zUsQQHjpewx/ZQACUFHvKkkaxy2WmoYSXtNHKSFY4X6a5Xlu8aQ01WynsVhih5JkiokS80Rw8E4Qg2B0VDoOu9NVXpmuGZllTVilW+L/buvlv/+P/67Rf////6//i56i+LJYSnvBp8KHrICPZ3Blf//iEFTtAZ2xjIADFofp3E6V0//NQxA0ccpZ1tnsGVDHpQwC8Blh7zlSdR+1dbz3QmMDhKeZd7E0MKXVBQUK1RlK6tVgE67cal9VuMZNKzNV+l843Vq5/7bfs1XX6Wpf3nM43ln5qQYwpESDw1pawGxRo6C1C4lWAX32gkHVncr2t9bpJH4B5JHsTS+DNtKcpCzt47f/zUsQQHKrmSClMQAB8pf5/KU6f6u7t1qqS6QUFy3uCGSL0aEStK4ubvWXfmqR50QyN0SojZ/hv56r7/1eDuSV+ZS6VaaTYxUxLWJIl4D67gFTGDtyaQZYqTMHmj3OmLn7SccKuFQVYRBljnI68KVKCCWmiCSCCRUiHDJQWAR4Lx+qF//NSxBMdsZ6VlY9IAED1iFlRTSSqXlwnTCQiRoSIs3DAeVR0kkjkwG0AiH29XQEIrJ2L+AIIVQ2oMLDWw/8IT8W6UyB4nJiwwglOdz2Gfr13VPG9OA8ZFw78AABCnwfDhnpc84r6A80Dud2sjNX/zC5HaoBSThEeNWhix4+Jvsy1DkD/81DEEh3bKqD32CgDP8FUUcZpjb7EHu3acOf7r+lE1GBhCCAcVGmTD5kQhSvI2J935CzCAAGdBQ6yIudKnOi0ac9XJFiEnkU1yLRjvrJtS2nrdnTrb7f6/pneci0Yl7s7tJOQaLp1cdH5p1IYI/T/0PIVAncdkABkbyrt3mlnWknn//NSxA8d8aqpvsoMnBhfZkmiwzOX4WApfkUDcqKCtswvFwhzZZ1CxBb6l0iK91NjKSS/+v7/hoYDTC0lWnG/L7l1FlGriy3fwnWdM+KgQaBFNYBhpwCCdDWjWkzMszGoa1x9IqcUcEghBMXc4LsPkWt/p/uQQZb3JJEQm3KKrVgQ9cz/81DEDRny2sW+eMS2oKMk0rwcgaM2GBVbgBfCgR0Q0cPDpsxh0Z9c3LPUjZS/szGZnUrkUtndyL8yHvPSHnnVSwg7LTvKZN0/78u+Rye//9unGVgRRKufPmzDjAAehaK+8EEMpuuOKUQYv/0VtwCiu/C0peVsIY596XMZj5xWt9si//NSxBoZOxbCNnjEzudgDPBoTtK5FCzTunK9lo+v/omoNUOFdqVUiO5HOQGCa93Iitu5is/6b9l229qs0ira5Dtp9qv9EWZHVFEqyXftSw7xGitpXQ6aNgCkZofAFW3Ax37GXY1iwBUAlmpaFkGM9jp5zxRh++42+dMepCqUgECNMZ3/81LEKxpiVqnfTxAADFIUqoxbGRf/usGIElBChpm2apRJUO7O6J9WL5jfrN3ure+VN9HBAgQTBMy9vvMpih4TsSg6Zg7WkJq/rDSaMKHEc5aLZv84sQywlTJ9v9SbqRuHf8OgPGonCV+PhLL0jyP5ukTFJbH/rG50+g75b/540D6KQv/zUMQ3Gkn2fAGaWABnXO6Nv//pDa1YxouY+o/////zk0/uGMVeqp12L/lg4SDwOCAmFv//LGTKQiAy5BgXAlVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/81LEQgAAA0gBwAAAVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVQ=="};
+// ===== 画面 =====
+const W = 540, H = 960;
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+let scale = 1, ox = 0, oy = 0, dpr = 1;
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = innerWidth * dpr; cv.height = innerHeight * dpr;
+  scale = Math.min(innerWidth / W, innerHeight / H);
+  ox = (innerWidth - W * scale) / 2; oy = (innerHeight - H * scale) / 2;
+}
+addEventListener('resize', resize); resize();
+const FONT = '"M PLUS Rounded 1c", sans-serif', INK = '#3a2a1f';
+
+// ===== 調整 =====
+const TUNE = {
+  micLat: 0.09,      // マイクの遅れ（秒）。声の始まりから引く
+  perfect: 0.12,     // ピッタリの幅
+  ok: 0.34,          // はやい／おそい の幅
+  longSec: 0.6,      // これより長く言えば「のばした」
+  onMin: 0.018,      // 声とみなす最小の大きさ
+};
+
+// ===== ステージ =====
+// もぐら4ひきの言い方（n ふつう / b おおごえ / l のばす / z ねてる）と、ならび方（q 1拍ずつ / e 半拍ずつ / u うら拍）
+// あなたは「すぐ上の もぐら」と おなじに言う。ねてたら だまる
+const STAGES = [
+  { name: 'ふつう', bpm: 92, rounds: [
+    ['nnnn', 'q'], ['nnnn', 'q'], ['llll', 'q'], ['nnnn', 'q'], ['bbbb', 'q'], ['nnnz', 'q'], ['nnnn', 'q'], ['nnnb', 'q'],
+    ['nnnn', 'e'], ['nnnl', 'q'], ['nnnz', 'q'], ['nnnn', 'u'], ['nznn', 'q'], ['bbbz', 'q'], ['lllb', 'q'], ['nnnn', 'e']] },
+  { name: 'はやい', bpm: 112, rounds: [
+    ['nnnn', 'q'], ['nnnb', 'e'], ['nnnz', 'q'], ['llll', 'q'], ['nnnn', 'u'], ['bbbl', 'q'], ['nnnz', 'e'], ['znzn', 'q'],
+    ['nnnb', 'u'], ['lllz', 'q'], ['nnnn', 'e'], ['bnbl', 'q'], ['nnnz', 'u'], ['nnnb', 'e'], ['bbbb', 'e'], ['nnnz', 'q']] },
+];
+const SPACING = { q: [0, 1, 2, 3, 4], e: [0, 0.5, 1, 1.5, 2], u: [0.5, 1.5, 2.5, 3.5, 4.5] };
+const ROUND_BEATS = 8, LEAD = 4;
+const MOLES = [
+  { body: '#f4ede2', shade: '#d9cdbb', rate: 1.3 },
+  { body: '#86c8ee', shade: '#5ea6d0', rate: 1.45 },
+  { body: '#f5cf4c', shade: '#d9ad22', rate: 1.2 },
+  { body: '#9fd47f', shade: '#76b456', rate: 1.55 },
+  { body: '#ff8d5e', shade: '#e0683a', rate: 1 },   // あなた
+];
+const WORD = { n: 'もぐら', b: 'もぐら！', l: 'もぉ〜ぐら', z: 'すぴー…' };
+
+// ===== 音 =====
+let ac = null, master = null, noiseBuf = null;
+const clips = {};
+async function ensureAudio() {
+  if (ac) { if (ac.state === 'suspended') await ac.resume(); return; }
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  master = ac.createGain(); master.gain.value = 0.85; master.connect(ac.destination);
+  const len = ac.sampleRate * 0.5; noiseBuf = ac.createBuffer(1, len, ac.sampleRate);
+  const d = noiseBuf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  for (const k in VOICE) {
+    try { const ab = await (await fetch(VOICE[k])).arrayBuffer(); clips[k] = await ac.decodeAudioData(ab); } catch (e) { console.warn(e); }
+  }
+}
+function env(t, a, dcy, vol) { const e = ac.createGain(); e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(vol, t + a); e.gain.exponentialRampToValueAtTime(0.0001, t + a + dcy); e.connect(master); return e; }
+function osc(type, f, t, a, dcy, vol, f2) {
+  const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + a + dcy);
+  o.connect(env(t, a, dcy, vol)); o.start(t); o.stop(t + a + dcy + 0.05);
+}
+function noise(t, dcy, vol, ftype, freq, q) {
+  const s = ac.createBufferSource(); s.buffer = noiseBuf;
+  const f = ac.createBiquadFilter(); f.type = ftype; f.frequency.value = freq; f.Q.value = q || 1;
+  s.connect(f); f.connect(env(t, 0.002, dcy, vol)); s.start(t); s.stop(t + dcy + 0.05);
+}
+function voice(t, k, rate, vol) {
+  const b = clips[k]; if (!b) return 0.3;
+  const s = ac.createBufferSource(); s.buffer = b; s.playbackRate.value = rate;
+  const gn = ac.createGain(); gn.gain.value = vol; s.connect(gn); gn.connect(master); s.start(t);
+  return b.duration / rate;
+}
+const SND = {
+  kick(t) { osc('sine', 120, t, 0.002, 0.14, 0.4, 45); },
+  hat(t, v) { noise(t, 0.03, v, 'highpass', 7000); },
+  wood(t, f) { osc('triangle', f, t, 0.001, 0.09, 0.22); osc('sine', f * 2.01, t, 0.001, 0.03, 0.08); },
+  pop(t) { osc('sine', 500, t, 0.002, 0.08, 0.2, 900); },
+  good(t) { [1046, 1318].forEach((f, i) => osc('triangle', f, t + i * 0.07, 0.003, 0.18, 0.18)); },
+  bad(t) { osc('square', 180, t, 0.003, 0.18, 0.08, 120); },
+  shh(t) { noise(t, 0.35, 0.2, 'bandpass', 3500, 1.5); },
+  count(t, hi) { osc('square', hi ? 1568 : 1175, t, 0.001, 0.05, 0.1); },
+  fanfare(t, good) { (good ? [523, 659, 784, 1047] : [392, 349, 330]).forEach((f, i) => osc('triangle', f, t + i * 0.13, 0.005, 0.3, 0.22)); },
+};
+const BASS = [98, 98, 131, 123.5];
+
+// ===== マイク =====
+let mic = null, micState = 'off';  // off / asking / on / denied / tap
+let level = 0, floorLv = 0.006, voiced = false, quietSince = 0, segs = [], peakLoud = 0.12, normalPeak = 0;
+async function startMic() {
+  micState = 'asking';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false } });
+    const src = ac.createMediaStreamSource(stream);
+    const sp = ac.createScriptProcessor(512, 1, 1);
+    const zero = ac.createGain(); zero.gain.value = 0;
+    src.connect(sp); sp.connect(zero); zero.connect(ac.destination);
+    sp.onaudioprocess = e => {
+      const d = e.inputBuffer.getChannelData(0); let s = 0;
+      for (let i = 0; i < d.length; i++) s += d[i] * d[i];
+      feed(Math.sqrt(s / d.length), ac.currentTime - TUNE.micLat);
+    };
+    mic = { stream, sp }; micState = 'on';
+  } catch (e) { console.warn(e); micState = 'denied'; }
+}
+// 声の区切りを見つける（大きさだけで判定。ことばは聞き取らない）
+function feed(rms, t) {
+  level = rms;
+  const on = Math.max(TUNE.onMin, floorLv * 4), off = on * 0.6;
+  if (!voiced) {
+    floorLv += (Math.min(rms, 0.05) - floorLv) * 0.02;
+    if (rms > on) { voiced = true; quietSince = 0; segs.push({ t0: t, t1: 0, peak: rms }); }
+  } else {
+    const s = segs[segs.length - 1]; s.peak = Math.max(s.peak, rms);
+    if (rms < off) { if (!quietSince) quietSince = t; if (t - quietSince > 0.12) { voiced = false; s.t1 = quietSince; } }
+    else quietSince = 0;
+  }
+  if (segs.length > 60) segs.shift();
+}
+// タップで遊ぶとき（マイクなし）：おしたら声、はなしたら おわり。長おしで「のばす」
+function tapDown(t) { if (voiced) return; voiced = true; segs.push({ t0: t, t1: 0, peak: 1, tap: true }); level = 0.2; }
+function tapUp(t) { if (!voiced) return; voiced = false; segs[segs.length - 1].t1 = t; level = 0; }
+
+// ===== 状態 =====
+let scene = 'title'; // title / check / play / result
+let st = null, plan = [], t0 = 0, spb = 0.65, evs = [], evI = 0, endTime = 0, nextBeat = 0;
+let result = { p: 0, o: 0, x: 0, pts: 0 };
+let buttons = [], resultAt = 0, checkAt = 0;
+let best = {}; try { best = JSON.parse(localStorage.getItem('koedemogura_best') || '{}'); } catch (e) {}
+const dbg = location.search.includes('dbg') ? (window.dbg = { auto: false, start: i => startStage(i), get state() { return { scene, result, micState, segs: segs.length }; }, get plan() { return plan; }, now: () => now(), TUNE }) : null;
+function now() { return ac ? ac.currentTime : performance.now() / 1000; }
+
+function startStage(i) {
+  st = STAGES[i]; st.i = i; spb = 60 / st.bpm;
+  t0 = now() + 0.5 + LEAD * spb;
+  plan = []; evs = []; evI = 0; nextBeat = 0;
+  result = { p: 0, o: 0, x: 0, pts: 0 };
+  st.rounds.forEach(([types, sp], r) => {
+    const base = t0 + r * ROUND_BEATS * spb, times = SPACING[sp].map(b => base + b * spb);
+    const moles = [...types].map((k, m) => ({ k, t: times[m], dur: 0 }));
+    const last = moles[3].k;
+    const R = { r, base, moles, you: { t: times[4], expect: last === 'z' ? 'q' : last }, sp, res: null, seg: null, end: base + ROUND_BEATS * spb };
+    plan.push(R);
+    moles.forEach((m, j) => evs.push({ t: m.t, f: () => { m.dur = voice(m.t, m.k, MOLES[j].rate, m.k === 'z' ? 0.35 : m.k === 'b' ? 1 : 0.85); SND.pop(m.t); } }));
+  });
+  for (let k = 0; k < LEAD; k++) { const tt = t0 - (LEAD - k) * spb; evs.push({ t: tt, f: () => SND.count(tt, k === 0) }); }
+  evs.sort((a, b) => a.t - b.t);
+  endTime = t0 + st.rounds.length * ROUND_BEATS * spb;
+  segs = [];
+  scene = 'play';
+}
+
+function schedule() {
+  const ahead = now() + 0.15;
+  while (evI < evs.length && evs[evI].t < ahead) { const e = evs[evI++]; if (e.t > now() - 0.05) e.f(); }
+  const total = st.rounds.length * ROUND_BEATS;
+  while (nextBeat < total && t0 + nextBeat * spb < ahead) {
+    const t = t0 + nextBeat * spb, rb = nextBeat % ROUND_BEATS;
+    SND.kick(t); SND.hat(t + spb / 2, 0.05);
+    if (rb === 0) SND.wood(t, 784);
+    osc('triangle', BASS[Math.floor(nextBeat / 2) % 4] * (nextBeat % 2 ? 1.5 : 1), t, 0.005, spb * 0.6, 0.18);
+    nextBeat++;
+  }
+}
+
+// 聞きはじめる時刻。すぐ上の もぐらの声を 拾わないよう、その声のあとから（ただし 拍の0.1秒前には かならず聞く）
+function windowFrom(R) {
+  const T = R.you.t, m = R.moles[3];
+  const lastEnd = m.t + (m.k === 'z' ? 0 : m.dur || 0.3);
+  return Math.min(Math.max(T - TUNE.ok, lastEnd + 0.04), T - 0.1);
+}
+// あなたの番を 判定する
+function judge(R, t) {
+  const T = R.you.t, ex = R.you.expect;
+  const from = windowFrom(R);
+  const s = segs.find(s => s.t0 >= from && s.t0 <= T + TUNE.ok);
+  if (ex === 'q') {
+    const bad = segs.find(s => s.t0 >= from && s.t0 <= T + 0.5);
+    if (bad) return { kind: 'x', text: 'しーっ！', sub: 'ねてたよ', seg: bad };
+    return { kind: 'p', text: 'えらい！', sub: 'だまれた' };
+  }
+  if (!s) return { kind: 'x', text: 'スカッ', sub: '' };
+  if (ex === 'l' && t < s.t0 + TUNE.longSec + 0.05 && !s.t1) return null; // まだ のばしている
+  const dt = s.t0 - T;
+  const len = (s.t1 || t) - s.t0;
+  let typeOk = true, sub = '';
+  if (ex === 'b' && !s.tap && s.peak < peakLoud) { typeOk = false; sub = 'もっと おおきく！'; }
+  if (ex === 'l' && len < TUNE.longSec) { typeOk = false; sub = 'もっと のばして！'; }
+  if (Math.abs(dt) <= TUNE.perfect && typeOk) return { kind: 'p', text: 'ピッタリ！', sub: ex === 'b' ? 'おおごえ！' : ex === 'l' ? 'のびのび' : '', seg: s };
+  if (!typeOk) return { kind: 'o', text: 'おしい', sub, seg: s };
+  return { kind: 'o', text: dt < 0 ? 'はやい' : 'おそい', sub: '', seg: s };
+}
+
+function update() {
+  if (scene !== 'play') return;
+  const t = now();
+  schedule();
+  for (const R of plan) {
+    const T = R.you.t;
+    if (dbg && dbg.auto && !R.autoDone && t >= T && R.you.expect !== 'q') {
+      R.autoDone = true;
+      const len = R.you.expect === 'l' ? 0.8 : 0.35;
+      segs.push({ t0: T + (Math.random() - 0.5) * 0.06, t1: T + len, peak: R.you.expect === 'b' ? 1 : 0.06 });
+    }
+    if (R.res) continue;
+    const wait = R.you.expect === 'l' ? TUNE.longSec + 0.4 : R.you.expect === 'q' ? 0.55 : TUNE.ok + 0.05;
+    // ふつう・おおごえは、声が きこえたら すぐ判定する
+    const early = (R.you.expect === 'n' || R.you.expect === 'b') && segs.find(s => s.t0 >= windowFrom(R) && s.t0 <= T + TUNE.ok && t > s.t0 + 0.15);
+    if (t < T + wait && !early) continue;
+    const j = judge(R, t); if (!j) continue;
+    R.res = j; R.resAt = t;
+    if (j.kind === 'p') { result.p++; result.pts += 100; SND.good(ac.currentTime); }
+    else if (j.kind === 'o') { result.o++; result.pts += 60; SND.wood(ac.currentTime, 600); }
+    else { result.x++; j.text === 'しーっ！' ? SND.shh(ac.currentTime) : SND.bad(ac.currentTime); }
+  }
+  if (t > endTime + 0.4) {
+    scene = 'result'; resultAt = t;
+    const sc = score();
+    if (!(best[st.name] >= sc)) { best[st.name] = sc; try { localStorage.setItem('koedemogura_best', JSON.stringify(best)); } catch (e) {} }
+    SND.fanfare(ac.currentTime + 0.1, sc >= 70);
+  }
+}
+function score() { return Math.round(result.pts / plan.length); }
+
+// ===== 入力 =====
+function toLocal(e) { return { x: (e.clientX - ox) / scale, y: (e.clientY - oy) / scale }; }
+cv.addEventListener('pointerdown', async e => {
+  e.preventDefault();
+  const p = toLocal(e);
+  await ensureAudio();
+  if (scene === 'play') { if (micState === 'tap') tapDown(now()); return; }
+  for (const b of buttons) if (p.x > b.x && p.x < b.x + b.w && p.y > b.y && p.y < b.y + b.h) { b.fn(); return; }
+});
+addEventListener('pointerup', () => { if (scene === 'play' && micState === 'tap') tapUp(now()); });
+addEventListener('keydown', async e => {
+  if (e.repeat) return;
+  if (e.code === 'Space') { e.preventDefault(); await ensureAudio(); if (scene === 'play' && micState === 'tap') tapDown(now()); }
+  if (e.code === 'Escape' && scene === 'play') scene = 'title';
+});
+addEventListener('keyup', e => { if (e.code === 'Space' && scene === 'play' && micState === 'tap') tapUp(now()); });
+
+async function goCheck(i) {
+  await ensureAudio();
+  st = STAGES[i]; st.i = i;
+  if (micState === 'on') { startStage(i); return; }
+  scene = 'check'; checkAt = now(); normalPeak = 0; segs = [];
+  if (micState !== 'tap') await startMic();
+}
+
+// ===== 描画 =====
+let bg = null;
+function makeBg() {
+  bg = document.createElement('canvas'); bg.width = W; bg.height = H;
+  const p = bg.getContext('2d');
+  const sky = p.createLinearGradient(0, 0, 0, 200); sky.addColorStop(0, '#bfe6f5'); sky.addColorStop(1, '#e6f6dc');
+  p.fillStyle = sky; p.fillRect(0, 0, W, 200);
+  p.fillStyle = '#8fcf6a'; p.fillRect(0, 170, W, 40);
+  for (let x = 0; x < W; x += 9) { p.fillStyle = x % 18 ? '#7dbf58' : '#a5dc80'; p.beginPath(); p.moveTo(x, 210); p.lineTo(x + 5, 168 + Math.random() * 14); p.lineTo(x + 10, 210); p.fill(); }
+  const dirt = p.createLinearGradient(0, 205, 0, H); dirt.addColorStop(0, '#a87a52'); dirt.addColorStop(1, '#7c5636');
+  p.fillStyle = dirt; p.fillRect(0, 205, W, H - 205);
+  for (let i = 0; i < 260; i++) {
+    p.fillStyle = `rgba(${Math.random() < 0.5 ? '60,35,15' : '230,200,160'},${0.08 + Math.random() * 0.1})`;
+    p.beginPath(); p.ellipse(Math.random() * W, 215 + Math.random() * (H - 215), 2 + Math.random() * 5, 1.5 + Math.random() * 3, Math.random() * 3, 0, Math.PI * 2); p.fill();
+  }
+}
+makeBg();
+function rr(x, y, w, h, r) { g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); }
+function txt(s, x, y, size, col, align = 'center', weight = 800, stroke = null, sw = 0) {
+  g.font = `${weight} ${size}px ${FONT}`; g.textAlign = align; g.textBaseline = 'middle';
+  if (stroke) { g.lineWidth = sw || size / 5; g.strokeStyle = stroke; g.lineJoin = 'round'; g.strokeText(s, x, y); }
+  g.fillStyle = col; g.fillText(s, x, y);
+}
+const ROW_Y = i => 300 + i * 118, HOLE_X = 96;
+
+// もぐら1ぴき。up = 穴から出ている量(0〜1)、mouth = 口のあき、sleep = ねてる
+function drawMole(i, up, mouth, sleep, label) {
+  const M = MOLES[i], x = HOLE_X, y = ROW_Y(i);
+  // 穴
+  g.fillStyle = '#3a2516'; g.beginPath(); g.ellipse(x, y + 30, 58, 17, 0, 0, Math.PI * 2); g.fill();
+  g.save(); g.beginPath(); g.rect(x - 80, y - 120, 160, 150); g.ellipse(x, y + 30, 58, 17, 0, 0, Math.PI); g.clip();
+  const by = y + 38 - up * 74;
+  g.lineWidth = 4; g.strokeStyle = INK;
+  g.fillStyle = M.body; g.beginPath(); g.ellipse(x, by + 22, 44, 52, 0, Math.PI, 0); g.lineTo(x + 44, by + 80); g.lineTo(x - 44, by + 80); g.closePath(); g.fill(); g.stroke();
+  g.fillStyle = M.shade; g.beginPath(); g.ellipse(x, by + 46, 26, 22, 0, 0, Math.PI * 2); g.fill();
+  // 目
+  if (sleep) { g.lineWidth = 3.5; g.beginPath(); g.arc(x - 16, by + 2, 6, 0.2, Math.PI - 0.2); g.moveTo(x + 22, by + 2); g.arc(x + 16, by + 2, 6, 0.2, Math.PI - 0.2); g.stroke(); }
+  else { g.fillStyle = INK; g.beginPath(); g.arc(x - 16, by + 2, 4.5, 0, Math.PI * 2); g.arc(x + 16, by + 2, 4.5, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#fff'; g.beginPath(); g.arc(x - 15, by + 0.5, 1.6, 0, Math.PI * 2); g.arc(x + 17, by + 0.5, 1.6, 0, Math.PI * 2); g.fill(); }
+  // ほっぺ
+  g.fillStyle = 'rgba(255,120,120,0.35)'; g.beginPath(); g.ellipse(x - 27, by + 16, 8, 5, 0, 0, Math.PI * 2); g.ellipse(x + 27, by + 16, 8, 5, 0, 0, Math.PI * 2); g.fill();
+  // 鼻と口
+  g.fillStyle = '#ff7f9c'; g.lineWidth = 3; g.beginPath(); g.ellipse(x, by + 14, 9, 7, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+  if (mouth > 0.05) { g.fillStyle = '#7a2f2f'; g.beginPath(); g.ellipse(x, by + 30, 7 + mouth * 4, 3 + mouth * 9, 0, 0, Math.PI * 2); g.fill(); g.stroke(); }
+  else { g.beginPath(); g.moveTo(x - 7, by + 25); g.quadraticCurveTo(x - 3, by + 30, x, by + 25); g.quadraticCurveTo(x + 3, by + 30, x + 7, by + 25); g.stroke(); }
+  // つめ
+  g.fillStyle = '#fff4e6'; g.lineWidth = 3;
+  for (const sx of [-1, 1]) { g.beginPath(); g.ellipse(x + sx * 34, by + 52, 12, 8, sx * 0.4, 0, Math.PI * 2); g.fill(); g.stroke(); }
+  g.restore();
+  // 穴のふち
+  g.strokeStyle = '#5c3b22'; g.lineWidth = 5; g.beginPath(); g.ellipse(x, y + 30, 58, 17, 0, 0, Math.PI); g.stroke();
+  if (label) { g.fillStyle = '#e8402e'; rr(x - 36, y + 44, 72, 28, 14); g.fill(); txt(label, x, y + 58, 17, '#fff'); }
+}
+// ふきだし
+function drawBubble(i, word, kind, a, shake, me) {
+  const y = ROW_Y(i), x = 170, w = 340, h = 86;
+  g.save(); g.globalAlpha = a; g.translate(shake ? (Math.random() - 0.5) * 6 : 0, 0);
+  g.fillStyle = me ? '#fff6ee' : '#fff'; g.strokeStyle = INK; g.lineWidth = 4;
+  rr(x, y - h / 2 + 6, w, h, 22); g.fill(); g.stroke();
+  g.beginPath(); g.moveTo(x + 2, y - 4); g.lineTo(x - 18, y + 8); g.lineTo(x + 2, y + 20); g.closePath(); g.fill(); g.stroke();
+  g.fillStyle = g.strokeStyle = 'transparent';
+  const big = kind === 'b';
+  const col = kind === 'z' ? '#9a9a9a' : me ? '#e8402e' : big ? '#e8402e' : INK;
+  if (kind === 'l') { g.save(); g.translate(x + w / 2, y + 6); g.scale(1.18, 1); txt(word, 0, 0, 44, col); g.restore(); }
+  else txt(word, x + w / 2, y + 6, big ? 56 : kind === 'z' ? 34 : 48, col);
+  g.restore();
+}
+
+function drawTitleBar(sub) {
+  g.fillStyle = '#ffd84a'; g.strokeStyle = INK; g.lineWidth = 5;
+  rr(24, 28, W - 48, 120, 26); g.fill(); g.stroke();
+  txt('こえで もぐら！', W / 2, 78, 50, INK);
+  txt(sub, W / 2, 124, 20, '#6b4b2c', 'center', 500);
+}
+
+function drawPlay(t) {
+  g.drawImage(bg, 0, 0);
+  // 今の回
+  let R = plan[0];
+  for (const P of plan) if (t >= P.base - 0.25 * spb) R = P;
+  const rIdx = R.r;
+  drawTitleBar((st.name) + '　' + (rIdx + 1) + ' / ' + plan.length + '　すぐ上の もぐらと おなじに いおう');
+  const fade = t > R.end - 0.6 * spb ? Math.max(0, (R.end - t) / (0.6 * spb)) : 1;
+  for (let i = 0; i < 4; i++) {
+    const m = R.moles[i], d = t - m.t;
+    const said = d >= 0;
+    const up = !said ? 0 : Math.min(1, d / 0.07) * (m.k === 'z' ? 0.8 : 1) * (0.3 + 0.7 * fade);
+    const talking = said && d < (m.dur || 0.3);
+    drawMole(i, up, talking ? 0.5 + 0.5 * Math.sin(d * 40) : 0, m.k === 'z', '');
+    if (said) {
+      drawBubble(i, WORD[m.k], m.k, fade, m.k === 'b' && d < 0.3, false);
+      if (m.k === 'z') { for (let k = 0; k < 3; k++) { const ph = (t * 0.8 + k / 3) % 1; txt('z', HOLE_X + 40 + ph * 30, ROW_Y(i) - 40 - ph * 40, 16 + ph * 12, `rgba(80,80,120,${1 - ph})`); } }
+    }
+  }
+  // あなた
+  const T = R.you.t, myTurn = t > T - spb * 1.2 && t < T + 0.8;
+  if (myTurn && !R.res) { g.fillStyle = `rgba(255,230,120,${0.35 + 0.25 * Math.sin(t * 14)})`; rr(16, ROW_Y(4) - 62, W - 32, 128, 24); g.fill(); }
+  const mySeg = segs.length && voiced ? segs[segs.length - 1] : null;
+  const speaking = mySeg && mySeg.t0 > T - TUNE.ok - 0.2;
+  const shown = R.res && R.res.seg ? R.res.seg : (speaking ? mySeg : null);
+  drawMole(4, shown || myTurn || R.res ? 1 * fade : 0.15, voiced ? Math.min(1, level * 12) : 0, false, 'あなた');
+  if (shown) {
+    const len = (shown.t1 || t) - shown.t0;
+    const k = len >= TUNE.longSec ? 'l' : (!shown.tap && shown.peak >= peakLoud) ? 'b' : 'n';
+    drawBubble(4, WORD[k], k, fade, k === 'b' && voiced, true);
+  } else if (myTurn && !R.res && R.you.expect !== 'q' && t > T - spb * 0.5) {
+    drawBubble(4, '？', 'n', 0.5, false, true);
+  }
+  // 判定
+  if (R.res) {
+    const d = t - R.resAt, col = R.res.kind === 'p' ? '#e8402e' : R.res.kind === 'o' ? '#2f7d32' : '#555';
+    const y = ROW_Y(4) + 96 - Math.min(d, 0.2) * 60;
+    g.globalAlpha = Math.min(1, fade * 3);
+    txt(R.res.text, W / 2, y, 54, col, 'center', 800, '#fff', 10);
+    if (R.res.sub) txt(R.res.sub, W / 2, y + 40, 22, '#fff', 'center', 800, INK, 6);
+    g.globalAlpha = 1;
+  }
+  // カウント
+  const cb = (t - t0) / spb;
+  if (cb < 0) txt(cb < -3 ? 'よーい' : String(Math.ceil(-cb)), W / 2, ROW_Y(1) + 60, cb < -3 ? 60 : 110, '#fff', 'center', 800, INK, 12);
+  drawMeter(t);
+}
+function drawMeter(t) {
+  const y = H - 18;
+  g.fillStyle = 'rgba(0,0,0,0.35)'; rr(30, y - 10, W - 60, 20, 10); g.fill();
+  const v = micState === 'tap' ? (voiced ? 0.5 : 0) : Math.min(1, level * 8);
+  g.fillStyle = voiced ? '#ffd84a' : '#9fd47f'; rr(30, y - 10, (W - 60) * v, 20, 10); g.fill();
+  if (micState === 'on') { const lx = 30 + (W - 60) * Math.min(1, peakLoud * 8); g.fillStyle = '#e8402e'; g.fillRect(lx - 2, y - 14, 4, 28); }
+  txt(micState === 'tap' ? 'タップ' : '🎤', 30, y - 26, 16, '#fff', 'left', 800);
+}
+
+function drawTitle(t) {
+  g.drawImage(bg, 0, 0);
+  drawTitleBar('もぐらと おなじに「もぐら」と いおう');
+  buttons = [];
+  for (let i = 0; i < 4; i++) {
+    const ph = (t * 1.6 + i * 0.25) % 2.4, up = ph < 1 ? Math.sin(ph * Math.PI / 1) : 0;
+    drawMole(i, 0.25 + up * 0.75, up > 0.6 ? 0.7 : 0, false, '');
+  }
+  STAGES.forEach((S, i) => {
+    const x = 196, y = ROW_Y(i) - 44, w = 300, h = 88;
+    g.fillStyle = i ? '#3a2a1f' : '#fff'; g.strokeStyle = INK; g.lineWidth = 4; rr(x, y, w, h, 22); g.fill(); g.stroke();
+    txt(S.name, x + 26, y + 44, 36, i ? '#ffd84a' : INK, 'left');
+    txt(best[S.name] !== undefined ? '★' + best[S.name] : 'BPM ' + S.bpm, x + w - 20, y + 44, 20, i ? '#fff' : '#7b6a5a', 'right', 500);
+    buttons.push({ x, y, w, h, fn: () => goCheck(i) });
+  });
+  // マイクなし
+  const x = 196, y = ROW_Y(2) - 32, w = 300, h = 64;
+  g.fillStyle = micState === 'tap' ? '#ffd84a' : 'rgba(255,255,255,0.75)'; g.strokeStyle = INK; g.lineWidth = 3; rr(x, y, w, h, 18); g.fill(); g.stroke();
+  txt(micState === 'tap' ? '✓ タップで あそぶ' : 'マイクなしで あそぶ', x + w / 2, y + 32, 22, INK);
+  buttons.push({ x, y, w, h, fn: () => { micState = micState === 'tap' ? (mic ? 'on' : 'off') : 'tap'; } });
+  // あそびかた
+  g.fillStyle = 'rgba(255,255,255,0.88)'; g.strokeStyle = INK; g.lineWidth = 3; rr(30, ROW_Y(3) - 50, W - 60, 250, 22); g.fill(); g.stroke();
+  const lines = [['もぐら', INK, 'ふつうに「もぐら」'], ['もぐら！', '#e8402e', 'おおごえで「もぐら！」'], ['もぉ〜ぐら', INK, 'のばして「もぉ〜ぐら」'], ['すぴー…', '#9a9a9a', 'ねてたら だまる']];
+  lines.forEach(([a, c, b], k) => { const yy = ROW_Y(3) - 14 + k * 46; txt(a, 60, yy, 26, c, 'left'); txt('→ ' + b, 230, yy, 20, '#5a4634', 'left', 500); });
+  txt('すぐ上の もぐらと おなじに いおう', W / 2, ROW_Y(3) + 176, 20, INK);
+  if (micState === 'denied') txt('マイクが つかえません。「マイクなしで あそぶ」を おしてね', W / 2, H - 20, 17, '#fff', 'center', 800, INK, 5);
+}
+
+function drawCheck(t) {
+  g.drawImage(bg, 0, 0);
+  drawTitleBar('マイクの じゅんび');
+  buttons = [];
+  g.fillStyle = 'rgba(255,255,255,0.9)'; g.strokeStyle = INK; g.lineWidth = 4; rr(30, 200, W - 60, 520, 26); g.fill(); g.stroke();
+  if (micState === 'asking') { txt('マイクを つかって いい？', W / 2, 330, 30, INK); txt('画面の 「許可」を おしてね', W / 2, 380, 22, '#6b4b2c', 'center', 500); return; }
+  if (micState === 'denied') { txt('マイクが つかえませんでした', W / 2, 330, 28, INK); txt('タップで あそべます', W / 2, 380, 22, '#6b4b2c', 'center', 500); }
+  else if (micState === 'tap') { txt('タップで あそぶ', W / 2, 300, 32, INK); txt('おしているあいだが 声のかわり', W / 2, 350, 20, '#6b4b2c', 'center', 500); txt('ながく おすと「もぉ〜ぐら」', W / 2, 385, 20, '#6b4b2c', 'center', 500); }
+  else {
+    for (const s of segs) if (s.t0 > checkAt) normalPeak = Math.max(normalPeak, s.peak);
+    txt('「もぐら」と いってみて', W / 2, 270, 32, INK);
+    drawMole(4, 1, voiced ? Math.min(1, level * 12) : 0, false, 'あなた');
+    g.save(); g.translate(0, 0); g.restore();
+    const v = Math.min(1, level * 8);
+    g.fillStyle = '#ddd'; rr(80, 560, W - 160, 26, 13); g.fill();
+    g.fillStyle = voiced ? '#ffd84a' : '#9fd47f'; rr(80, 560, (W - 160) * v, 26, 13); g.fill();
+    if (normalPeak > 0) { txt('きこえた！', W / 2, 620, 30, '#2f7d32'); peakLoud = Math.min(0.5, Math.max(0.06, normalPeak * 1.7)); }
+    else txt('（まだ きこえない）', W / 2, 620, 20, '#999', 'center', 500);
+    txt('イヤホンを つかうと もっと よく きこえるよ', W / 2, 680, 17, '#6b4b2c', 'center', 500);
+  }
+  const ready = micState !== 'on' || normalPeak > 0;
+  const x = 120, y = 750, w = 300, h = 90;
+  g.fillStyle = ready ? '#3a2a1f' : '#9a8a7a'; rr(x, y, w, h, 24); g.fill(); g.stroke();
+  txt(ready ? 'はじめる' : 'いってから はじめる', x + w / 2, y + 45, ready ? 34 : 22, '#ffd84a');
+  buttons.push({ x, y, w, h, fn: () => { if (micState === 'denied') micState = 'tap'; startStage(st.i); } });
+}
+
+function drawResult(t) {
+  g.drawImage(bg, 0, 0);
+  drawTitleBar(st.name + ' の けっか');
+  const sc = score(), d = t - resultAt;
+  const rank = sc >= 90 ? ['もぐらマスター', '#e8402e'] : sc >= 70 ? ['いいもぐら', '#e08a00'] : sc >= 40 ? ['もぐら見習い', '#2f7d32'] : ['もういっかい', '#777'];
+  g.fillStyle = 'rgba(255,255,255,0.92)'; g.strokeStyle = INK; g.lineWidth = 4; rr(30, 190, W - 60, 560, 26); g.fill(); g.stroke();
+  for (let i = 0; i < 5; i++) { const ph = (t * 2 + i * 0.4) % 1.2; }
+  if (d > 0.4) txt(rank[0], W / 2, 280, 52, rank[1], 'center', 800, '#fff', 10);
+  txt(sc + ' てん', W / 2, 370, 46, INK);
+  txt('ピッタリ ' + result.p + '　おしい ' + result.o + '　ミス ' + result.x, W / 2, 440, 22, '#5a4634', 'center', 500);
+  buttons = [];
+  const bt = (label, x, fn, dark) => {
+    g.fillStyle = dark ? INK : '#fff'; g.strokeStyle = INK; g.lineWidth = 4; rr(x, 620, 210, 90, 22); g.fill(); g.stroke();
+    txt(label, x + 105, 665, 28, dark ? '#ffd84a' : INK);
+    buttons.push({ x, y: 620, w: 210, h: 90, fn });
+  };
+  bt('もういちど', 55, () => startStage(st.i), true);
+  bt('もどる', 275, () => { scene = 'title'; });
+  // もぐらの おじぎ
+  for (let i = 0; i < 5; i++) {
+    const x = 70 + i * 100, y = 540, b = Math.max(0, Math.sin((t - i * 0.12) * 5));
+    g.fillStyle = MOLES[i].body; g.strokeStyle = INK; g.lineWidth = 3;
+    g.beginPath(); g.ellipse(x, y - b * 14, 30, 34, 0, Math.PI, 0); g.lineTo(x + 30, y + 20); g.lineTo(x - 30, y + 20); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = INK; g.beginPath(); g.arc(x - 10, y - 12 - b * 14, 3, 0, Math.PI * 2); g.arc(x + 10, y - 12 - b * 14, 3, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#ff7f9c'; g.beginPath(); g.ellipse(x, y - 2 - b * 14, 6, 5, 0, 0, Math.PI * 2); g.fill();
+  }
+}
+
+function frame() {
+  update();
+  const t = now();
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#3b2f25'; g.fillRect(0, 0, innerWidth, innerHeight);
+  g.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
+  g.save(); g.beginPath(); g.rect(0, 0, W, H); g.clip();
+  if (scene === 'title') drawTitle(t);
+  else if (scene === 'check') drawCheck(t);
+  else if (scene === 'play') drawPlay(t);
+  else drawResult(t);
+  g.restore();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
