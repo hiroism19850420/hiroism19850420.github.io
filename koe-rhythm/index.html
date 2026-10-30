@@ -372,7 +372,7 @@ const Ear = {
 // ================= マイク（声の大きさ と 録音） =================
 // 声の大きさで「拍に あわせて 言えたか」を見る（激アマ）。同じ音を録音して、さいごに 曲と いっしょに 聞きなおす
 const Mic = {
-  stream: null, an: null, buf: null, floor: .01, level: 0, rec: null, chunks: [], recT0: 0, voiceBuf: null,
+  stream: null, an: null, buf: null, floor: .01, level: 0, voiced: false, quietT: 0, rec: null, chunks: [], recT0: 0, voiceBuf: null,
   async open() {
     if (this.stream || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
     try {
@@ -388,7 +388,9 @@ const Mic = {
     let q = 0; for (let i = 0; i < this.buf.length; i++) q += this.buf[i] * this.buf[i];
     const rms = this.level = Math.sqrt(q / this.buf.length);
     this.floor = rms < this.floor ? this.floor * .9 + rms * .1 : this.floor * .998 + rms * .002;
-    if (rms > Math.max(.02, this.floor * 4)) markVoice(now);
+    const thr = Math.max(.02, this.floor * 4);
+    if (rms > thr) { this.quietT = now; markVoice(now, !this.voiced); this.voiced = true; }
+    else if (this.voiced && rms < thr * .6 && now - this.quietT > .06) this.voiced = false;
   },
   recStart() {
     this.voiceBuf = null; this.chunks = [];
@@ -492,7 +494,7 @@ function startStage(st) {
   const pool = st.items.length > 2 ? st.items : null;
   BPMS.forEach((bpm, r) => {
     const items = pool ? shuffle(pool.slice()).slice(0, r < 2 ? 3 : 4) : st.items;
-    const d = 60 / bpm, R = { r, bpm, d, t0: t, pat: makePattern(items, r), items, hit: new Set(), hitT: {}, ok: {}, fb: {}, done: false, tilt: Array.from({ length: 8 }, () => (Math.random() - .5) * .07) };
+    const d = 60 / bpm, R = { r, bpm, d, t0: t, pat: makePattern(items, r), items, hit: new Set(), hitT: {}, ok: {}, fb: {}, fbWord: {}, done: false, tilt: Array.from({ length: 8 }, () => (Math.random() - .5) * .07) };
     R.sayT = t + SAY0 * d; R.sayEnd = R.sayT + 8 * d;
     G.rounds.push(R);
     for (let k = 0; k < ROUND_BEATS; k++) G.beats.push({ t: t + k * d, k, d, r });
@@ -514,16 +516,19 @@ function judge(R, now) {
   hit.forEach(i => { if (!R.hit.has(i)) { R.hit.add(i); R.hitT[i] = Math.max(now, R.sayT + i * R.d); bacchiri(R, i, R.hitT[i]); } });
   return txt;
 }
-function bacchiri(R, i, t) {   // 拍に声が出た か、ことばが あたった ら「ばっちり！」
+const PRAISE = { 'ばっちり！': '#ff6b8b', 'いいね！': '#ff9f1c', 'ナイス！': '#2fa8e0' };
+function bacchiri(R, i, t, word = 'ばっちり！') {   // 声が出た瞬間 か、ことばが あたった ら ほめる
   if (R.fb[i] != null) return;
-  R.fb[i] = t;
-  tone(Math.max(clock(), t), hz(PENTA[5 + (i % 3)]), 'sine', .1, .18);
+  R.fb[i] = t; R.fbWord[i] = word;   // 音は 鳴らさない（文字だけ）
 }
-function markVoice(t) {   // その時の 声を、いちばん近い 拍の札へ（ずれは 前0.4拍・後0.6拍まで 許す）
+function markVoice(t, onset) {   // その時の 声を、いちばん近い 拍の札へ（ずれは 前0.4拍・後0.6拍まで 許す）
   if (G.scene !== 'play') return;
   for (const R of G.rounds) {
-    const j = Math.floor((t - R.sayT) / R.d + .4);
-    if (j >= 0 && j < 8 && R.ok[j] == null) { R.ok[j] = t; bacchiri(R, j, t); }
+    const x = (t - R.sayT) / R.d, j = Math.floor(x + .4);
+    if (j < 0 || j >= 8 || R.ok[j] != null) continue;
+    const off = Math.abs(x - j - .1);   // マイクの おくれ（0.1拍ぶん）を 引いて、拍との ずれ
+    const word = !onset ? 'いいね！' : off < .25 ? 'ばっちり！' : off < .4 ? 'いいね！' : 'ナイス！';
+    R.ok[j] = t; bacchiri(R, j, t, word);
   }
 }
 function cardPts(R, i) { const w = R.hit.has(i), v = R.ok[i] != null; return w && v ? 1 : w || v ? .85 : 0; }
@@ -685,10 +690,10 @@ function frame() {
   for (let i = 0; i < 8; i++) {   // 「ばっちり！」は 札の上に 重ねて 描く
     const ft = R.fb[i], p = ft != null ? (now - ft) / .9 : -1;
     if (p < 0 || p > 1) continue;
-    const [x, y] = L.pos(i), fs = Math.max(16, s * .19) * back(clamp(p * 4));
+    const [x, y] = L.pos(i), wd = R.fbWord[i], fs = Math.max(16, s * (wd === 'ばっちり！' ? .21 : .18)) * back(clamp(p * 4));
     cx.save(); cx.globalAlpha = 1 - clamp((p - .6) / .4);
     cx.translate(x, y - s * .5 - p * s * .18); cx.rotate(-.08);
-    text('ばっちり！', 0, 0, fs, '#ff6b8b', 'Mochiy Pop One', '#fffdf7');
+    text(wd, 0, 0, fs, PRAISE[wd], 'Mochiy Pop One', '#fffdf7');
     cx.restore();
   }
   // 「いってね」
@@ -782,8 +787,8 @@ if (!SR) $('#titleNote').innerHTML = '<span class="warn">このブラウザは �
 const dbg = { auto: false };
 if (DBG) {
   Object.assign(dbg, {
-    say(text, loud = true) { if (loud) markVoice(clock() - (AC.outputLatency || 0) - .05); Ear.log.push({ t: clock(), text }); onHeard(); },
-    Mic, Replay, totalScore,
+    say(text, loud = true) { if (loud) markVoice(clock() - (AC.outputLatency || 0) - .05 + (dbg.late || 0), true); Ear.log.push({ t: clock(), text }); onHeard(); },
+    Mic, Replay, totalScore, mark: markVoice,
     play(i = 0, auto = true) { dbg.auto = auto; initAudio(); startStage(STAGES[i]); },
     G, reading, tokenize, align, Ear,
     sheet(ids, size = 64) { const c = document.createElement('canvas'); c.width = ids.length * size * 2; c.height = size * 2; c.style.cssText = `position:fixed;left:0;top:0;width:${ids.length * size}px;height:${size}px;z-index:9;background:#bfe8de`; const g = c.getContext('2d'); g.scale(2, 2); ids.forEach((id, i) => drawCard(g, id, size * i + size / 2, size / 2, size * .9, 0, 1, 0, false, 0, 0)); document.body.appendChild(c); return c; },
