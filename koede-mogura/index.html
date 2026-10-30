@@ -43,6 +43,7 @@ const TUNE = {
 // もぐら4ひきの言い方（n ふつう / b おおごえ / l のばす / z ねてる）と、ならび方（q 1拍ずつ / e 半拍ずつ / u うら拍）
 // あなたは もぐらと おなじに言う。ねてたら だまる（ねてる は むずかしい だけ）
 // 1回の中で 4ひきは かならず同じ言い方・同じリズム（4ひきめだけ変えない。2026-10-30 ユーザーの指示「リズムゲームなので」）
+// ただし むずかしい だけは 4ひきめだけ 変えてよい（あなたは 4ひきめと おなじに言う）
 const STAGES = [
   { name: 'ふつう', bpm: 92, rounds: [
     ['nnnn', 'q'], ['nnnn', 'q'], ['llll', 'q'], ['nnnn', 'q'], ['bbbb', 'q'], ['nnnn', 'q'], ['llll', 'q'], ['bbbb', 'q'],
@@ -51,8 +52,8 @@ const STAGES = [
     ['nnnn', 'q'], ['nnnn', 'e'], ['bbbb', 'q'], ['llll', 'q'], ['nnnn', 'u'], ['bbbb', 'e'], ['nnnn', 'e'], ['llll', 'q'],
     ['bbbb', 'u'], ['nnnn', 'q'], ['nnnn', 'e'], ['llll', 'q'], ['nnnn', 'u'], ['bbbb', 'e'], ['nnnn', 'e'], ['bbbb', 'q']] },
   { name: 'むずかしい', bpm: 112, rounds: [
-    ['nnnn', 'q'], ['nnnn', 'e'], ['zzzz', 'q'], ['llll', 'q'], ['nnnn', 'u'], ['bbbb', 'e'], ['zzzz', 'e'], ['nnnn', 'q'],
-    ['bbbb', 'u'], ['zzzz', 'q'], ['nnnn', 'e'], ['llll', 'q'], ['zzzz', 'u'], ['bbbb', 'e'], ['nnnn', 'e'], ['zzzz', 'q']] },
+    ['nnnn', 'q'], ['nnnb', 'e'], ['nnnz', 'q'], ['llll', 'q'], ['nnnn', 'u'], ['bbbl', 'q'], ['nnnz', 'e'], ['zzzz', 'q'],
+    ['nnnb', 'u'], ['lllz', 'q'], ['nnnn', 'e'], ['nnnl', 'q'], ['nnnz', 'u'], ['bbbn', 'e'], ['bbbb', 'e'], ['nnnz', 'q']] },
 ];
 const SPACING = { q: [0, 1, 2, 3, 4], e: [0, 0.5, 1, 1.5, 2], u: [0.5, 1.5, 2.5, 3.5, 4.5] };
 const ROUND_BEATS = 8, LEAD = 4;
@@ -423,7 +424,7 @@ function drawPlay(t) {
   let R = plan[0];
   for (const P of plan) if (t >= P.base - 0.25 * spb) R = P;
   const rIdx = R.r;
-  drawTitleBar((st.name) + '　' + (rIdx + 1) + ' / ' + plan.length + '　もぐらと おなじに いおう');
+  drawTitleBar((st.name) + '　' + (rIdx + 1) + ' / ' + plan.length + (st.i === 2 ? '　4ひきめと おなじに いおう' : '　もぐらと おなじに いおう'));
   const fade = t > R.end - 0.6 * spb ? Math.max(0, (R.end - t) / (0.6 * spb)) : 1;
   for (let i = 0; i < 4; i++) {
     const m = R.moles[i], d = t - m.t;
