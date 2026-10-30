@@ -73,7 +73,7 @@
   #err{color:#d0325f;font-size:13px;margin-top:16px;line-height:1.6;max-width:340px}
 
   #result{background:rgba(255,236,245,.97);gap:14px}
-  #photo{max-width:min(88vw,460px);max-height:calc(100dvh - 230px);border-radius:10px;
+  #photo{max-width:min(92vw,900px);max-height:calc(100dvh - 230px);border-radius:10px;
     box-shadow:0 0 0 5px #fff,0 12px 28px rgba(160,40,90,.3);animation:drop .5s cubic-bezier(.2,1.4,.4,1)}
   @keyframes drop{0%{transform:translateY(-30px) rotate(-6deg) scale(.9);opacity:0}100%{transform:none;opacity:1}}
   .btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
@@ -131,7 +131,8 @@
 <video id="video" playsinline muted autoplay style="display:none"></video>
 
 <script type="module">
-const W = 1080, H = 1440;
+// 写真の大きさ。カメラが横長なら 横長（1440×1080）にする
+let W = 1080, H = 1440;
 const DBG = new URLSearchParams(location.search).has('dbg');
 const MP_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 const FACE_MODEL = 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
@@ -262,7 +263,7 @@ function sunflower(c, x, y, r, rot){
 // ---------- フレーム ----------
 const R1 = rng(11);
 const seeded = n => Array.from({length: n}, () => [R1(), R1(), R1(), R1()]);
-const edgePts = (n, band) => seeded(n).map(([a, b, cc, d]) => {
+const edgePts = (pts, band) => pts.map(([a, b, cc, d]) => {
   // 写真のまんなかを よけて ふちの近くに ちらす
   const side = Math.floor(a * 4), u = b, v = cc * band;
   const p = side === 0 ? [u * W, v] : side === 1 ? [W - v, u * H] : side === 2 ? [u * W, H - v] : [v, u * H];
@@ -270,7 +271,7 @@ const edgePts = (n, band) => seeded(n).map(([a, b, cc, d]) => {
 });
 const S = {
   hallo: seeded(14), snow: seeded(26), confetti: seeded(60), petals: seeded(26),
-  loveHearts: edgePts(34, 150), kira: edgePts(30, 170),
+  loveHearts: seeded(34), kira: seeded(30),
 };
 
 const today = () => { const d = new Date(); return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`; };
@@ -366,7 +367,7 @@ const FRAMES = [
     } },
   { id: 'love', name: 'ハート', draw(c, t){
       border(c, 40, 46, '#ff7eb6'); innerLine(c, 20, 30, '#fff', 6, [18, 14]);
-      for (const [x, y, s] of S.loveHearts){ const k = 1 + Math.sin(t * 3 + s * 9) * .08;
+      for (const [x, y, s] of edgePts(S.loveHearts, 150)){ const k = 1 + Math.sin(t * 3 + s * 9) * .08;
         heart(c, x, y, (26 + s * 44) * k, ['#ff3d7f', '#ff8fb8', '#fff', '#ff5fa2'][Math.floor(s * 4)], '#fff', 6); }
       heart(c, W / 2 + 230, H - 210, 70, '#ff3d7f', '#fff', 10);
       text(c, 'LOVE', W / 2 - 40, H - 150, '170px Pacifico', '#fff', [['#ff3d7f', 28]], -.06);
@@ -375,7 +376,7 @@ const FRAMES = [
       const g = c.createLinearGradient(0, 0, W, H);
       ['#ffb3d9', '#ffe7a3', '#b5f0d0', '#b3d9ff', '#d9b8ff'].forEach((col, i) => g.addColorStop(i / 4, col));
       border(c, 32, 40, g); innerLine(c, 32, 40, '#fff', 6);
-      for (const [x, y, s] of S.kira){ const k = .55 + .45 * Math.sin(t * 3.5 + s * 20);
+      for (const [x, y, s] of edgePts(S.kira, 170)){ const k = .55 + .45 * Math.sin(t * 3.5 + s * 20);
         if (s > .5) sparkle(c, x, y, (20 + s * 36) * k, s > .75 ? '#fff' : '#fff3a6');
         else star(c, x, y, (16 + s * 40) * k, (16 + s * 40) * k * .45, '#ffe066', '#fff', 5); }
       text(c, 'きらきら', W / 2, 140, '96px "Mochiy Pop One"', '#fff', [['#c38bff', 28], ['#fff', 12]]);
@@ -394,15 +395,16 @@ const FRAMES = [
       sunflower(c, 120, H - 330, 120, Math.sin(t) * .05); sunflower(c, 300, H - 220, 90, Math.sin(t + 1) * .05); sunflower(c, W - 140, H - 300, 110, Math.sin(t + 2) * .05);
       text(c, 'Summer!', 330, 150, '128px Pacifico', '#fff', [['#ff8a1f', 26]], -.06);
     } },
-  { id: 'polaroid', name: 'ポラロイド', rect: { x: 72, y: 72, w: 936, h: 1120 }, draw(c){
-      c.beginPath(); c.rect(0, 0, W, H); c.rect(72, 72, 936, 1120); c.fillStyle = '#fbfaf5'; c.fill('evenodd');
-      c.strokeStyle = 'rgba(0,0,0,.12)'; c.lineWidth = 4; c.strokeRect(72, 72, 936, 1120);
+  { id: 'polaroid', name: 'ポラロイド', get rect(){ return { x: 72, y: 72, w: W - 144, h: H - 320 }; }, draw(c){
+      const r = this.rect;
+      c.beginPath(); c.rect(0, 0, W, H); c.rect(r.x, r.y, r.w, r.h); c.fillStyle = '#fbfaf5'; c.fill('evenodd');
+      c.strokeStyle = 'rgba(0,0,0,.12)'; c.lineWidth = 4; c.strokeRect(r.x, r.y, r.w, r.h);
       c.save(); c.translate(W / 2, 40); c.rotate(-.04); c.fillStyle = 'rgba(255,214,140,.78)'; c.fillRect(-120, -26, 240, 64); c.restore();
-      text(c, today(), W / 2 - 40, 1310, '76px Yomogi', '#4a3a40', null, -.02);
-      heart(c, W / 2 + 230, 1306, 30, '#ff5fa2');
+      text(c, today(), W / 2 - 40, H - 130, '76px Yomogi', '#4a3a40', null, -.02);
+      heart(c, W / 2 + 230, H - 134, 30, '#ff5fa2');
     } },
-  { id: 'film', name: 'フィルム', rect: { x: 116, y: 0, w: 848, h: 1440 }, draw(c){
-      c.fillStyle = 'rgba(255,190,120,.10)'; c.fillRect(116, 0, 848, H);
+  { id: 'film', name: 'フィルム', get rect(){ return { x: 116, y: 0, w: W - 232, h: H }; }, draw(c){
+      c.fillStyle = 'rgba(255,190,120,.10)'; c.fillRect(116, 0, W - 232, H);
       c.fillStyle = '#141414'; c.fillRect(0, 0, 116, H); c.fillRect(W - 116, 0, 116, H);
       c.fillStyle = '#efe9dc';
       for (let y = 26; y < H; y += 92){ for (const x of [34, W - 82]){ c.beginPath(); rrPath(c, x, y, 48, 40, 8); c.fill(); } }
@@ -549,43 +551,68 @@ const ACCS = [
 
 // ---------- 顔さがし ----------
 let detector = null, detState = 'off'; // off | loading | ready | fail
-let faces = [];       // なめらかにした目の位置（動画の 0〜1 座標）
-let lastDet = 0;
+let faces = [];       // なめらかにした目の位置（動画の 0〜1 座標）。d は目と目の間（動画のピクセル）
+let nextDet = 0;
 async function loadDetector(){
-  if (DBG){ detState = 'ready'; return; }
   detState = 'loading';
   try {
     const { FilesetResolver, FaceDetector } = await import(MP_URL);
     const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
-    const make = delegate => FaceDetector.createFromOptions(files, { baseOptions: { modelAssetPath: FACE_MODEL, delegate }, runningMode: 'VIDEO', minDetectionConfidence: .5 });
+    const make = delegate => FaceDetector.createFromOptions(files, { baseOptions: { modelAssetPath: FACE_MODEL, delegate }, runningMode: 'IMAGE', minDetectionConfidence: .5 });
     try { detector = await make('GPU'); } catch { detector = await make('CPU'); }
     detState = 'ready';
-  } catch (e){ console.warn('face detector', e); detState = 'fail'; }
+  } catch (e){ console.warn('face detector', e); detState = DBG ? 'ready' : 'fail'; }
 }
-function updateFaces(raw, now){
+// 家族みんな（5人くらい）が 少し離れて映ると 顔が小さいので、
+// 全体のほかに 重なりあう切りぬきでも さがして まとめる。
+// あらい（横3×縦2）と こまかい（横4×縦3）を 1回おきに 交代で見る
+const FULL = [0, 0, 1, 1], COARSE = [], FINE = [];
+for (const ty of [0, .4]) for (const tx of [0, .25, .5]) COARSE.push([tx, ty, .5, .6]);
+for (const ty of [0, .275, .55]) for (const tx of [0, .22, .44, .66]) FINE.push([tx, ty, .34, .45]);
+const PASSES = [[FULL, ...COARSE], [FULL, ...FINE]];
+let pass = 0;
+const tileCv = document.createElement('canvas'), tctx = tileCv.getContext('2d');
+function findFaces(src, vw, vh, tiles = [FULL, ...COARSE, ...FINE]){
+  const out = [];
+  for (const [tx, ty, tw, th] of tiles){
+    const sw = vw * tw, sh = vh * th, k = Math.min(1, 640 / Math.max(sw, sh)), cw = Math.round(sw * k), ch = Math.round(sh * k);
+    if (tileCv.width !== cw || tileCv.height !== ch){ tileCv.width = cw; tileCv.height = ch; }
+    tctx.drawImage(src, tx * vw, ty * vh, sw, sh, 0, 0, cw, ch);
+    for (const d of detector.detect(tileCv).detections){
+      const kp = d.keypoints, bb = d.boundingBox; if (!kp || kp.length < 2) continue;
+      // 切りぬきの内がわの ふちで 切れた顔は、となりの切りぬきに まかせる
+      if (bb && ((tx > 0 && bb.originX < 3) || (ty > 0 && bb.originY < 3) || (tx + tw < 1 && bb.originX + bb.width > cw - 3) || (ty + th < 1 && bb.originY + bb.height > ch - 3))) continue;
+      const f = { x1: tx + kp[0].x * tw, y1: ty + kp[0].y * th, x2: tx + kp[1].x * tw, y2: ty + kp[1].y * th, score: d.categories?.[0]?.score || 0 };
+      f.ex = (f.x1 + f.x2) / 2; f.ey = (f.y1 + f.y2) / 2; f.d = Math.hypot((f.x2 - f.x1) * vw, (f.y2 - f.y1) * vh);
+      out.push(f);
+    }
+  }
+  out.sort((a, b) => b.score - a.score);
+  const keep = [];
+  for (const f of out) if (!keep.some(q => Math.hypot((q.ex - f.ex) * vw, (q.ey - f.ey) * vh) < Math.max(q.d, f.d) * 1.1)) keep.push(f);
+  return keep;
+}
+function updateFaces(raw, now, vw, vh){
   const next = [];
   for (const r of raw){
-    let best = null, bd = .15;
-    for (const f of faces){ const d = Math.hypot(f.ex - r.ex, f.ey - r.ey); if (d < bd && !next.includes(f)){ bd = d; best = f; } }
-    if (best){ const k = .5; for (const key of ['x1', 'y1', 'x2', 'y2', 'ex', 'ey']) best[key] += (r[key] - best[key]) * k; best.seen = now; next.push(best); }
+    // 近くの顔とまちがえないよう、目の間の長さを ものさしにして つなぐ
+    let best = null, bd = r.d * 1.2;
+    for (const f of faces){ const d = Math.hypot((f.ex - r.ex) * vw, (f.ey - r.ey) * vh); if (d < bd && !next.includes(f)){ bd = d; best = f; } }
+    if (best){ const k = .5; for (const key of ['x1', 'y1', 'x2', 'y2', 'ex', 'ey', 'd']) best[key] += (r[key] - best[key]) * k; best.seen = now; next.push(best); }
     else next.push({ ...r, seen: now });
   }
-  for (const f of faces) if (!next.includes(f) && now - f.seen < 350) next.push(f);
+  for (const f of faces) if (!next.includes(f) && now - f.seen < 500) next.push(f);
   faces = next;
 }
 function detect(now){
-  if (detState !== 'ready' || video.readyState < 2 || now - lastDet < 45) return;
-  lastDet = now;
+  if (detState !== 'ready' || video.readyState < 2 || now < nextDet) return;
+  const vw = video.videoWidth, vh = video.videoHeight;
   let raw = [];
-  if (DBG) raw = dbgFaces();
-  else {
-    try {
-      const res = detector.detectForVideo(video, now);
-      for (const d of res.detections){ const k = d.keypoints; if (!k || k.length < 2) continue;
-        raw.push({ x1: k[0].x, y1: k[0].y, x2: k[1].x, y2: k[1].y, ex: (k[0].x + k[1].x) / 2, ey: (k[0].y + k[1].y) / 2 }); }
-    } catch (e){ console.warn(e); }
-  }
-  updateFaces(raw, now);
+  if (DBG && fake) raw = dbgFaces();
+  else { try { raw = findFaces(video, vw, vh, PASSES[pass = 1 - pass]); } catch (e){ console.warn(e); } }
+  updateFaces(raw, now, vw, vh);
+  // さがすのに かかった時間の 1.5倍は 休んで、映像が カクつかないようにする
+  nextDet = now + Math.max(80, (performance.now() - now) * 1.5);
 }
 
 // ---------- えがく ----------
@@ -656,7 +683,7 @@ function buildList(){
   items.forEach((it, i) => {
     const b = document.createElement('button'); b.className = 'item' + (i === cur ? ' on' : '');
     const cv = document.createElement('canvas');
-    if (tab === 'frame'){ cv.width = 66 * dpr; cv.height = 88 * dpr; cv.style.width = '66px'; cv.style.height = '88px'; frameThumb(it, cv); }
+    if (tab === 'frame'){ const [tw, th] = W > H ? [88, 66] : [66, 88]; cv.width = tw * dpr; cv.height = th * dpr; cv.style.width = tw + 'px'; cv.style.height = th + 'px'; frameThumb(it, cv); }
     else { cv.width = 72 * dpr; cv.height = 72 * dpr; cv.style.width = '72px'; cv.style.height = '72px'; accThumb(it, cv); }
     b.append(cv, document.createTextNode(it.name));
     b.onclick = () => { if (tab === 'frame') frameI = i; else accI = i; tick(); buildList(); };
@@ -668,9 +695,9 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   tab = b.dataset.tab; document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b)); buildList(); tick();
 });
 function layout(){
-  const stage = $('stage'), avail = window.innerHeight - 312, wmax = Math.min(window.innerWidth - 24, 560);
-  const h = Math.max(220, Math.min(avail, wmax * 4 / 3));
-  stage.style.height = h + 'px'; stage.style.width = h * 3 / 4 + 'px';
+  const stage = $('stage'), avail = Math.max(165, window.innerHeight - 312), aspect = W / H;
+  const w = Math.min(window.innerWidth - 24, W > H ? 960 : 560, avail * aspect);
+  stage.style.width = w + 'px'; stage.style.height = w / aspect + 'px';
 }
 addEventListener('resize', layout); layout();
 
@@ -768,7 +795,14 @@ $('againBtn').onclick = () => $('result').classList.remove('on');
 
 // ---------- ループ ----------
 function tick(){ render(vctx, view.width / W, performance.now() / 1000); }
+function setOrient(land){
+  if ((W > H) === land) return;
+  [W, H] = land ? [1440, 1080] : [1080, 1440];
+  view.width = land ? 960 : 720; view.height = land ? 720 : 960;
+  layout(); buildList();
+}
 function loop(now){
+  if (video.videoWidth) setOrient(video.videoWidth > video.videoHeight);
   detect(now); updateChip(now);
   if (!$('start').classList.contains('on')) tick();
   requestAnimationFrame(loop);
@@ -789,30 +823,36 @@ buildList(); startPreview();
 let fake = null;
 function dbgStream(){
   const cv = document.createElement('canvas'); cv.width = 640; cv.height = 480; const c = cv.getContext('2d');
-  fake = { cv, x: 320, y: 230, a: 0 };
+  // おとな2人（うしろ）と 子ども3人（まえ）
+  const people = [[250, 170, .62, '#5b3a29', '#7a8fd6'], [400, 165, .6, '#2b2220', '#e08a8a'], [170, 300, .42, '#3a2a20', '#f2c14e'], [325, 315, .44, '#6b4630', '#7bc47f'], [470, 300, .4, '#2b2220', '#b48cff']];
+  fake = { people: people.map(([x, y, s, hair, cloth], i) => ({ x0: x, y0: y, x, y, s, hair, cloth, a: 0, p: i * 1.3 })) };
   (function draw(){
-    const t = performance.now() / 1000; fake.x = 320 + Math.sin(t * .7) * 90; fake.y = 230 + Math.sin(t * 1.1) * 30; fake.a = Math.sin(t * .9) * .25;
+    const t = performance.now() / 1000;
     const g = c.createLinearGradient(0, 0, 0, 480); g.addColorStop(0, '#9fd3c7'); g.addColorStop(1, '#f6e3b4'); c.fillStyle = g; c.fillRect(0, 0, 640, 480);
-    c.save(); c.translate(fake.x, fake.y); c.rotate(fake.a);
-    c.fillStyle = '#5b3a29'; c.beginPath(); c.ellipse(0, -20, 92, 100, 0, 0, TAU); c.fill();
-    c.fillStyle = '#f1c7a5'; c.beginPath(); c.ellipse(0, 10, 78, 95, 0, 0, TAU); c.fill();
-    c.fillStyle = '#222'; c.beginPath(); c.arc(-28, 0, 7, 0, TAU); c.arc(28, 0, 7, 0, TAU); c.fill();
-    c.strokeStyle = '#a0524d'; c.lineWidth = 4; c.beginPath(); c.arc(0, 40, 18, .3, Math.PI - .3); c.stroke(); c.restore();
-    c.fillStyle = '#7a8fd6'; c.beginPath(); c.ellipse(fake.x, 520, 170, 150, 0, 0, TAU); c.fill();
+    for (const q of fake.people){
+      q.x = q.x0 + Math.sin(t * .8 + q.p) * 12; q.y = q.y0 + Math.sin(t * 1.2 + q.p) * 6; q.a = Math.sin(t * .9 + q.p) * .2;
+      c.fillStyle = q.cloth; c.beginPath(); c.ellipse(q.x, q.y + 230 * q.s, 150 * q.s, 120 * q.s, 0, 0, TAU); c.fill();
+      c.save(); c.translate(q.x, q.y); c.rotate(q.a); c.scale(q.s, q.s);
+      c.fillStyle = q.hair; c.beginPath(); c.ellipse(0, -20, 92, 100, 0, 0, TAU); c.fill();
+      c.fillStyle = '#f1c7a5'; c.beginPath(); c.ellipse(0, 10, 78, 95, 0, 0, TAU); c.fill();
+      c.fillStyle = '#222'; c.beginPath(); c.arc(-28, 0, 7, 0, TAU); c.arc(28, 0, 7, 0, TAU); c.fill();
+      c.strokeStyle = '#a0524d'; c.lineWidth = 4; c.beginPath(); c.arc(0, 40, 18, .3, Math.PI - .3); c.stroke(); c.restore();
+    }
     requestAnimationFrame(draw);
   })();
   return cv.captureStream(30);
 }
 function dbgFaces(){
-  if (!fake) return [];
-  const ca = Math.cos(fake.a), sa = Math.sin(fake.a);
-  const p = dx => [(fake.x + dx * ca) / 640, (fake.y + dx * sa) / 480];
-  const [x1, y1] = p(-28), [x2, y2] = p(28);
-  return [{ x1, y1, x2, y2, ex: (x1 + x2) / 2, ey: (y1 + y2) / 2 }];
+  return fake.people.map(q => {
+    const ca = Math.cos(q.a), sa = Math.sin(q.a), p = dx => [(q.x + dx * q.s * ca) / 640, (q.y + dx * q.s * sa) / 480];
+    const [x1, y1] = p(-28), [x2, y2] = p(28);
+    return { x1, y1, x2, y2, ex: (x1 + x2) / 2, ey: (y1 + y2) / 2, d: 56 * q.s };
+  });
 }
 if (DBG) window.puri = {
   frame: i => { frameI = i; buildList(); }, acc: i => { accI = i; buildList(); }, shoot,
   get frames(){ return FRAMES.map(f => f.name); }, get accs(){ return ACCS.map(a => a.name); },
+  get faces(){ return faces; }, findFaces: img => findFaces(img, img.naturalWidth || img.width, img.naturalHeight || img.height),
 };
 </script>
 </body>
