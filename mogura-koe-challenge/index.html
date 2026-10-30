@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>もぐら こえ チャレンジ</title>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:"M PLUS Rounded 1c",sans-serif;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+  #stage{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,calc(100vh*16/9));aspect-ratio:16/9}
+  video{width:100%;height:100%;display:block;background:#7cc3ea}
+  /* 判定の文字（あなたの吹き出しの上） */
+  #judge{position:absolute;right:0;top:36%;width:36%;text-align:center;font-weight:800;font-size:min(7.5vw,13.3vh);color:#ffd84a;
+    -webkit-text-stroke:min(1vw,1.8vh) #3a2a1f;paint-order:stroke fill;opacity:0;pointer-events:none;white-space:nowrap;text-shadow:0 .06em 0 #3a2a1f}
+  #judge.show{animation:pop .9s ease-out forwards}
+  #judge.good{color:#9fe07a}
+  @keyframes pop{0%{opacity:0;transform:scale(.4) rotate(-8deg)}15%{opacity:1;transform:scale(1.15) rotate(3deg)}30%{transform:scale(1) rotate(0)}75%{opacity:1}100%{opacity:0;transform:translateY(-20%)}}
+  .panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.2%;background:rgba(20,40,70,.55);color:#fff;text-align:center}
+  .panel[hidden]{display:none}
+  .panel h1{margin:0;font-size:min(6.5vw,11vh);-webkit-text-stroke:min(.5vw,.9vh) #3a2a1f;paint-order:stroke fill;color:#ffd84a}
+  .panel p{margin:0;font-size:min(2.6vw,4.6vh);font-weight:800;text-shadow:0 2px 0 #3a2a1f}
+  .panel small{font-size:min(1.9vw,3.4vh);opacity:.9}
+  button{font:inherit;font-weight:800;font-size:min(3.6vw,6.4vh);padding:.4em 1.6em;border-radius:999px;border:min(.5vw,.9vh) solid #3a2a1f;background:#ffd84a;color:#3a2a1f;cursor:pointer;box-shadow:0 .25em 0 #3a2a1f}
+  button:active{transform:translateY(.15em);box-shadow:0 .1em 0 #3a2a1f}
+  button:focus-visible{outline:4px solid #fff}
+  #score{font-size:min(9vw,16vh);font-weight:800;color:#ffd84a;-webkit-text-stroke:min(.6vw,1vh) #3a2a1f;paint-order:stroke fill;line-height:1}
+  #err{color:#ffd0d0}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<div id="stage">
+  <video id="v" src="mogura.mp4" playsinline preload="auto"></video>
+  <div id="judge"></div>
+  <div class="panel" id="start">
+    <h1>もぐら こえ チャレンジ</h1>
+    <p>「あなた」の ばんで「もぐら」と いってね</p>
+    <small>イヤホンを つかうと よく きこえます</small>
+    <button id="go">スタート</button>
+    <small id="err" hidden></small>
+  </div>
+  <div class="panel" id="end" hidden>
+    <p>とくてん</p>
+    <div id="score">0</div>
+    <p id="detail"></p>
+    <button id="again">もういちど</button>
+  </div>
+</div>
+<script>
+'use strict';
+// 「あなた」の番（秒）。動画の「あなた」の吹き出しが 赤くなる瞬間を 画面の色から さがした
+const TURNS = [3.64, 6.27, 8.94, 11.54, 14.28, 16.75, 19.59, 22.26, 24.56, 27.19, 29.90, 32.93, 35.24, 37.87, 40.37, 43.54, 48.95, 54.29, 59.63, 64.43, 69.77, 72.44, 75.11, 77.81, 83.78];
+// 判定は 激アマ：番の前後で 声が出れば ばっちり
+const TUNE = {
+  lat: 0.15,        // 動画の音が聞こえるまで ＋ マイクの遅れ（秒）。声の時刻から引く
+  before: 0.45,     // 番の何秒前から 聞くか
+  after: 0.75,      // 番の何秒後まで 聞くか
+  perfect: 0.35,    // これより近ければ ばっちり、遠ければ いいね
+  onMin: 0.015,     // 声とみなす最小の大きさ
+};
+const $ = id => document.getElementById(id);
+const v = $('v'), judgeEl = $('judge');
+let ac = null, level = 0, floorLv = 0.006, voiced = false, quietSince = 0, onsets = [];
+let res = [], playing = false;
+const dbg = location.search.includes('dbg') ? (window.dbg = { auto: false, get res() { return res; }, v, TUNE }) : null;
+
+// マイク（スタートを押した中で await より前に呼ぶ。スマホは押した直後でないと ことわる）
+async function startMic() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw { name: 'nosupport' };
+  const ask = navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false } });
+  ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+  if (ac.state === 'suspended') ac.resume();
+  const stream = await ask;
+  const src = ac.createMediaStreamSource(stream);
+  const an = ac.createAnalyser(); an.fftSize = 512; src.connect(an);
+  const buf = new Float32Array(an.fftSize);
+  setInterval(() => {
+    an.getFloatTimeDomainData(buf); let s = 0;
+    for (let i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+    feed(Math.sqrt(s / buf.length), v.currentTime - TUNE.lat);
+  }, 10);
+}
+// 声の始まりを見つける（ことばは聞き取らず、大きさだけ）。動画の音がもれても、まわりの大きさに合わせて しきいを上げる
+function feed(rms, vt) {
+  level = rms;
+  const on = Math.max(TUNE.onMin, floorLv * 3.5), off = on * 0.6;
+  if (!voiced) {
+    floorLv += (Math.min(rms, 0.08) - floorLv) * 0.03;
+    if (rms > on) { voiced = true; quietSince = 0; onsets.push(vt); }
+  } else if (rms < off) { if (!quietSince) quietSince = vt; if (vt - quietSince > 0.1) voiced = false; }
+  else quietSince = 0;
+}
+
+function show(text, cls) {
+  judgeEl.textContent = text; judgeEl.className = '';
+  void judgeEl.offsetWidth; judgeEl.className = 'show ' + (cls || '');
+}
+
+function tick() {
+  if (playing) {
+    const t = v.currentTime;
+    TURNS.forEach((T, i) => {
+      if (res[i] !== undefined) return;
+      if (dbg && dbg.auto && t >= T && !res['a' + i]) { res['a' + i] = 1; onsets.push(T + (Math.random() - 0.5) * 0.1); }
+      const hit = onsets.find(o => o >= T - TUNE.before && o <= T + TUNE.after);
+      if (hit !== undefined && t > hit + 0.05) {
+        const near = Math.abs(hit - T) <= TUNE.perfect;
+        res[i] = near ? 100 : 80;
+        show(near ? 'ばっちり！' : 'いいね！', near ? '' : 'good');
+      } else if (t > T + TUNE.after) res[i] = 0;
+    });
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+async function start() {
+  $('err').hidden = true;
+  res = []; onsets = [];
+  v.currentTime = 0;
+  const playP = v.play();          // 押した中で 動画を 音つきで 再生
+  try { if (!ac || ac.state !== 'running') await startMic(); }
+  catch (e) {
+    v.pause();
+    const n = e && e.name;
+    $('err').textContent = n === 'NotAllowedError' ? 'マイクが ゆるされていません。ブラウザの設定で マイクを「許可」にしてね'
+      : n === 'nosupport' ? 'この ブラウザでは マイクが つかえません。Safari か Chrome で ひらいてね'
+      : 'マイクが つかえませんでした（' + n + '）';
+    $('err').hidden = false; return;
+  }
+  try { await playP; } catch (e) {}
+  $('start').hidden = true; $('end').hidden = true;
+  playing = true;
+}
+function finish() {
+  playing = false; judgeEl.className = '';
+  TURNS.forEach((T, i) => { if (res[i] === undefined) res[i] = 0; });
+  const total = Math.round(TURNS.reduce((s, _, i) => s + res[i], 0) / TURNS.length);
+  const ok = TURNS.filter((_, i) => res[i] > 0).length;
+  $('score').textContent = total + ' てん';
+  $('detail').textContent = 'いえた かず ' + ok + ' / ' + TURNS.length;
+  $('end').hidden = false;
+}
+$('go').onclick = start;
+$('again').onclick = start;
+v.addEventListener('ended', finish);
+</script>
+</body>
+</html>
