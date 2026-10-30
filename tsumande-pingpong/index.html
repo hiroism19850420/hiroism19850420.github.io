@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>つまんで！ピンポン</title>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;background:#2a2a2e;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
+  canvas{display:block;width:100vw;height:100vh}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<canvas id="c"></canvas>
+<script>
+'use strict';
+// ===== 基本 =====
+const W = 540, H = 960;
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+let scale = 1, ox = 0, oy = 0, dpr = 1, phone = false;
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = innerWidth * dpr; cv.height = innerHeight * dpr;
+  const s = Math.min(innerWidth / W, innerHeight / H);
+  phone = innerWidth / innerHeight > 0.75 && innerHeight > 500;   // 横長の画面だけケータイの枠をつける
+  scale = phone ? Math.min(innerWidth / (W + 90), innerHeight / (H + 210)) : s;
+  ox = (innerWidth - W * scale) / 2;
+  oy = (innerHeight - H * scale) / 2 - (phone ? 30 * scale : 0);
+}
+addEventListener('resize', resize); resize();
+const FONT = '"M PLUS Rounded 1c", sans-serif';
+const INK = '#2b2b2b';
+
+// ===== ステージ =====
+const LEVELS = [
+  { name: 'Lv1', sub: 'はじめて', bpm: 100, perfect: 0.06, ok: 0.13, chart: [
+    '........', 'p.......', 'p.......', 'p...p...', 'p...p...', 'p...p...', 'p.p.p...', 'p...p...',
+    'p.p.p.p.', 'p...p...', 'p.p.p...', 'p.p.p.p.', 'p.......', 'p...p.p.', 'p.p.p.p.', 'p.......', '........'] },
+  { name: 'Lv10', sub: 'あおが くる', bpm: 116, perfect: 0.055, ok: 0.12, chart: [
+    '........', 'p.......', 'b.......', 'p...b...', 'b...p...', 'p.p.b...', 'b.b.....', 'p...b.b.',
+    'p.p.p.b.', 'b...b...', 'p.b.p.b.', 'b.b.b...', 'p...p...', 'p.p.b.b.', 'b.b.b.b.', 'p.......', '........'] },
+  { name: 'Lv50', sub: 'ふわふわ まざる', bpm: 132, perfect: 0.05, ok: 0.115, chart: [
+    '........', 'y.......', '........', 'p...y...', 'b..b....', 'p..pb...', 'y.......', 'p.p.y.b.',
+    '..b...b.', 'p..b..p.', 'y...b.b.', 'pb..pb..', 'y.p.b...', 'p.b.y.b.', 'b..b.b..', 'pbp.y...',
+    'p.p.pbb.', 'y.......', '........'] },
+  { name: 'Lv100', sub: 'きちく', bpm: 156, perfect: 0.055, ok: 0.12, chart: [
+    '........', 'pppp....', 'bbbbbbbb', 'y.y.y.y.', 'pbpbpbpb', 'yp.bypbb', 'pppppppp', 'bbbbpppp',
+    'y.b.p.b.', 'pbbpbbpb', 'yyyypppp', 'bbbbbbbb', 'pbpbybyb', 'pppppppp', 'bbbbbbbb', 'pybpybpy',
+    'p.......', '........'] },
+];
+// 玉の種類：L = 出てから つまむまでの拍数（4区間：3回はねて、4回目で落ちる）
+const TYPES = {
+  p: { L: 4, col: '#ff6fb1', dark: '#c23d7f', tick: 880, hop: 26 },
+  b: { L: 2, col: '#4a8cff', dark: '#2253b8', tick: 1320, hop: 16 },
+  y: { L: 8, col: '#ffd23a', dark: '#c79a00', tick: 590, hop: 52 },
+};
+
+// ===== 形 =====
+const TILE0 = { x: 84, y: 330 }, TSTEP = { x: 84, y: 34 }, TILES = 4;
+function tileTop(i) { return { x: TILE0.x + TSTEP.x * i, y: TILE0.y + TSTEP.y * i }; }
+const HAND = { x: 470, y: 800, rot: -0.34, s: 1.3 };
+function rotp(lx, ly, r) { const c = Math.cos(r), s = Math.sin(r); return { x: lx * c - ly * s, y: lx * s + ly * c }; }
+const CATCH = (() => { const p = rotp(0, -152 * HAND.s, HAND.rot); return { x: HAND.x + p.x, y: HAND.y + p.y }; })();
+const BR = 18; // 玉の半径
+
+// ===== 音 =====
+let ac = null, master = null;
+function ensureAudio() {
+  if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  master = ac.createGain(); master.gain.value = 0.8;
+  const comp = ac.createDynamicsCompressor(); master.connect(comp); comp.connect(ac.destination);
+  const len = ac.sampleRate * 0.5; noiseBuf = ac.createBuffer(1, len, ac.sampleRate);
+  const d = noiseBuf.getChannelData(0); for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+}
+let noiseBuf = null;
+function env(t, a, dcy, vol) { const e = ac.createGain(); e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(vol, t + a); e.gain.exponentialRampToValueAtTime(0.0001, t + a + dcy); e.connect(master); return e; }
+function osc(type, f, t, a, dcy, vol, f2) {
+  const o = ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + a + dcy);
+  o.connect(env(t, a, dcy, vol)); o.start(t); o.stop(t + a + dcy + 0.05);
+}
+function noise(t, dcy, vol, ftype, freq, q) {
+  const s = ac.createBufferSource(); s.buffer = noiseBuf;
+  const f = ac.createBiquadFilter(); f.type = ftype; f.frequency.value = freq; f.Q.value = q || 1;
+  s.connect(f); f.connect(env(t, 0.002, dcy, vol)); s.start(t); s.stop(t + dcy + 0.05);
+}
+const SND = {
+  tick(t, f) { osc('triangle', f, t, 0.002, 0.07, 0.35); osc('sine', f * 2, t, 0.001, 0.025, 0.12); },
+  drop(t, f) { osc('sine', f * 0.75, t, 0.002, 0.12, 0.45, f * 0.5); noise(t, 0.03, 0.12, 'bandpass', 3000, 2); },
+  catch(t) { noise(t, 0.05, 0.5, 'bandpass', 2400, 3); osc('square', 1600, t, 0.001, 0.04, 0.1); osc('sine', 2400, t + 0.01, 0.001, 0.12, 0.18); },
+  good(t) { noise(t, 0.05, 0.35, 'bandpass', 1800, 2); osc('sine', 1500, t, 0.001, 0.08, 0.12); },
+  miss(t) { osc('sine', 160, t, 0.002, 0.18, 0.4, 60); noise(t, 0.06, 0.1, 'lowpass', 500); },
+  snap(t) { noise(t, 0.025, 0.18, 'highpass', 4000); },
+  count(t, hi) { osc('square', hi ? 1760 : 1320, t, 0.001, 0.06, 0.12); },
+  kick(t) { osc('sine', 140, t, 0.002, 0.16, 0.55, 42); },
+  hat(t, v) { noise(t, 0.03, v, 'highpass', 7000); },
+  snare(t) { noise(t, 0.12, 0.18, 'bandpass', 1800, 0.8); osc('triangle', 220, t, 0.001, 0.06, 0.1); },
+  bass(t, f, d) { osc('triangle', f, t, 0.005, d, 0.32); },
+  stab(t, fs) { for (const f of fs) osc('square', f, t, 0.004, 0.09, 0.035); },
+  fanfare(t, good) {
+    const n = good ? [523, 659, 784, 1047] : [392, 370, 349];
+    n.forEach((f, i) => osc('triangle', f, t + i * 0.12, 0.005, 0.3, 0.25));
+  },
+};
+// コード進行（C - Am - F - G）
+const PROG = [[130.8, [523, 659, 784]], [110, [440, 523, 659]], [87.3, [440, 523, 698]], [98, [494, 587, 784]]];
+
+// ===== 状態 =====
+let scene = 'title';  // title / play / result
+let lv = null, balls = [], events = [], evI = 0, t0 = 0, spb = 0.6, endTime = 0, nextBeat = 0, totalBeats = 0;
+let score = { p: 0, o: 0, m: 0 }, combo = 0, maxCombo = 0;
+let pinch = 0;          // 指を閉じた時刻
+let pops = [], parts = [];
+let resultAt = 0, best = {};
+try { best = JSON.parse(localStorage.getItem('tsumande_best') || '{}'); } catch (e) {}
+const dbg = location.search.includes('dbg') ? (window.dbg = { auto: false, start: i => startLevel(i), get state() { return { scene, score, balls: balls.length }; } }) : null;
+
+function now() { return ac ? ac.currentTime : performance.now() / 1000; }
+
+function startLevel(i) {
+  ensureAudio();
+  lv = LEVELS[i]; lv.i = i;
+  spb = 60 / lv.bpm;
+  t0 = now() + 0.4 + 4 * spb;           // 4拍のカウントのあと 0拍目
+  balls = []; events = []; evI = 0; pops = []; parts = [];
+  score = { p: 0, o: 0, m: 0 }; combo = 0; maxCombo = 0;
+  lv.chart.forEach((row, m) => {
+    for (let s = 0; s < 8; s++) {
+      const ch = row[s]; if (!TYPES[ch]) continue;
+      const T = TYPES[ch], hitB = m * 4 + s / 2, seg = T.L / 4;
+      const b = { type: ch, hit: t0 + hitB * spb, spawn: t0 + (hitB - T.L) * spb, seg: seg * spb, judged: null, jt: 0 };
+      balls.push(b);
+      for (let k = 0; k < 4; k++) events.push({ t: b.spawn + k * b.seg, f: k < 3 ? () => SND.tick(b.spawn + k * b.seg, T.tick) : () => SND.drop(b.spawn + 3 * b.seg, T.tick) });
+    }
+  });
+  for (let k = 0; k < 4; k++) events.push({ t: t0 - (4 - k) * spb, f: ((tt, hi) => () => SND.count(tt, hi))(t0 - (4 - k) * spb, k === 0) });
+  events.sort((a, b) => a.t - b.t);
+  totalBeats = lv.chart.length * 4;
+  endTime = t0 + totalBeats * spb;
+  nextBeat = 0;
+  scene = 'play';
+}
+
+// 音のスケジュール（少し先まで）
+function schedule() {
+  const ahead = now() + 0.15;
+  while (evI < events.length && events[evI].t < ahead) { const e = events[evI++]; if (e.t > now() - 0.05) e.f(); }
+  while (nextBeat < totalBeats - 4 && t0 + nextBeat * spb < ahead) {
+    const t = t0 + nextBeat * spb, bar = Math.floor(nextBeat / 4), bi = nextBeat % 4;
+    const [root, chord] = PROG[bar % 4];
+    if (bar >= 1) {
+      SND.kick(t);
+      if (bi === 1 || bi === 3) SND.snare(t);
+      SND.hat(t, 0.05); SND.hat(t + spb / 2, 0.09);
+      SND.bass(t, bi === 2 ? root * 1.5 : root, spb * 0.7);
+      SND.stab(t + spb / 2, chord);
+    }
+    nextBeat++;
+  }
+}
+
+// ===== 入力 =====
+function toLocal(e) { return { x: (e.clientX - ox) / scale, y: (e.clientY - oy) / scale }; }
+let buttons = [];
+cv.addEventListener('pointerdown', e => { e.preventDefault(); press(toLocal(e)); });
+addEventListener('keydown', e => {
+  if (e.repeat) return;
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); press(null); }
+  if (e.code === 'Escape' && scene === 'play') scene = 'title';
+});
+function press(p) {
+  ensureAudio();
+  if (scene === 'play') { tap(now()); return; }
+  if (!p) { if (scene === 'result') startLevel(lv.i); return; }
+  for (const b of buttons) if (p.x > b.x && p.x < b.x + b.w && p.y > b.y && p.y < b.y + b.h) { b.fn(); return; }
+}
+function tap(t) {
+  pinch = t;
+  let bestB = null, bd = 1;
+  for (const b of balls) {
+    if (b.judged) continue;
+    const d = Math.abs(t - b.hit);
+    if (d < bd) { bd = d; bestB = b; }
+  }
+  if (bestB && bd <= lv.ok) {
+    const perfect = bd <= lv.perfect;
+    bestB.judged = perfect ? 'p' : 'o'; bestB.jt = t;
+    score[bestB.judged]++; combo++; maxCombo = Math.max(maxCombo, combo);
+    perfect ? SND.catch(ac.currentTime) : SND.good(ac.currentTime);
+    pops.push({ t, text: perfect ? 'ピタッ' : (t < bestB.hit ? 'はやい' : 'おそい'), col: perfect ? '#ff4f8b' : '#5a7d2b' });
+    for (let i = 0; i < (perfect ? 10 : 5); i++) parts.push({ x: CATCH.x, y: CATCH.y, vx: (Math.random() - 0.5) * 320, vy: -Math.random() * 260 - 60, t, col: TYPES[bestB.type].col });
+  } else {
+    SND.snap(ac.currentTime);
+  }
+}
+
+// ===== 更新 =====
+function update() {
+  if (scene !== 'play') return;
+  const t = now();
+  schedule();
+  for (const b of balls) {
+    if (dbg && dbg.auto && !b.judged && t >= b.hit) tap(b.hit + (Math.random() - 0.5) * 0.04);
+    if (!b.judged && t > b.hit + lv.ok) {
+      b.judged = 'm'; b.jt = t; score.m++; combo = 0; SND.miss(ac.currentTime);
+      pops.push({ t, text: 'スカッ', col: '#777' });
+    }
+  }
+  if (t > endTime + 0.3) {
+    scene = 'result'; resultAt = t;
+    const r = rate();
+    if (!(best[lv.name] >= r)) { best[lv.name] = r; try { localStorage.setItem('tsumande_best', JSON.stringify(best)); } catch (e) {} }
+    SND.fanfare(ac.currentTime + 0.1, r >= 70);
+  }
+}
+function rate() { const n = balls.length || 1; return Math.round((score.p * 100 + score.o * 60) / n); }
+
+// ===== 玉の位置 =====
+function ballPos(b, t) {
+  const T = TYPES[b.type];
+  const u = (t - b.spawn) / b.seg;
+  if (u < 0) return null;
+  const S = tileTop(3), sy = S.y - BR;
+  if (u < 3) {
+    const k = Math.floor(u), p = u - k;
+    const a = tileTop(k), c = tileTop(k + 1);
+    const pe = p; // 等速
+    return { x: a.x + (c.x - a.x) * pe, y: a.y - BR + (c.y - a.y) * pe - Math.sin(Math.PI * p) * T.hop, s: k === 0 ? Math.min(1, u * 4 + 0.2) : 1 };
+  }
+  // 4区間目：レールの端から 指先へ
+  const fx = (p) => S.x + (CATCH.x - S.x) * p;
+  const fy = (p) => sy + (CATCH.y - sy) * p * p - 46 * p * (1 - p);
+  if (u < 4 || !b.judged || (b.judged !== 'm' && t < b.jt)) { const p = Math.min(u - 3, 1.0); return { x: fx(p), y: fy(p), s: 1 }; }
+  if (b.judged === 'm') {
+    // とれなかった：そのまま落ちて、床ではねる
+    const q = u - 4, vx = CATCH.x - S.x, vy = 2 * (CATCH.y - sy) + 46;
+    let x = CATCH.x + vx * q, y = CATCH.y + vy * q + 1300 * q * q;
+    const floor = 905;
+    if (y > floor) y = floor - Math.abs(Math.sin((y - floor) / 60)) * 30;
+    return { x, y, s: 1, fade: Math.max(0, 1 - (t - b.jt) / 1.2) };
+  }
+  // とれた：指にはさまったあと、右上のカゴへ
+  const dt = t - b.jt;
+  if (dt < 0.18) return { x: CATCH.x, y: CATCH.y, s: 1, held: true };
+  const p = Math.min(1, (dt - 0.18) / 0.45);
+  if (p >= 1) return null;
+  const e = p * p;
+  return { x: CATCH.x + (468 - CATCH.x) * e, y: CATCH.y + (96 - CATCH.y) * e - Math.sin(Math.PI * p) * 120, s: 1 - p * 0.5 };
+}
+
+// ===== 描画 =====
+let paper = null;
+function makePaper() {
+  paper = document.createElement('canvas'); paper.width = W; paper.height = H;
+  const p = paper.getContext('2d');
+  const gr = p.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#cfd3bd'); gr.addColorStop(1, '#b9bea4');
+  p.fillStyle = gr; p.fillRect(0, 0, W, H);
+  for (let i = 0; i < 2600; i++) { p.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '60,60,40'},${Math.random() * 0.05})`; p.fillRect(Math.random() * W, Math.random() * H, 2, 2); }
+  // 床
+  p.fillStyle = 'rgba(80,85,60,0.12)'; p.fillRect(0, 880, W, 80);
+  p.strokeStyle = 'rgba(43,43,43,0.25)'; p.lineWidth = 3; p.beginPath(); p.moveTo(0, 880); p.lineTo(W, 880); p.stroke();
+}
+makePaper();
+
+function rr(x, y, w, h, r) { g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); }
+function txt(s, x, y, size, col, align = 'center', weight = 800, stroke = null) {
+  g.font = `${weight} ${size}px ${FONT}`; g.textAlign = align; g.textBaseline = 'middle';
+  if (stroke) { g.lineWidth = size / 5; g.strokeStyle = stroke; g.lineJoin = 'round'; g.strokeText(s, x, y); }
+  g.fillStyle = col; g.fillText(s, x, y);
+}
+
+function drawRail(t, glow) {
+  // 柱とランプ
+  const base = { x: 222, y: 860 };
+  g.lineWidth = 4; g.strokeStyle = INK;
+  g.fillStyle = '#6d706b';
+  g.beginPath(); g.ellipse(base.x, base.y, 70, 18, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+  g.fillStyle = '#80837d';
+  g.beginPath(); g.moveTo(base.x - 46, base.y - 4); g.lineTo(base.x - 14, base.y - 120); g.lineTo(base.x + 14, base.y - 120); g.lineTo(base.x + 46, base.y - 4); g.closePath(); g.fill(); g.stroke();
+  g.fillStyle = '#9a9d96'; rr(base.x - 9, 400, 18, base.y - 516, 4); g.fill(); g.stroke();
+  // レール
+  for (let i = 0; i < TILES; i++) {
+    const c = tileTop(i), th = 16, ax = TSTEP.x / 2, ay = TSTEP.y / 2, vx = 14, vy = -24;
+    // 奥の左, 奥の右, 手前の右, 手前の左
+    const pts = [[c.x - ax + vx, c.y - ay + vy + 12], [c.x + ax + vx, c.y + ay + vy + 12], [c.x + ax - vx, c.y + ay - vy - 12], [c.x - ax - vx, c.y - ay - vy - 12]];
+    // 横の面（手前と右の切り口）
+    g.fillStyle = '#4c4e4a';
+    g.beginPath(); g.moveTo(pts[3][0], pts[3][1]); g.lineTo(pts[2][0], pts[2][1]); g.lineTo(pts[2][0], pts[2][1] + th); g.lineTo(pts[3][0], pts[3][1] + th); g.closePath(); g.fill(); g.stroke();
+    if (i === TILES - 1) { g.fillStyle = '#3d3f3b'; g.beginPath(); g.moveTo(pts[1][0], pts[1][1]); g.lineTo(pts[2][0], pts[2][1]); g.lineTo(pts[2][0], pts[2][1] + th); g.lineTo(pts[1][0], pts[1][1] + th); g.closePath(); g.fill(); g.stroke(); }
+    // 上の面
+    const lit = i === 3 ? glow : 0;
+    g.fillStyle = lit > 0.01 ? `rgb(${140 + 115 * lit},${142 + 60 * lit},${138 - 40 * lit})` : '#8e908b';
+    g.beginPath(); pts.forEach((q, j) => j ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])); g.closePath(); g.fill(); g.stroke();
+    if (lit > 0.01) {
+      const rg = g.createRadialGradient(c.x, c.y, 2, c.x, c.y, 60);
+      rg.addColorStop(0, `rgba(255,190,90,${0.55 * lit})`); rg.addColorStop(1, 'rgba(255,190,90,0)');
+      g.fillStyle = rg; g.fillRect(c.x - 70, c.y - 70, 140, 140);
+    }
+  }
+  // 出口のランプ
+  const lp = { x: TILE0.x - 30, y: TILE0.y - 46 };
+  let flash = 0, fcol = '#fff7d6';
+  for (const b of balls) { const d = t - b.spawn; if (d >= 0 && d < 0.25) { const f = 1 - d / 0.25; if (f > flash) { flash = f; fcol = TYPES[b.type].col; } } }
+  g.lineWidth = 4; g.strokeStyle = INK;
+  g.fillStyle = '#6d706b'; g.beginPath(); g.moveTo(lp.x, lp.y + 16); g.lineTo(lp.x + 10, lp.y + 44); g.stroke();
+  if (flash > 0) {
+    const rg = g.createRadialGradient(lp.x, lp.y, 4, lp.x, lp.y, 70);
+    rg.addColorStop(0, hexA(fcol, 0.7 * flash)); rg.addColorStop(1, hexA(fcol, 0));
+    g.fillStyle = rg; g.fillRect(lp.x - 80, lp.y - 80, 160, 160);
+  }
+  g.fillStyle = flash > 0 ? fcol : '#e9eadf';
+  g.beginPath(); g.arc(lp.x, lp.y, 15, 0, Math.PI * 2); g.fill(); g.stroke();
+  g.fillStyle = 'rgba(255,255,255,0.8)'; g.beginPath(); g.arc(lp.x - 5, lp.y - 5, 4, 0, Math.PI * 2); g.fill();
+}
+function hexA(h, a) { const n = parseInt(h.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+
+function drawBall(p, type, a = 1) {
+  const T = TYPES[type]; const r = BR * (p.s || 1);
+  g.save(); g.globalAlpha = a;
+  g.fillStyle = 'rgba(0,0,0,0.12)';
+  g.lineWidth = 3.5; g.strokeStyle = INK;
+  g.fillStyle = T.col; g.beginPath(); g.arc(p.x, p.y, r, 0, Math.PI * 2); g.fill(); g.stroke();
+  g.fillStyle = T.dark; g.beginPath(); g.arc(p.x + r * 0.15, p.y + r * 0.15, r * 0.72, 0.1, Math.PI * 0.9); g.globalAlpha = a * 0.35; g.fill(); g.globalAlpha = a;
+  g.fillStyle = 'rgba(255,255,255,0.9)'; g.beginPath(); g.ellipse(p.x - r * 0.35, p.y - r * 0.4, r * 0.28, r * 0.18, -0.6, 0, Math.PI * 2); g.fill();
+  g.restore();
+}
+
+function drawHand(t) {
+  const since = t - pinch;
+  const closed = since < 0.09 ? 1 : since < 0.2 ? 1 - (since - 0.09) / 0.11 : 0;
+  g.save(); g.translate(HAND.x, HAND.y); g.rotate(HAND.rot); g.scale(HAND.s, HAND.s);
+  g.lineWidth = 4.5; g.strokeStyle = INK; g.lineJoin = 'round';
+  // そで
+  g.fillStyle = '#26262b';
+  g.beginPath(); g.moveTo(-58, 30); g.lineTo(62, 30); g.lineTo(110, 330); g.lineTo(-40, 330); g.closePath(); g.fill(); g.stroke();
+  g.strokeStyle = '#4a4a52'; g.lineWidth = 3; g.beginPath(); g.moveTo(-50, 48); g.lineTo(60, 48); g.stroke();
+  g.strokeStyle = INK; g.lineWidth = 4.5;
+  // 指（人さし指・中指）
+  const skin = '#f7dcc6', skinD = '#e7bea2';
+  const ang = 0.24 * (1 - closed) + 0.035;
+  for (const sgn of [1, -1]) {
+    g.save(); g.translate(sgn * 13, -40); g.rotate(sgn * ang);
+    g.fillStyle = skin; rr(-12, -112, 24, 120, 12); g.fill(); g.stroke();
+    g.strokeStyle = skinD; g.lineWidth = 2.5;
+    g.beginPath(); g.moveTo(-6, -58); g.lineTo(6, -58); g.moveTo(-6, -30); g.lineTo(6, -30); g.stroke();
+    g.fillStyle = '#fbeee4'; rr(-7, -108, 14, 18, 7); g.fill();
+    g.restore(); g.strokeStyle = INK; g.lineWidth = 4.5;
+  }
+  // にぎった手
+  g.fillStyle = skin; rr(-48, -54, 96, 92, 30); g.fill(); g.stroke();
+  // 薬指・小指・親指
+  g.strokeStyle = skinD; g.lineWidth = 3;
+  g.beginPath(); g.arc(-8, -30, 14, Math.PI * 0.1, Math.PI * 0.9); g.stroke();
+  g.beginPath(); g.arc(18, -24, 12, Math.PI * 0.1, Math.PI * 0.9); g.stroke();
+  g.strokeStyle = INK; g.lineWidth = 4.5;
+  g.fillStyle = skin; rr(-56, -20, 52, 30, 15); g.fill(); g.stroke();
+  g.restore();
+}
+
+function drawPhoneFrame() {
+  if (!phone) return;
+  const pad = 26, x = -pad, y = -pad - 34, w = W + pad * 2, h = H + pad * 2 + 34 + 120;
+  g.fillStyle = '#f2c51c'; g.strokeStyle = INK; g.lineWidth = 6;
+  rr(x, y, w, h, 46); g.fill(); g.stroke();
+  g.fillStyle = 'rgba(255,255,255,0.25)'; rr(x + 10, y + 10, w - 20, 26, 13); g.fill();
+  g.fillStyle = INK; rr(W / 2 - 50, y + 14, 100, 10, 5); g.fill();
+  g.fillStyle = '#ffe36b'; g.beginPath(); g.arc(W / 2, H + 72, 30, 0, Math.PI * 2); g.fill(); g.stroke();
+  g.fillStyle = '#7bb03a'; g.beginPath(); g.ellipse(W / 2 + 8, H + 52, 10, 5, -0.5, 0, Math.PI * 2); g.fill();
+}
+
+function drawScene(t) {
+  g.drawImage(paper, 0, 0);
+  let glow = 0;
+  for (const b of balls) { const u = (t - b.spawn) / b.seg; if (u > 2.5 && u < 3.25) glow = Math.max(glow, u < 3 ? (u - 2.5) * 2 : 1 - (u - 3) * 4); }
+  drawRail(t, glow);
+  // 「おまえ」
+  txt('おまえ', 250, 640, 24, INK, 'center', 800);
+  // 玉（とれなかった玉は手の後ろ、指にはさまった玉は指の間）
+  const held = [];
+  for (const b of balls) {
+    const p = ballPos(b, t); if (!p) continue;
+    if (p.held) { held.push([p, b]); continue; }
+    drawBall(p, b.type, p.fade === undefined ? 1 : p.fade);
+  }
+  drawHand(t);
+  for (const [p, b] of held) drawBall(p, b.type);
+  // 粒
+  for (const q of parts) {
+    const d = t - q.t; if (d > 0.5) continue;
+    g.fillStyle = q.col; g.globalAlpha = 1 - d / 0.5;
+    g.beginPath(); g.arc(q.x + q.vx * d, q.y + q.vy * d + 600 * d * d, 5, 0, Math.PI * 2); g.fill();
+    g.globalAlpha = 1;
+  }
+  parts = parts.filter(q => t - q.t < 0.5);
+  // 判定の文字
+  for (const p of pops) {
+    const d = t - p.t; if (d > 0.6) continue;
+    g.globalAlpha = 1 - Math.max(0, d - 0.35) / 0.25;
+    txt(p.text, CATCH.x - 90, CATCH.y - 70 - d * 60, 40, p.col, 'center', 800, '#fff');
+    g.globalAlpha = 1;
+  }
+  pops = pops.filter(p => t - p.t < 0.6);
+}
+
+function drawHUD(t) {
+  // 上の帯
+  g.fillStyle = 'rgba(43,43,43,0.85)'; rr(16, 18, 140, 48, 24); g.fill();
+  txt(lv.name, 86, 43, 26, '#fff');
+  // カゴ
+  g.lineWidth = 4; g.strokeStyle = INK; g.fillStyle = '#d9a25a';
+  g.beginPath(); g.moveTo(436, 86); g.lineTo(500, 86); g.lineTo(492, 124); g.lineTo(444, 124); g.closePath(); g.fill(); g.stroke();
+  txt(String(score.p + score.o), 468, 148, 22, INK);
+  // 進み具合
+  const pr = Math.max(0, Math.min(1, (t - t0) / (endTime - t0)));
+  g.fillStyle = 'rgba(43,43,43,0.2)'; rr(176, 36, 230, 12, 6); g.fill();
+  g.fillStyle = '#ff6fb1'; rr(176, 36, 230 * pr, 12, 6); g.fill();
+  if (combo >= 5) txt(combo + ' れんぞく', 290, 74, 20, '#c23d7f', 'center', 800, '#fff');
+  // カウント
+  const cb = (t - t0) / spb;
+  if (cb < 0 && cb >= -4) {
+    const n = Math.ceil(-cb), f = (-cb) % 1;
+    txt(n === 4 ? 'よーい' : String(n), W / 2, 220, n === 4 ? 56 : 90, '#fff', 'center', 800, INK);
+  }
+  if (t < t0 + 6 * spb && lv.i <= 2) {
+    const tip = lv.i === 0 ? 'ころころ… ポン で つまむ！' : lv.i === 1 ? 'あおは はやい！' : 'きいろは ゆっくり';
+    txt(tip, W / 2, 560, 24, INK, 'center', 800, '#fff');
+  }
+}
+
+function drawTitle(t) {
+  g.drawImage(paper, 0, 0);
+  // 飾りの玉
+  balls = []; drawRail(t, 0.5 + 0.5 * Math.sin(t * 3));
+  for (let i = 0; i < 3; i++) {
+    const u = ((t * 1.2 + i * 1.333) % 4);
+    const fake = { type: 'pby'[i], spawn: t - u * 0.5, seg: 0.5, judged: 'p', jt: t + 1 };
+    if (u < 3.6) { const p = ballPos(fake, t); if (p) drawBall(p, fake.type, u > 3.3 ? (3.6 - u) / 0.3 : 1); }
+  }
+  pinch = (t % 2 > 1.78) ? t - 0.02 : -9; drawHand(t);
+  txt('つまんで！', W / 2, 120, 54, '#fff', 'center', 800, INK);
+  txt('ピンポン', W / 2, 188, 74, '#ff6fb1', 'center', 800, INK);
+  buttons = [];
+  LEVELS.forEach((L, i) => {
+    const x = 40, y = 476 + i * 92, w = 300, h = 76;
+    const hard = i === 3;
+    g.fillStyle = hard ? '#2b2b2b' : '#fffdf4'; g.strokeStyle = INK; g.lineWidth = 4;
+    rr(x, y, w, h, 20); g.fill(); g.stroke();
+    txt(L.name, x + 24, y + 38, 32, hard ? '#ff6fb1' : INK, 'left');
+    txt(L.sub, x + w - 18, y + 38, 20, hard ? '#fff' : '#555', 'right', 500);
+    if (best[L.name] !== undefined) txt('★' + best[L.name], x + w + 12, y + 38, 18, INK, 'left', 800);
+    buttons.push({ x, y, w, h, fn: () => startLevel(i) });
+  });
+  txt('タップ / スペース で つまむ', W / 2, 912, 20, '#555', 'center', 500);
+}
+
+function drawResult(t) {
+  drawScene(t);
+  g.fillStyle = 'rgba(30,30,30,0.55)'; g.fillRect(0, 0, W, H);
+  const d = t - resultAt, r = rate();
+  g.fillStyle = '#fffdf4'; g.strokeStyle = INK; g.lineWidth = 5;
+  const by = 170 + Math.max(0, 1 - d * 4) * 80;
+  rr(50, by, W - 100, 560, 30); g.fill(); g.stroke();
+  txt(lv.name + ' の けっか', W / 2, by + 50, 28, INK);
+  const rank = r >= 90 ? ['かんぺき！', '#ff4f8b'] : r >= 70 ? ['いいかんじ', '#e08a00'] : r >= 40 ? ['まあまあ', '#5a7d2b'] : ['もういっかい', '#777'];
+  if (d > 0.5) txt(rank[0], W / 2, by + 140, 62, rank[1], 'center', 800, '#fff');
+  txt(r + ' てん', W / 2, by + 220, 40, INK);
+  txt('ピタッ ' + score.p + '　はやい/おそい ' + score.o + '　スカッ ' + score.m, W / 2, by + 280, 19, '#444', 'center', 500);
+  txt('さいだい ' + maxCombo + ' れんぞく', W / 2, by + 316, 19, '#444', 'center', 500);
+  if (lv.i === 3 && r < 40 && d > 0.8) txt('おまえ……', W / 2, by + 360, 22, '#777', 'center', 500);
+  buttons = [];
+  const bt = (label, x, fn, dark) => {
+    g.fillStyle = dark ? INK : '#fff'; g.strokeStyle = INK; g.lineWidth = 4; rr(x, by + 420, 190, 76, 20); g.fill(); g.stroke();
+    txt(label, x + 95, by + 458, 26, dark ? '#fff' : INK);
+    buttons.push({ x, y: by + 420, w: 190, h: 76, fn });
+  };
+  bt('もういちど', 80, () => startLevel(lv.i), true);
+  bt('もどる', 270, () => { scene = 'title'; });
+}
+
+function frame() {
+  update();
+  const t = now();
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#2a2a2e'; g.fillRect(0, 0, innerWidth, innerHeight);
+  g.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * ox, dpr * oy);
+  drawPhoneFrame();
+  g.save(); rr(0, 0, W, H, phone ? 14 : 0); g.clip();
+  if (scene === 'title') drawTitle(t);
+  else if (scene === 'play') { drawScene(t); drawHUD(t); }
+  else drawResult(t);
+  g.restore();
+  requestAnimationFrame(frame);
+}
+document.fonts && document.fonts.ready.then(() => {});
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
