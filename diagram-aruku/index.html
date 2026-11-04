@@ -98,6 +98,182 @@ svg text{font-family:"Zen Maru Gothic",sans-serif;font-weight:700}
     <section class="card subs" id="subs"></section>
   </div>
 </main>
+<script>/*TCAM-BEGIN*/// 先生の手で「つぎへ／もどる」: カメラで上半身を見て、右手をあげたら onNext、左手をあげたら onPrev。
+// 使い方: TeacherCam.init({ onNext(), onPrev() })。ページの右上に「📷 カメラでそうさ」ボタンが出る。
+// 「右手・左手」は 先生ご自身の右手・左手。カメラを向いているとき（標準）は 画像の左がわ、カメラに背を向けているときは 画像の右がわが 右手。
+// 背中がわからだと 関節の「右・左」の名前が あてにならないので、名前は使わず 画像の左右で 見分ける。
+(function(){
+'use strict';
+const MP_VER = '0.10.14';
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
+const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+// up：手首が肩より 肩はば の何倍 高ければ「あげた」か。hold：その状態を 何秒 つづけたら 反応するか
+const LEVELS = { easy: { up: 0.35, hold: 0.3 }, normal: { up: 0.6, hold: 0.45 }, firm: { up: 0.9, hold: 0.7 } };
+const COOL = 1.0;        // 一度 反応したあと、つぎに反応するまでの最短秒数
+const REARM_LOW = 0.2;   // 手を 肩の高さ（のこり この倍率）より 下げて この秒数たったら、つぎを受けつける
+const REARM_SEC = 0.25;
+
+const TC = { level: 'normal', facing: 'front', on: false, status: 'off', prog: { R: 0, L: 0 } };
+try { const sv = JSON.parse(localStorage.getItem('tcam') || '{}'); if (sv.level) TC.level = sv.level; if (sv.facing) TC.facing = sv.facing; } catch (e){}
+function save(){ try { localStorage.setItem('tcam', JSON.stringify({ level: TC.level, facing: TC.facing })); } catch (e){} }
+let opt = {}, video = null, pose = null, panel = null, cvs = null, ctx = null, stream = null, lastVT = -1, showPanel = true;
+const side = () => ({ since: null, armed: true, lowSince: null });
+const S = { R: side(), L: side() };
+let coolUntil = 0;
+
+// lm: MediaPipe の33関節。t: 秒。asp: 映像の横÷縦。戻り値: 'nobody' | 'both' | 'ok'
+TC.feed = function(lm, t, asp){
+  asp = asp || 4 / 3;
+  const ls = lm[11], rs = lm[12];
+  const vis = p => p && (p.visibility == null ? 1 : p.visibility);
+  if (!ls || !rs || vis(ls) < 0.5 || vis(rs) < 0.5){ reset(); TC.status = 'nobody'; return 'nobody'; }
+  const u = Math.max(0.04, Math.hypot((ls.x - rs.x) * asp, ls.y - rs.y));   // 肩はば
+  const L = LEVELS[TC.level];
+  // 背中がわから見ると 関節の「右・左」の名前が 入れかわることがあるので、名前は 使わない。
+  // 肩に近いほうの がわ（画像の左／右）で 手を 分ける。
+  const shL = ls.x <= rs.x ? ls : rs, shR = ls.x <= rs.x ? rs : ls;      // 画像の左がわの肩・右がわの肩
+  const img = { L: { raised: false, low: true }, R: { raised: false, low: true } };
+  [lm[15], lm[16]].forEach(w => {
+    if (!w || vis(w) < 0.5) return;
+    const k = Math.abs(w.x - shL.x) <= Math.abs(w.x - shR.x) ? 'L' : 'R';
+    const h = ((k === 'L' ? shL : shR).y - w.y) / u;                       // 肩より どれだけ上か（肩はば単位）
+    if (h > L.up) img[k].raised = true;
+    if (h >= REARM_LOW) img[k].low = false;
+  });
+  TC.status = 'ok';
+  // 背を向けているとき：画像の右＝先生の右手。カメラを向いているとき：画像の左＝先生の右手
+  const back = TC.facing === 'back';
+  const Rt = back ? img.R : img.L, Lf = back ? img.L : img.R;
+  if (Rt.raised && Lf.raised){ resetHold(); TC.prog.R = TC.prog.L = 0; TC.status = 'both'; return 'both'; }
+  step('R', Rt, t, L.hold, () => opt.onNext && opt.onNext());
+  step('L', Lf, t, L.hold, () => opt.onPrev && opt.onPrev());
+  return 'ok';
+};
+function step(k, inf, t, hold, fire){
+  const s = S[k];
+  if (inf.raised){
+    s.lowSince = null;
+    if (s.since == null) s.since = t;
+    const held = t - s.since;
+    TC.prog[k] = s.armed ? Math.min(1, held / hold) : 0;
+    if (s.armed && held >= hold && t >= coolUntil){
+      s.armed = false; coolUntil = t + COOL; flash(k === 'R' ? '▶ つぎへ' : '◀ もどる');
+      try { fire(); } catch (e){ console.error(e); }
+    }
+  }else{
+    s.since = null; TC.prog[k] = 0;
+    if (inf.low){ if (s.lowSince == null) s.lowSince = t; if (t - s.lowSince >= REARM_SEC) s.armed = true; }
+    else s.lowSince = null;
+  }
+}
+function resetHold(){ S.R.since = S.L.since = null; }
+function reset(){ resetHold(); TC.prog.R = TC.prog.L = 0; }
+
+/* ---------- 画面の部品 ---------- */
+function el(tag, css, html){ const e = document.createElement(tag); if (css) e.style.cssText = css; if (html != null) e.innerHTML = html; return e; }
+let flashEl = null, flashTimer = 0;
+function flash(text){
+  if (!flashEl){ flashEl = el('div', 'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:9700;background:#2b2a33e6;color:#fff;font:900 44px "Zen Maru Gothic",sans-serif;padding:10px 34px;border-radius:999px;pointer-events:none;opacity:0;transition:opacity .15s'); document.body.appendChild(flashEl); }
+  flashEl.textContent = text; flashEl.style.opacity = '1';
+  clearTimeout(flashTimer); flashTimer = setTimeout(() => { flashEl.style.opacity = '0'; }, 800);
+}
+function buildPanel(){
+  panel = el('div', 'position:fixed;right:12px;bottom:12px;z-index:9600;width:260px;background:#fffffff2;color:#2b2a33;border:2px solid #2b2a33;border-radius:16px;padding:8px 10px;font:700 13px "Zen Maru Gothic",sans-serif;box-shadow:0 6px 20px #0003');
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;justify-content:space-between"><b style="font-size:14px">📷 先生の手で そうさ</b>
+      <span><button id="tcHide" style="${bs}">かくす</button> <button id="tcStop" style="${bs}">とめる</button></span></div>
+    <div id="tcBody"><canvas id="tcCv" width="240" height="180" style="width:100%;border-radius:10px;background:#222;margin-top:6px;display:block"></canvas>
+      <div style="display:flex;gap:6px;margin-top:6px"><div style="flex:1"><div>◀ 左手 → もどる</div><div style="height:7px;background:#ddd;border-radius:4px"><i id="tcL" style="display:block;height:7px;width:0;background:#2f6fed;border-radius:4px"></i></div></div>
+      <div style="flex:1"><div>右手 → つぎへ ▶</div><div style="height:7px;background:#ddd;border-radius:4px"><i id="tcR" style="display:block;height:7px;width:0;background:#ef7d00;border-radius:4px"></i></div></div></div>
+      <div id="tcMsg" style="margin-top:6px;min-height:2.6em;color:#555"></div>
+      <div style="margin-top:4px">先生の向き：<select id="tcFace" style="font:inherit"><option value="front">カメラを 向く（ふつう）</option><option value="back">カメラに 背を向ける</option></select></div>
+      <div style="margin-top:4px">反応：<select id="tcLv" style="font:inherit"><option value="easy">かんたん</option><option value="normal">ふつう</option><option value="firm">しっかり</option></select></div></div>`;
+  document.body.appendChild(panel);
+  cvs = panel.querySelector('#tcCv'); ctx = cvs.getContext('2d');
+  panel.querySelector('#tcStop').onclick = TC.stop;
+  panel.querySelector('#tcHide').onclick = () => { showPanel = !showPanel; panel.querySelector('#tcBody').style.display = showPanel ? '' : 'none'; panel.querySelector('#tcHide').textContent = showPanel ? 'かくす' : 'みせる'; };
+  panel.querySelector('#tcLv').value = TC.level; panel.querySelector('#tcFace').value = TC.facing;
+  panel.querySelector('#tcLv').onchange = e => { TC.level = e.target.value; save(); };
+  panel.querySelector('#tcFace').onchange = e => { TC.facing = e.target.value; save(); S.R = side(); S.L = side(); };
+}
+const bs = 'font:700 12px inherit;border:1.5px solid #2b2a33;background:#fff;border-radius:999px;padding:1px 9px;cursor:pointer';
+function say(t){ const m = panel && panel.querySelector('#tcMsg'); if (m) m.textContent = t; }
+
+const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24]];
+function draw(lm){
+  const w = cvs.width, h = cvs.height, back = TC.facing === 'back';
+  ctx.save(); ctx.clearRect(0, 0, w, h);
+  if (!back){ ctx.translate(w, 0); ctx.scale(-1, 1); }     // カメラを向いているときは 鏡うつし。背を向けているときは そのまま
+  ctx.drawImage(video, 0, 0, w, h);
+  ctx.restore();
+  if (lm){
+    const P = p => [(back ? p.x : 1 - p.x) * w, p.y * h];
+    ctx.lineWidth = 3; ctx.strokeStyle = '#ffffffcc';
+    BONES.forEach(([a, b]) => { if (lm[a] && lm[b]){ const A = P(lm[a]), B = P(lm[b]); ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke(); } });
+    const mid = P({ x: ((lm[11] || {}).x + (lm[12] || {}).x) / 2, y: 0 })[0];
+    [15, 16].forEach(i => {
+      const p = lm[i]; if (!p || (p.visibility != null && p.visibility < 0.5)) return;
+      const [x, y] = P(p), right = x > mid;                // 画面の右がわ＝先生の右手（どちらの向きでも）
+      ctx.fillStyle = right ? '#ef7d00' : '#2f6fed'; ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(right ? '右' : '左', x, y + 4);
+    });
+  }
+  panel.querySelector('#tcR').style.width = (TC.prog.R * 100) + '%';
+  panel.querySelector('#tcL').style.width = (TC.prog.L * 100) + '%';
+}
+function loop(){
+  if (!TC.on) return;
+  requestAnimationFrame(loop);
+  if (!video || video.readyState < 2 || video.currentTime === lastVT) return;
+  lastVT = video.currentTime;
+  let lm = null;
+  try { const r = pose.detectForVideo(video, performance.now()); lm = r && r.landmarks && r.landmarks[0]; } catch (e){ return; }
+  const asp = (video.videoWidth || 640) / (video.videoHeight || 480);
+  if (lm) TC.feed(lm, performance.now() / 1000, asp); else { reset(); TC.status = 'nobody'; }
+  if (showPanel) draw(lm);
+  if (TC.status === 'nobody') say('からだが 見えません。カメラに 上半身（かたと 手）が うつる所に 立ってね。');
+  else if (TC.status === 'both') say('りょう手が あがっています。どちらか 片手だけ あげてね。');
+  else say('先生の 右手を あげる → つぎへ ／ 左手を あげる → もどる。あげたまま 少し まってね。');
+}
+TC.start = async function(){
+  if (TC.on) return true;
+  if (!panel) buildPanel();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ say('この ひらきかたでは カメラを つかえません。https（公開ページ）か localhost で ひらいてください。'); return false; }
+  say('カメラを じゅんび中…');
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } }); }
+  catch (e){ say('カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'); return false; }
+  video = el('video'); video.playsInline = true; video.muted = true; video.srcObject = stream; await video.play();
+  say('先生の手を 見る じゅんび中…（はじめは 少し かかります）');
+  let err = null;
+  for (let n = 0; n < 2 && !pose; n++){
+    try {
+      const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
+      const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
+      const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
+      try { pose = await make('GPU'); } catch (e){ pose = await make('CPU'); }
+    } catch (e){ err = e; console.error(e); }
+  }
+  if (!pose){ say('手を 見る しくみを よみこめませんでした。ネットに つながっているか たしかめて、もういちど おしてね。'); stopStream(); return false; }
+  TC.on = true; lastVT = -1; S.R = side(); S.L = side(); coolUntil = 0; requestAnimationFrame(loop);
+  if (btn) btn.textContent = '📷 カメラ そうさ中';
+  return true;
+};
+function stopStream(){ if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; } }
+TC.stop = function(){
+  TC.on = false; stopStream();
+  if (panel){ panel.remove(); panel = null; }
+  if (btn) btn.textContent = '📷 カメラで そうさ';
+};
+let btn = null;
+TC.init = function(o){
+  opt = o || {};
+  btn = el('button', 'position:fixed;right:12px;top:10px;z-index:9500;font:900 14px "Zen Maru Gothic",sans-serif;border:2px solid #2b2a33;background:#fff;color:#2b2a33;border-radius:999px;padding:6px 14px;cursor:pointer;box-shadow:0 2px 8px #0002', '📷 カメラで そうさ');
+  btn.onclick = () => { if (TC.on) TC.stop(); else TC.start(); };
+  document.body.appendChild(btn);
+};
+window.TeacherCam = TC;
+})();
+/*TCAM-END*/</script>
 <script>
 const DATA=[{"id": 1, "title": "おいかける", "stars": 1, "text": "姉は 家から 学校へ 歩いて向かいました。妹は 姉が出発した 12分後に 同じ道を おいかけました。グラフは そのようすです。（家から学校まで 2400m）", "a": "家", "b": "学校", "ea": "🏠", "eb": "🏫", "L": 2400, "tmax": 30, "xmax": 2400, "xstep": 300, "persons": [{"name": "姉", "pts": [[0, 0], [30, 2400]]}, {"name": "妹", "pts": [[12, 0], [27, 2400]]}], "events": [{"t": 12, "text": "妹が 出発！", "at": "（姉は 960m　妹は 0m）"}, {"t": 24, "text": "妹が 姉に おいついた！　24分のとき、家から 1920m の ところ。", "at": "（姉は 1920m　妹は 1920m）"}, {"t": 27, "text": "妹が 学校に 着いた！", "at": "（姉は 2160m　妹は 2400m）"}, {"t": 30, "text": "姉が 学校に 着いた！", "at": "（姉は 2400m　妹は 2400m）"}], "subs": [{"q": "姉の速さは 分速何mですか。", "ans": "分速80m", "sol": "グラフで 30分のとき 2400m。2400÷30＝80", "focus": {"type": "seg", "who": 0, "t0": 0, "t1": 30, "label": "speed"}}, {"q": "妹の速さは 分速何mですか。", "ans": "分速160m", "sol": "グラフで 妹の線は 12分から 27分まで。27−12＝15分で 2400m 進む。2400÷15＝160", "focus": {"type": "seg", "who": 1, "t0": 12, "t1": 27, "label": "speed"}}, {"q": "妹が 姉においつくのは、妹が出発してから 何分後ですか。", "ans": "12分後", "sol": "妹が出発したとき 姉は 80×12＝960m 先。1分に 160−80＝80m 近づく。960÷80＝12分後（グラフでは 2本の線が 交わる点）", "focus": {"type": "pt", "t": 24, "x": 1920}}, {"q": "(3)のとき、出発地点から 何mの地点ですか。", "ans": "1920m", "sol": "160×12＝1920m", "focus": {"type": "pt", "t": 24, "x": 1920}}, {"q": "妹が 学校に着いたとき、姉は 学校の何m手前にいますか。", "ans": "240m", "sol": "妹が着くのは 姉の出発から 27分後。姉は 80×27＝2160m。2400−2160＝240m", "focus": {"type": "time", "t": 27, "who": 1}}]}, {"id": 2, "title": "おいかける", "stars": 1, "text": "兄は 家から 学校へ 歩いて向かいました。弟は 兄が出発した 8分後に 同じ道を おいかけました。グラフは そのようすです。（家から学校まで 1500m）", "a": "家", "b": "学校", "ea": "🏠", "eb": "🏫", "L": 1500, "tmax": 30, "xmax": 1500, "xstep": 300, "persons": [{"name": "兄", "pts": [[0, 0], [30, 1500]]}, {"name": "弟", "pts": [[8, 0], [18, 1500]]}], "events": [{"t": 8, "text": "弟が 出発！", "at": "（兄は 400m　弟は 0m）"}, {"t": 12, "text": "弟が 兄に おいついた！　12分のとき、家から 600m の ところ。", "at": "（兄は 600m　弟は 600m）"}, {"t": 18, "text": "弟が 学校に 着いた！", "at": "（兄は 900m　弟は 1500m）"}, {"t": 30, "text": "兄が 学校に 着いた！", "at": "（兄は 1500m　弟は 1500m）"}], "subs": [{"q": "兄の速さは 分速何mですか。", "ans": "分速50m", "sol": "グラフで 30分のとき 1500m。1500÷30＝50", "focus": {"type": "seg", "who": 0, "t0": 0, "t1": 30, "label": "speed"}}, {"q": "弟の速さは 分速何mですか。", "ans": "分速150m", "sol": "グラフで 弟の線は 8分から 18分まで。18−8＝10分で 1500m 進む。1500÷10＝150", "focus": {"type": "seg", "who": 1, "t0": 8, "t1": 18, "label": "speed"}}, {"q": "弟が 兄においつくのは、弟が出発してから 何分後ですか。", "ans": "4分後", "sol": "弟が出発したとき 兄は 50×8＝400m 先。1分に 150−50＝100m 近づく。400÷100＝4分後（グラフでは 2本の線が 交わる点）", "focus": {"type": "pt", "t": 12, "x": 600}}, {"q": "(3)のとき、出発地点から 何mの地点ですか。", "ans": "600m", "sol": "150×4＝600m", "focus": {"type": "pt", "t": 12, "x": 600}}, {"q": "弟が 学校に着いたとき、兄は 学校の何m手前にいますか。", "ans": "600m", "sol": "弟が着くのは 兄の出発から 18分後。兄は 50×18＝900m。1500−900＝600m", "focus": {"type": "time", "t": 18, "who": 1}}]}, {"id": 3, "title": "おいかける", "stars": 2, "text": "太一君は 家から 学校へ 歩いて向かいました。健太君は 太一君が出発した 15分後に 同じ道を おいかけました。グラフは そのようすです。（家から学校まで 2400m）", "a": "家", "b": "学校", "ea": "🏠", "eb": "🏫", "L": 2400, "tmax": 40, "xmax": 2400, "xstep": 300, "persons": [{"name": "太一君", "pts": [[0, 0], [40, 2400]]}, {"name": "健太君", "pts": [[15, 0], [35, 2400]]}], "events": [{"t": 15, "text": "健太君が 出発！", "at": "（太一君は 900m　健太君は 0m）"}, {"t": 30, "text": "健太君が 太一君に おいついた！　30分のとき、家から 1800m の ところ。", "at": "（太一君は 1800m　健太君は 1800m）"}, {"t": 35, "text": "健太君が 学校に 着いた！", "at": "（太一君は 2100m　健太君は 2400m）"}, {"t": 40, "text": "太一君が 学校に 着いた！", "at": "（太一君は 2400m　健太君は 2400m）"}], "subs": [{"q": "太一君の速さは 分速何mですか。", "ans": "分速60m", "sol": "グラフで 40分のとき 2400m。2400÷40＝60", "focus": {"type": "seg", "who": 0, "t0": 0, "t1": 40, "label": "speed"}}, {"q": "健太君の速さは 分速何mですか。", "ans": "分速120m", "sol": "グラフで 健太君の線は 15分から 35分まで。35−15＝20分で 2400m 進む。2400÷20＝120", "focus": {"type": "seg", "who": 1, "t0": 15, "t1": 35, "label": "speed"}}, {"q": "健太君が 太一君においつくのは、健太君が出発してから 何分後ですか。", "ans": "15分後", "sol": "健太君が出発したとき 太一君は 60×15＝900m 先。1分に 120−60＝60m 近づく。900÷60＝15分後（グラフでは 2本の線が 交わる点）", "focus": {"type": "pt", "t": 30, "x": 1800}}, {"q": "(3)のとき、出発地点から 何mの地点ですか。", "ans": "1800m", "sol": "120×15＝1800m", "focus": {"type": "pt", "t": 30, "x": 1800}}, {"q": "健太君が 学校に着いたとき、太一君は 学校の何m手前にいますか。", "ans": "300m", "sol": "健太君が着くのは 太一君の出発から 35分後。太一君は 60×35＝2100m。2400−2100＝300m", "focus": {"type": "time", "t": 35, "who": 1}}]}, {"id": 4, "title": "向かい合う", "stars": 1, "text": "A町とB町は 2400m はなれています。兄は A町から B町へ、弟は B町から A町へ 向かって 歩きます。グラフは そのようすです。グラフの たては A町からの きょりです。（同時に出発）", "a": "A町", "b": "B町", "ea": "🏘️", "eb": "🏘️", "L": 2400, "tmax": 60, "xmax": 2400, "xstep": 300, "persons": [{"name": "兄", "pts": [[0, 0], [30, 2400]]}, {"name": "弟", "pts": [[0, 2400], [60, 0]]}], "events": [{"t": 20, "text": "2人が 出会った！　20分のとき、A町から 1600m の ところ。", "at": "（兄は 1600m　弟は 1600m）"}, {"t": 30, "text": "兄が B町に 着いた！", "at": "（兄は 2400m　弟は 1200m）"}, {"t": 60, "text": "弟が A町に 着いた！", "at": "（兄は 2400m　弟は 0m）"}], "subs": [{"q": "兄の速さは 分速何mですか。", "ans": "分速80m", "sol": "グラフで 兄は 30分で 2400m 進む。2400÷30＝80", "focus": {"type": "seg", "who": 0, "t0": 0, "t1": 30, "label": "speed"}}, {"q": "弟の速さは 分速何mですか。", "ans": "分速40m", "sol": "グラフで 弟は 60分で 2400m 進む。2400÷60＝40", "focus": {"type": "seg", "who": 1, "t0": 0, "t1": 60, "label": "speed"}}, {"q": "2人が 出会うのは、兄が出発してから 何分後ですか。", "ans": "20分後", "sol": "1分に 80＋40＝120m ずつ ちぢまる。2400÷120＝20分後", "focus": {"type": "pt", "t": 20, "x": 1600}}, {"q": "出会うのは A町から 何mの地点ですか。", "ans": "1600m", "sol": "80×20＝1600m", "focus": {"type": "pt", "t": 20, "x": 1600}}, {"q": "兄が B町に 着いたとき、弟は A町まで あと何mですか。", "ans": "1200m", "sol": "兄がつくのは 30分後。弟は 40×30＝1200m 進んだので、A町まで あと 2400−1200＝1200m", "focus": {"type": "time", "t": 30, "who": 0}}]}, {"id": 5, "title": "向かい合う", "stars": 1, "text": "A地点とB地点は 2700m はなれています。兄は A地点から B地点へ、弟は B地点から A地点へ 向かって 歩きます。グラフは そのようすです。グラフの たては A地点からの きょりです。（同時に出発）", "a": "A地点", "b": "B地点", "ea": "📍", "eb": "📍", "L": 2700, "tmax": 45, "xmax": 2700, "xstep": 300, "persons": [{"name": "兄", "pts": [[0, 0], [30, 2700]]}, {"name": "弟", "pts": [[0, 2700], [45, 0]]}], "events": [{"t": 18, "text": "2人が 出会った！　18分のとき、A地点から 1620m の ところ。", "at": "（兄は 1620m　弟は 1620m）"}, {"t": 30, "text": "兄が B地点に 着いた！", "at": "（兄は 2700m　弟は 900m）"}, {"t": 45, "text": "弟が A地点に 着いた！", "at": "（兄は 2700m　弟は 0m）"}], "subs": [{"q": "兄の速さは 分速何mですか。", "ans": "分速90m", "sol": "グラフで 兄は 30分で 2700m 進む。2700÷30＝90", "focus": {"type": "seg", "who": 0, "t0": 0, "t1": 30, "label": "speed"}}, {"q": "弟の速さは 分速何mですか。", "ans": "分速60m", "sol": "グラフで 弟は 45分で 2700m 進む。2700÷45＝60", "focus": {"type": "seg", "who": 1, "t0": 0, "t1": 45, "label": "speed"}}, {"q": "2人が 出会うのは、兄が出発してから 何分後ですか。", "ans": "18分後", "sol": "1分に 90＋60＝150m ずつ ちぢまる。2700÷150＝18分後", "focus": {"type": "pt", "t": 18, "x": 1620}}, {"q": "出会うのは A地点から 何mの地点ですか。", "ans": "1620m", "sol": "90×18＝1620m", "focus": {"type": "pt", "t": 18, "x": 1620}}, {"q": "兄が B地点に 着いたとき、弟は A地点まで あと何mですか。", "ans": "900m", "sol": "兄がつくのは 30分後。弟は 60×30＝1800m 進んだので、A地点まで あと 2700−1800＝900m", "focus": {"type": "time", "t": 30, "who": 0}}]}, {"id": 6, "title": "向かい合う", "stars": 2, "text": "A町とB町は 2700m はなれています。兄は A町から B町へ、弟は B町から A町へ 向かって 歩きます。グラフは そのようすです。グラフの たては A町からの きょりです。（弟は 兄の 10分後に 出発）", "a": "A町", "b": "B町", "ea": "🏘️", "eb": "🏘️", "L": 2700, "tmax": 45, "xmax": 2700, "xstep": 300, "persons": [{"name": "兄", "pts": [[0, 0], [45, 2700]]}, {"name": "弟", "pts": [[10, 2700], [40, 0]]}], "events": [{"t": 10, "text": "弟が 出発！", "at": "（兄は 600m　弟は 2700m）"}, {"t": 24, "text": "2人が 出会った！　24分のとき、A町から 1440m の ところ。", "at": "（兄は 1440m　弟は 1440m）"}, {"t": 40, "text": "弟が A町に 着いた！", "at": "（兄は 2400m　弟は 0m）"}, {"t": 45, "text": "兄が B町に 着いた！", "at": "（兄は 2700m　弟は 0m）"}], "subs": [{"q": "兄の速さは 分速何mですか。", "ans": "分速60m", "sol": "グラフで 兄は 45分で 2700m 進む。2700÷45＝60", "focus": {"type": "seg", "who": 0, "t0": 0, "t1": 45, "label": "speed"}}, {"q": "弟の速さは 分速何mですか。", "ans": "分速90m", "sol": "グラフで 弟の線は 10分から 40分まで。40−10＝30分で 2700m 進む。2700÷30＝90", "focus": {"type": "seg", "who": 1, "t0": 10, "t1": 40, "label": "speed"}}, {"q": "2人が 出会うのは、兄が出発してから 何分後ですか。", "ans": "24分後", "sol": "弟が出発するまでに 兄は 600m 進む。のこり 2100m を 1分に 60＋90＝150m ずつ ちぢめる。2100÷150＝14分。10＋14＝24分後", "focus": {"type": "pt", "t": 24, "x": 1440}}, {"q": "出会うのは A町から 何mの地点ですか。", "ans": "1440m", "sol": "60×24＝1440m", "focus": {"type": "pt", "t": 24, "x": 1440}}, {"q": "弟が A町に 着いたとき、兄は B町まで あと何mですか。", "ans": "300m", "sol": "弟がつくのは 40分後。兄は 60×40＝2400m 進んだので、B町まで あと 2700−2400＝300m", "focus": {"type": "time", "t": 40, "who": 1}}]}, {"id": 7, "title": "とちゅうで休む", "stars": 3, "text": "兄と弟は 同時に 家を出て 公園（家から1800m）へ 向かいました。兄は とちゅうで休けいしました。グラフは そのようすです。", "a": "家", "b": "公園", "ea": "🏠", "eb": "🌳", "L": 1800, "tmax": 40, "xmax": 1800, "xstep": 300, "persons": [{"name": "兄", "pts": [[0, 0], [10, 800], [20, 800], [30, 1800]]}, {"name": "弟", "pts": [[0, 0], [36, 1800]]}], "events": [{"t": 10, "text": "兄が 休けいを はじめる。（ここから グラフが 横になるよ）", "at": "（兄は 800m　弟は 500m）"}, {"t": 16, "text": "弟が 兄に おいついた！　16分のとき、家から 800m の ところ。", "at": "（兄は 800m　弟は 800m）"}, {"t": 20, "text": "兄が また 歩きだす。", "at": "（兄は 800m　弟は 1000m）"}, {"t": 24, "text": "兄が 弟に おいついた！　24分のとき、家から 1200m の ところ。", "at": "（兄は 1200m　弟は 1200m）"}, {"t": 30, "text": "兄が 公園に 着いた！", "at": "（兄は 1800m　弟は 1500m）"}, {"t": 36, "text": "弟が 公園に 着いた！", "at": "（兄は 1800m　弟は 1800m）"}], "subs": [{"q": "兄は 休けいしていました。何分間 休みましたか。", "ans": "10分間", "sol": "グラフが 横にのびている（きょりが ふえない）のは 10分〜20分。20−10＝10分間", "focus": {"type": "seg", "who": 0, "t0": 10, "t1": 20, "label": "rest"}}, {"q": "兄の はじめの速さは 分速何mですか。", "ans": "分速80m", "sol": "グラフで 10分のとき 800m。800÷10＝80", "focus": {"type": "seg", "who": 0, "t0": 0, "t1": 10, "label": "speed"}}, {"q": "弟が 兄を おいこすのは、出発して 何分後ですか。", "ans": "16分後", "sol": "グラフで 弟は 36分で 1800m 進むので、弟の速さは 1800÷36＝分速50m。兄が休んでいる 800mの地点に 弟が着くのは 800÷50＝16分後", "focus": {"type": "pt", "t": 16, "x": 800}}, {"q": "兄が 休けいのあと 弟に おいつくのは、出発して 何分後ですか。また 家から何mの地点ですか。", "ans": "24分後、1200m", "sol": "20分のとき 弟は 50×20＝1000m、兄は 800m。200m 後ろ。グラフで 兄は 20分から 30分の 10分間に 800mから 1800mまで 1000m 進むので、休けいのあとの兄の速さは 1000÷10＝分速100m。1分に 100−50＝50m 近づく。200÷50＝4分。20＋4＝24分後。50×24＝1200m", "focus": {"type": "pt", "t": 24, "x": 1200}}, {"q": "兄が 公園に着いたとき、弟は 公園まで あと何mですか。", "ans": "300m", "sol": "兄が着くのは 30分後。弟は 50×30＝1500m。1800−1500＝300m", "focus": {"type": "time", "t": 30, "who": 0}}]}, {"id": 8, "title": "忘れ物", "stars": 3, "text": "太一君は 家を出て 学校（家から1200m）へ 向かいましたが、とちゅうで忘れ物に気づいて 引き返し、家で とって、もう一度 学校へ 向かいました。友だちは 同時に 家を出て 同じ速さで 学校へ 歩きました。", "a": "家", "b": "学校", "ea": "🏠", "eb": "🏫", "L": 1200, "tmax": 30, "xmax": 1200, "xstep": 300, "persons": [{"name": "太一君", "pts": [[0, 0], [8, 480], [16, 0], [26, 1200]]}, {"name": "友だち", "pts": [[0, 0], [30, 1200]]}], "events": [{"t": 8, "text": "太一君が 折り返す！（グラフが 右下がりに かわる）", "at": "（太一君は 480m　友だちは 320m）"}, {"t": 9.6, "text": "2人が すれちがった！　9.6分のとき、家から 384m の ところ。", "at": "（太一君は 384m　友だちは 384m）"}, {"t": 16, "text": "太一君が また 学校へ 向かう。（グラフが 右上がりに もどる）", "at": "（太一君は 0m　友だちは 640m）"}, {"t": 24, "text": "太一君が 友だちに おいついた！　24分のとき、家から 960m の ところ。", "at": "（太一君は 960m　友だちは 960m）"}, {"t": 26, "text": "太一君が 学校に 着いた！", "at": "（太一君は 1200m　友だちは 1040m）"}, {"t": 30, "text": "友だちが 学校に 着いた！", "at": "（太一君は 1200m　友だちは 1200m）"}], "subs": [{"q": "太一君が 忘れ物に気づいたのは、家から 何mの地点ですか。", "ans": "480m", "sol": "グラフが 山のてっぺん（折り返し）になっている所。8分のとき 480m", "focus": {"type": "time", "t": 8, "who": 0, "mark": 480}}, {"q": "太一君が 家にもどったのは、出発してから 何分後ですか。", "ans": "16分後", "sol": "グラフで 8分から 16分まで 8分間 もどっている（行きと同じ 分速60m で 480m）。8＋8＝16分後", "focus": {"type": "time", "t": 16, "who": 0}}, {"q": "太一君が 家を出なおしてからの 速さは 分速何mですか。", "ans": "分速120m", "sol": "グラフで 16分から 26分の 10分間に 1200m 進む。1200÷10＝120", "focus": {"type": "seg", "who": 0, "t0": 16, "t1": 26, "label": "speed"}}, {"q": "太一君が 家を出なおしたあと 友だちに おいつくのは、最初に 家を出てから 何分後ですか。また 家から 何mの地点ですか。", "ans": "24分後、960m", "sol": "グラフで 友だちは 30分で 1200m 進むので 分速 1200÷30＝40m。16分のとき 友だちは 40×16＝640m 先。1分に 120−40＝80m 近づく。640÷80＝8分。16＋8＝24分後。40×24＝960m", "focus": {"type": "pt", "t": 24, "x": 960}}]}, {"id": 9, "title": "速さが変わる", "stars": 2, "text": "A町とB町は 3600m はなれています。兄は A町から B町へ、弟は B町から A町へ 同時に 出発しました。兄は とちゅうで 速さを かえました。グラフの たては A町からの きょりです。", "a": "A町", "b": "B町", "ea": "🏘️", "eb": "🏘️", "L": 3600, "tmax": 50, "xmax": 3600, "xstep": 600, "persons": [{"name": "兄", "pts": [[0, 0], [30, 1800], [50, 3600]]}, {"name": "弟", "pts": [[0, 3600], [40, 0]]}], "events": [{"t": 24, "text": "2人が 出会った！　24分のとき、A町から 1440m の ところ。", "at": "（兄は 1440m　弟は 1440m）"}, {"t": 30, "text": "兄が 速さを かえた！（グラフの かたむきが かわる）", "at": "（兄は 1800m　弟は 900m）"}, {"t": 40, "text": "弟が A町に 着いた！", "at": "（兄は 2700m　弟は 0m）"}, {"t": 50, "text": "兄が B町に 着いた！", "at": "（兄は 3600m　弟は 0m）"}], "subs": [{"q": "兄の はじめの速さは 分速何mですか。", "ans": "分速60m", "sol": "グラフで 30分のとき 1800m。1800÷30＝60", "focus": {"type": "seg", "who": 0, "t0": 0, "t1": 30, "label": "speed"}}, {"q": "兄の あとの速さは 分速何mですか。", "ans": "分速90m", "sol": "グラフで 30分から 50分の 20分間に 1800m 進む。1800÷20＝90", "focus": {"type": "seg", "who": 0, "t0": 30, "t1": 50, "label": "speed"}}, {"q": "2人が 出会うのは 出発してから 何分後ですか。また A町から何mの地点ですか。", "ans": "24分後、1440m", "sol": "グラフで 弟は 40分で 3600m 進むので、弟の速さは 3600÷40＝分速90m。出会うまでは 兄は 分速60m（30分までに出会うので）。1分に 60＋90＝150m ちぢまる。3600÷150＝24分後。60×24＝1440m", "focus": {"type": "pt", "t": 24, "x": 1440}}, {"q": "弟が A町に着いたとき、兄は B町まで あと何mですか。", "ans": "900m", "sol": "弟が着くのは 40分後。兄は 1800＋90×(40−30)＝2700m。3600−2700＝900m", "focus": {"type": "time", "t": 40, "who": 1}}]}, {"id": 10, "title": "速さが変わる", "stars": 2, "text": "家と駅は 2400m はなれています。兄は 家から駅へ、弟は 駅から家へ 同時に 出発しました。兄は とちゅうで 速さを かえました。グラフの たては 家からの きょりです。", "a": "家", "b": "駅", "ea": "🏠", "eb": "🚉", "L": 2400, "tmax": 50, "xmax": 2400, "xstep": 300, "persons": [{"name": "兄", "pts": [[0, 0], [15, 600], [33, 2400]]}, {"name": "弟", "pts": [[0, 2400], [48, 0]]}], "events": [{"t": 15, "text": "兄が 速さを かえた！（グラフの かたむきが かわる）", "at": "（兄は 600m　弟は 1650m）"}, {"t": 22, "text": "2人が 出会った！　22分のとき、家から 1300m の ところ。", "at": "（兄は 1300m　弟は 1300m）"}, {"t": 33, "text": "兄が 駅に 着いた！", "at": "（兄は 2400m　弟は 750m）"}, {"t": 48, "text": "弟が 家に 着いた！", "at": "（兄は 2400m　弟は 0m）"}], "subs": [{"q": "兄の はじめの速さは 分速何mですか。", "ans": "分速40m", "sol": "グラフで 15分のとき 600m。600÷15＝40", "focus": {"type": "seg", "who": 0, "t0": 0, "t1": 15, "label": "speed"}}, {"q": "兄の あとの速さは 分速何mですか。", "ans": "分速100m", "sol": "グラフで 15分から 33分の 18分間に 2400−600＝1800m 進む。1800÷18＝100", "focus": {"type": "seg", "who": 0, "t0": 15, "t1": 33, "label": "speed"}}, {"q": "2人が 出会うのは 出発してから 何分後ですか。また 家から何mの地点ですか。", "ans": "22分後、1300m", "sol": "グラフで 弟は 48分で 2400m 進むので、弟の速さは 2400÷48＝分速50m。出会うのは 兄が速さをかえたあと。15分のとき 兄は 600m、弟は 2400−50×15＝1650m。のこり 1650−600＝1050m を 1分に 100＋50＝150m ずつ ちぢめる。1050÷150＝7分。15＋7＝22分後。600＋100×7＝1300m", "focus": {"type": "pt", "t": 22, "x": 1300}}, {"q": "兄が 駅に着いたとき、弟は 家まで あと何mですか。", "ans": "750m", "sol": "兄が着くのは 33分後。弟は 50×33＝1650m 進んだので 家まで 2400−1650＝750m", "focus": {"type": "time", "t": 33, "who": 0}}]}, {"id": 11, "title": "折り返す", "stars": 3, "text": "兄は 家を出て 駅（家から2160m）へ 歩いて向かいました。弟は 兄が出発した 12分後に 家を出て 自転車で 同じ道を おいかけ、駅に着くと すぐ 同じ速さで 引き返しました。", "a": "家", "b": "駅", "ea": "🏠", "eb": "🚉", "L": 2160, "tmax": 40, "xmax": 2160, "xstep": 360, "persons": [{"name": "兄", "pts": [[0, 0], [36, 2160]]}, {"name": "弟", "pts": [[12, 0], [24, 2160], [36, 0]]}], "events": [{"t": 12, "text": "弟が 出発！", "at": "（兄は 720m　弟は 0m）"}, {"t": 18, "text": "弟が 兄に おいついた！　18分のとき、家から 1080m の ところ。", "at": "（兄は 1080m　弟は 1080m）"}, {"t": 24, "text": "弟が 折り返す！（グラフが 右下がりに かわる）", "at": "（兄は 1440m　弟は 2160m）"}, {"t": 27, "text": "2人が 出会った！　27分のとき、家から 1620m の ところ。", "at": "（兄は 1620m　弟は 1620m）"}, {"t": 36, "text": "兄が 駅に 着いた！ 弟が 家に 着いた！", "at": "（兄は 2160m　弟は 0m）"}], "subs": [{"q": "弟の 自転車の速さは 分速何mですか。", "ans": "分速180m", "sol": "グラフで 弟の線は 12分から 24分まで。24−12＝12分で 2160m 進む。2160÷12＝180", "focus": {"type": "seg", "who": 1, "t0": 12, "t1": 24, "label": "speed"}}, {"q": "弟が 兄に おいつくのは、弟が出発してから 何分後ですか。", "ans": "6分後", "sol": "グラフで 兄は 36分で 2160m 進むので、兄の速さは 2160÷36＝分速60m。弟が出発したとき 兄は 60×12＝720m 先。1分に 180−60＝120m 近づく。720÷120＝6分後", "focus": {"type": "pt", "t": 18, "x": 1080}}, {"q": "弟が 引き返して 兄と 出会うのは、兄が出発してから 何分後ですか。また 家から何mの地点ですか。", "ans": "27分後、1620m", "sol": "弟が駅に着くのは 兄の出発の 24分後。そのとき 兄は 60×24＝1440m。駅まで あと 2160−1440＝720m。向かい合って 1分に 180＋60＝240m ちぢまる。720÷240＝3分。24＋3＝27分後。60×27＝1620m", "focus": {"type": "pt", "t": 27, "x": 1620}}]}, {"id": 12, "title": "すれちがう", "stars": 2, "text": "太一君は 家から 学校（家から1200m）へ 歩きました。花子さんは 太一君が出発した 2分後に 学校から 家へ 走りました。グラフの たては 家からの きょりです。", "a": "家", "b": "学校", "ea": "🏠", "eb": "🏫", "L": 1200, "tmax": 20, "xmax": 1200, "xstep": 200, "persons": [{"name": "太一君", "pts": [[0, 0], [20, 1200]]}, {"name": "花子さん", "pts": [[2, 1200], [12, 0]]}], "events": [{"t": 2, "text": "花子さんが 出発！", "at": "（太一君は 120m　花子さんは 1200m）"}, {"t": 8, "text": "2人が すれちがった！　8分のとき、家から 480m の ところ。", "at": "（太一君は 480m　花子さんは 480m）"}, {"t": 12, "text": "花子さんが 家に 着いた！", "at": "（太一君は 720m　花子さんは 0m）"}, {"t": 20, "text": "太一君が 学校に 着いた！", "at": "（太一君は 1200m　花子さんは 0m）"}], "subs": [{"q": "太一君の速さは 分速何mですか。", "ans": "分速60m", "sol": "グラフで 太一君は 20分で 1200m 進む。1200÷20＝60", "focus": {"type": "seg", "who": 0, "t0": 0, "t1": 20, "label": "speed"}}, {"q": "花子さんの速さは 分速何mですか。", "ans": "分速120m", "sol": "グラフで 花子さんの線は 2分から 12分まで。12−2＝10分で 1200m 進む。1200÷10＝120", "focus": {"type": "seg", "who": 1, "t0": 2, "t1": 12, "label": "speed"}}, {"q": "2人が すれちがうのは、太一君が出発してから 何分後ですか。また 家から何mの地点ですか。", "ans": "8分後、480m", "sol": "花子さんが出発するとき 太一君は 60×2＝120m。のこり 1200−120＝1080m を 1分に 60＋120＝180m ちぢめる。1080÷180＝6分。2＋6＝8分後。60×8＝480m", "focus": {"type": "pt", "t": 8, "x": 480}}, {"q": "花子さんが 家に着いたとき、太一君は 家から 何mの地点ですか。", "ans": "720m", "sol": "花子さんが着くのは 12分後。60×12＝720m", "focus": {"type": "time", "t": 12, "who": 1}}]}];
 const $=id=>document.getElementById(id);
@@ -319,6 +495,21 @@ function nextEvent(){
   animateTo(e.t,Math.min(2200,300+Math.abs(e.t-T)*90),()=>{});
 }
 
+/* カメラ操作用：つぎ／もどる（できごと単位。はしまで来たら つぎの もんだい／まえの もんだいへ） */
+function advance(){
+  if(tween)return; clearHL(); playing=false;
+  const e=cur.events.find(e=>e.t>T+1e-6);
+  if(e)animateTo(e.t,Math.min(2200,300+Math.abs(e.t-T)*90),()=>{});
+  else if(cur.id<DATA.length)load(cur.id);
+}
+function retreat(){
+  if(tween)return; clearHL(); playing=false;
+  const prevs=cur.events.filter(e=>e.t<T-1e-6);
+  if(prevs.length){const t=prevs[prevs.length-1].t;animateTo(t,Math.min(2200,300+Math.abs(T-t)*90),()=>{});}
+  else if(T>1e-6)animateTo(0,500,()=>{});
+  else if(cur.id>1){load(cur.id-2);setT(tEnd(cur));}
+}
+
 /* ---------- 小問のハイライト ---------- */
 function clearHL(){hl=null;$('ghl').innerHTML='';$('roadhl').innerHTML='';}
 function g(tag,at,txt){const e=document.createElementNS(NS,tag);for(const k in at)e.setAttribute(k,at[k]);if(txt!==undefined)e.textContent=txt;return e;}
@@ -396,7 +587,8 @@ $('next').onclick=()=>{if(!tween)nextEvent();};
 $('slide').oninput=e=>{playing=false;clearHL();T=parseFloat(e.target.value);frame();syncPlay();};
 addEventListener('keydown',e=>{if(e.key===' '){e.preventDefault();$('play').click();}else if(e.key==='ArrowRight')$('next').click();});
 load(0);requestAnimationFrame(loop);
-if(location.search.includes('dbg'))window.dbg={load,setT,animateTo,drawHL,get T(){return T;},get cur(){return cur;},DATA};
+TeacherCam.init({onNext:advance,onPrev:retreat});
+if(location.search.includes('dbg'))window.adbg={load,setT,animateTo,drawHL,get T(){return T;},get cur(){return cur;},DATA};
 </script>
 </body>
 </html>
