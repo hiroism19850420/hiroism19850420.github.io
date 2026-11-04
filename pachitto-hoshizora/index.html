@@ -41,9 +41,11 @@ function start(){
     master=ac.createGain();master.gain.value=.5;
     const cp=ac.createDynamicsCompressor();master.connect(cp);cp.connect(ac.destination);
   }
-  ac.resume();
-  makeStars();caught=[];fx=[];step=0;msg='';
-  t0=ac.currentTime+.3;state='play';
+  state='starting';
+  ac.resume().then(()=>{
+    makeStars();caught=[];fx=[];step=0;msg='';
+    t0=ac.currentTime+.3;state='play';
+  }).catch(()=>{state='title'});
 }
 const CH=[[-12,-5,0],[-15,-8,-3],[-19,-12,-7],[-17,-10,-5]];
 function backing(){
@@ -77,7 +79,9 @@ function catchStar(s,d){
   fx.push({x:W*.2,y:H*s.y,r:0,life:.6,c:'#ffe9a0'});
   for(let i=0;i<10;i++)fx.push({x:W*.2,y:H*s.y,vx:rnd(-90,90),vy:rnd(-90,90),life:.7,c:'#fff3c0',dot:1});
 }
-addEventListener('pointerdown',e=>{e.preventDefault();press()});
+addEventListener('pointerdown',e=>{e.preventDefault();if(state==='play')press()});
+addEventListener('pointerup',e=>{e.preventDefault();if(state!=='play')press()});
+addEventListener('touchend',e=>{if(state!=='play'&&ac&&ac.state!=='running')ac.resume()},{passive:true});
 addEventListener('keydown',e=>{if(!e.repeat&&(e.code=='Space'||e.code=='Enter')){e.preventDefault();press()}});
 function star5(x,y,r,rot){
   g.beginPath();
