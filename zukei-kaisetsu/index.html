@@ -74,6 +74,182 @@ svg text{font-family:"Zen Maru Gothic",sans-serif;font-weight:700;fill:var(--ink
     <div class="ctl"><button id="back">◀ もどる</button><button class="go" id="next">つぎへ ▶</button><div class="dots" id="dots"></div></div>
   </div>
 </main>
+<script>/*TCAM-BEGIN*/// 先生の手で「つぎへ／もどる」: カメラで上半身を見て、右手をあげたら onNext、左手をあげたら onPrev。
+// 使い方: TeacherCam.init({ onNext(), onPrev() })。ページの右上に「📷 カメラでそうさ」ボタンが出る。
+// 「右手・左手」は 先生ご自身の右手・左手。カメラを向いているとき（標準）は 画像の左がわ、カメラに背を向けているときは 画像の右がわが 右手。
+// 背中がわからだと 関節の「右・左」の名前が あてにならないので、名前は使わず 画像の左右で 見分ける。
+(function(){
+'use strict';
+const MP_VER = '0.10.14';
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
+const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+// up：手首が肩より 肩はば の何倍 高ければ「あげた」か。hold：その状態を 何秒 つづけたら 反応するか
+const LEVELS = { easy: { up: 0.35, hold: 0.3 }, normal: { up: 0.6, hold: 0.45 }, firm: { up: 0.9, hold: 0.7 } };
+const COOL = 1.0;        // 一度 反応したあと、つぎに反応するまでの最短秒数
+const REARM_LOW = 0.2;   // 手を 肩の高さ（のこり この倍率）より 下げて この秒数たったら、つぎを受けつける
+const REARM_SEC = 0.25;
+
+const TC = { level: 'normal', facing: 'front', on: false, status: 'off', prog: { R: 0, L: 0 } };
+try { const sv = JSON.parse(localStorage.getItem('tcam') || '{}'); if (sv.level) TC.level = sv.level; if (sv.facing) TC.facing = sv.facing; } catch (e){}
+function save(){ try { localStorage.setItem('tcam', JSON.stringify({ level: TC.level, facing: TC.facing })); } catch (e){} }
+let opt = {}, video = null, pose = null, panel = null, cvs = null, ctx = null, stream = null, lastVT = -1, showPanel = true;
+const side = () => ({ since: null, armed: true, lowSince: null });
+const S = { R: side(), L: side() };
+let coolUntil = 0;
+
+// lm: MediaPipe の33関節。t: 秒。asp: 映像の横÷縦。戻り値: 'nobody' | 'both' | 'ok'
+TC.feed = function(lm, t, asp){
+  asp = asp || 4 / 3;
+  const ls = lm[11], rs = lm[12];
+  const vis = p => p && (p.visibility == null ? 1 : p.visibility);
+  if (!ls || !rs || vis(ls) < 0.5 || vis(rs) < 0.5){ reset(); TC.status = 'nobody'; return 'nobody'; }
+  const u = Math.max(0.04, Math.hypot((ls.x - rs.x) * asp, ls.y - rs.y));   // 肩はば
+  const L = LEVELS[TC.level];
+  // 背中がわから見ると 関節の「右・左」の名前が 入れかわることがあるので、名前は 使わない。
+  // 肩に近いほうの がわ（画像の左／右）で 手を 分ける。
+  const shL = ls.x <= rs.x ? ls : rs, shR = ls.x <= rs.x ? rs : ls;      // 画像の左がわの肩・右がわの肩
+  const img = { L: { raised: false, low: true }, R: { raised: false, low: true } };
+  [lm[15], lm[16]].forEach(w => {
+    if (!w || vis(w) < 0.5) return;
+    const k = Math.abs(w.x - shL.x) <= Math.abs(w.x - shR.x) ? 'L' : 'R';
+    const h = ((k === 'L' ? shL : shR).y - w.y) / u;                       // 肩より どれだけ上か（肩はば単位）
+    if (h > L.up) img[k].raised = true;
+    if (h >= REARM_LOW) img[k].low = false;
+  });
+  TC.status = 'ok';
+  // 背を向けているとき：画像の右＝先生の右手。カメラを向いているとき：画像の左＝先生の右手
+  const back = TC.facing === 'back';
+  const Rt = back ? img.R : img.L, Lf = back ? img.L : img.R;
+  if (Rt.raised && Lf.raised){ resetHold(); TC.prog.R = TC.prog.L = 0; TC.status = 'both'; return 'both'; }
+  step('R', Rt, t, L.hold, () => opt.onNext && opt.onNext());
+  step('L', Lf, t, L.hold, () => opt.onPrev && opt.onPrev());
+  return 'ok';
+};
+function step(k, inf, t, hold, fire){
+  const s = S[k];
+  if (inf.raised){
+    s.lowSince = null;
+    if (s.since == null) s.since = t;
+    const held = t - s.since;
+    TC.prog[k] = s.armed ? Math.min(1, held / hold) : 0;
+    if (s.armed && held >= hold && t >= coolUntil){
+      s.armed = false; coolUntil = t + COOL; flash(k === 'R' ? '▶ つぎへ' : '◀ もどる');
+      try { fire(); } catch (e){ console.error(e); }
+    }
+  }else{
+    s.since = null; TC.prog[k] = 0;
+    if (inf.low){ if (s.lowSince == null) s.lowSince = t; if (t - s.lowSince >= REARM_SEC) s.armed = true; }
+    else s.lowSince = null;
+  }
+}
+function resetHold(){ S.R.since = S.L.since = null; }
+function reset(){ resetHold(); TC.prog.R = TC.prog.L = 0; }
+
+/* ---------- 画面の部品 ---------- */
+function el(tag, css, html){ const e = document.createElement(tag); if (css) e.style.cssText = css; if (html != null) e.innerHTML = html; return e; }
+let flashEl = null, flashTimer = 0;
+function flash(text){
+  if (!flashEl){ flashEl = el('div', 'position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:9700;background:#2b2a33e6;color:#fff;font:900 44px "Zen Maru Gothic",sans-serif;padding:10px 34px;border-radius:999px;pointer-events:none;opacity:0;transition:opacity .15s'); document.body.appendChild(flashEl); }
+  flashEl.textContent = text; flashEl.style.opacity = '1';
+  clearTimeout(flashTimer); flashTimer = setTimeout(() => { flashEl.style.opacity = '0'; }, 800);
+}
+function buildPanel(){
+  panel = el('div', 'position:fixed;right:12px;bottom:12px;z-index:9600;width:260px;background:#fffffff2;color:#2b2a33;border:2px solid #2b2a33;border-radius:16px;padding:8px 10px;font:700 13px "Zen Maru Gothic",sans-serif;box-shadow:0 6px 20px #0003');
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;gap:6px;justify-content:space-between"><b style="font-size:14px">📷 先生の手で そうさ</b>
+      <span><button id="tcHide" style="${bs}">かくす</button> <button id="tcStop" style="${bs}">とめる</button></span></div>
+    <div id="tcBody"><canvas id="tcCv" width="240" height="180" style="width:100%;border-radius:10px;background:#222;margin-top:6px;display:block"></canvas>
+      <div style="display:flex;gap:6px;margin-top:6px"><div style="flex:1"><div>◀ 左手 → もどる</div><div style="height:7px;background:#ddd;border-radius:4px"><i id="tcL" style="display:block;height:7px;width:0;background:#2f6fed;border-radius:4px"></i></div></div>
+      <div style="flex:1"><div>右手 → つぎへ ▶</div><div style="height:7px;background:#ddd;border-radius:4px"><i id="tcR" style="display:block;height:7px;width:0;background:#ef7d00;border-radius:4px"></i></div></div></div>
+      <div id="tcMsg" style="margin-top:6px;min-height:2.6em;color:#555"></div>
+      <div style="margin-top:4px">先生の向き：<select id="tcFace" style="font:inherit"><option value="front">カメラを 向く（ふつう）</option><option value="back">カメラに 背を向ける</option></select></div>
+      <div style="margin-top:4px">反応：<select id="tcLv" style="font:inherit"><option value="easy">かんたん</option><option value="normal">ふつう</option><option value="firm">しっかり</option></select></div></div>`;
+  document.body.appendChild(panel);
+  cvs = panel.querySelector('#tcCv'); ctx = cvs.getContext('2d');
+  panel.querySelector('#tcStop').onclick = TC.stop;
+  panel.querySelector('#tcHide').onclick = () => { showPanel = !showPanel; panel.querySelector('#tcBody').style.display = showPanel ? '' : 'none'; panel.querySelector('#tcHide').textContent = showPanel ? 'かくす' : 'みせる'; };
+  panel.querySelector('#tcLv').value = TC.level; panel.querySelector('#tcFace').value = TC.facing;
+  panel.querySelector('#tcLv').onchange = e => { TC.level = e.target.value; save(); };
+  panel.querySelector('#tcFace').onchange = e => { TC.facing = e.target.value; save(); S.R = side(); S.L = side(); };
+}
+const bs = 'font:700 12px inherit;border:1.5px solid #2b2a33;background:#fff;border-radius:999px;padding:1px 9px;cursor:pointer';
+function say(t){ const m = panel && panel.querySelector('#tcMsg'); if (m) m.textContent = t; }
+
+const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24]];
+function draw(lm){
+  const w = cvs.width, h = cvs.height, back = TC.facing === 'back';
+  ctx.save(); ctx.clearRect(0, 0, w, h);
+  if (!back){ ctx.translate(w, 0); ctx.scale(-1, 1); }     // カメラを向いているときは 鏡うつし。背を向けているときは そのまま
+  ctx.drawImage(video, 0, 0, w, h);
+  ctx.restore();
+  if (lm){
+    const P = p => [(back ? p.x : 1 - p.x) * w, p.y * h];
+    ctx.lineWidth = 3; ctx.strokeStyle = '#ffffffcc';
+    BONES.forEach(([a, b]) => { if (lm[a] && lm[b]){ const A = P(lm[a]), B = P(lm[b]); ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke(); } });
+    const mid = P({ x: ((lm[11] || {}).x + (lm[12] || {}).x) / 2, y: 0 })[0];
+    [15, 16].forEach(i => {
+      const p = lm[i]; if (!p || (p.visibility != null && p.visibility < 0.5)) return;
+      const [x, y] = P(p), right = x > mid;                // 画面の右がわ＝先生の右手（どちらの向きでも）
+      ctx.fillStyle = right ? '#ef7d00' : '#2f6fed'; ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(right ? '右' : '左', x, y + 4);
+    });
+  }
+  panel.querySelector('#tcR').style.width = (TC.prog.R * 100) + '%';
+  panel.querySelector('#tcL').style.width = (TC.prog.L * 100) + '%';
+}
+function loop(){
+  if (!TC.on) return;
+  requestAnimationFrame(loop);
+  if (!video || video.readyState < 2 || video.currentTime === lastVT) return;
+  lastVT = video.currentTime;
+  let lm = null;
+  try { const r = pose.detectForVideo(video, performance.now()); lm = r && r.landmarks && r.landmarks[0]; } catch (e){ return; }
+  const asp = (video.videoWidth || 640) / (video.videoHeight || 480);
+  if (lm) TC.feed(lm, performance.now() / 1000, asp); else { reset(); TC.status = 'nobody'; }
+  if (showPanel) draw(lm);
+  if (TC.status === 'nobody') say('からだが 見えません。カメラに 上半身（かたと 手）が うつる所に 立ってね。');
+  else if (TC.status === 'both') say('りょう手が あがっています。どちらか 片手だけ あげてね。');
+  else say('先生の 右手を あげる → つぎへ ／ 左手を あげる → もどる。あげたまま 少し まってね。');
+}
+TC.start = async function(){
+  if (TC.on) return true;
+  if (!panel) buildPanel();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ say('この ひらきかたでは カメラを つかえません。https（公開ページ）か localhost で ひらいてください。'); return false; }
+  say('カメラを じゅんび中…');
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } }); }
+  catch (e){ say('カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'); return false; }
+  video = el('video'); video.playsInline = true; video.muted = true; video.srcObject = stream; await video.play();
+  say('先生の手を 見る じゅんび中…（はじめは 少し かかります）');
+  let err = null;
+  for (let n = 0; n < 2 && !pose; n++){
+    try {
+      const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
+      const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
+      const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
+      try { pose = await make('GPU'); } catch (e){ pose = await make('CPU'); }
+    } catch (e){ err = e; console.error(e); }
+  }
+  if (!pose){ say('手を 見る しくみを よみこめませんでした。ネットに つながっているか たしかめて、もういちど おしてね。'); stopStream(); return false; }
+  TC.on = true; lastVT = -1; S.R = side(); S.L = side(); coolUntil = 0; requestAnimationFrame(loop);
+  if (btn) btn.textContent = '📷 カメラ そうさ中';
+  return true;
+};
+function stopStream(){ if (stream){ stream.getTracks().forEach(t => t.stop()); stream = null; } }
+TC.stop = function(){
+  TC.on = false; stopStream();
+  if (panel){ panel.remove(); panel = null; }
+  if (btn) btn.textContent = '📷 カメラで そうさ';
+};
+let btn = null;
+TC.init = function(o){
+  opt = o || {};
+  btn = el('button', 'position:fixed;right:12px;top:10px;z-index:9500;font:900 14px "Zen Maru Gothic",sans-serif;border:2px solid #2b2a33;background:#fff;color:#2b2a33;border-radius:999px;padding:6px 14px;cursor:pointer;box-shadow:0 2px 8px #0002', '📷 カメラで そうさ');
+  btn.onclick = () => { if (TC.on) TC.stop(); else TC.start(); };
+  document.body.appendChild(btn);
+};
+window.TeacherCam = TC;
+})();
+/*TCAM-END*/</script>
 <script>
 const K=(c,t)=>`<i class="k c${c}">${t}</i>`;
 const pt=(o,s)=>(x,y)=>[o[0]+x*s,o[1]+y*s];
@@ -325,14 +501,15 @@ function next(){
   if(step<q.steps.length-1){step++;show();}
   else if(cur<P.length-1)build(cur+1); else build(0);
 }
-function back(){ if(step>0){step--;show();} }
+function back(){ if(step>0){step--;show();} else if(cur>0){build(cur-1);step=P[cur].steps.length-1;show();} }
 $('nav').innerHTML=P.map((_,i)=>`<button>${i+1}</button>`).join('');
 document.querySelectorAll('#nav button').forEach((b,i)=>b.onclick=()=>build(i));
 $('stage').onclick=next; $('next').onclick=next; $('back').onclick=back;
 addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();next();}else if(e.key==='ArrowLeft')back();});
 build(0);
+TeacherCam.init({onNext:next,onPrev:back});
 // 確認用： ?dbg で window.dbg
-if(location.search.includes('dbg'))window.dbg={build,next,back,P,get cur(){return cur},get step(){return step}};
+if(location.search.includes('dbg'))window.adbg={build,next,back,P,get cur(){return cur},get step(){return step}};
 </script>
 </body>
 </html>
