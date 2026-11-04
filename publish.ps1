@@ -1,6 +1,6 @@
 ﻿# HTMLゲームを hiroism19850420.github.io に追加・更新して公開する
-# 使い方: powershell -File publish.ps1 -Source <ゲームのフォルダ> -Slug <URL用の英数字名> -Title <表示名> [-Desc <説明>] [-Files a,b,c] [-Cat camera|tap|voice|swing]
-#   -Cat  トップページの分類。camera=カメラを使う全身ゲーム / tap=スマホでタップ / voice=声だけで遊ぶ / swing=スマホを振る(注意)
+# 使い方: powershell -File publish.ps1 -Source <ゲームのフォルダ> -Slug <URL用の英数字名> -Title <表示名> [-Desc <説明>] [-Files a,b,c] [-Cat camera|tap|voice|study|swing]
+#   -Cat  トップページの分類。camera=カメラを使う全身ゲーム / tap=スマホでタップ / voice=声だけで遊ぶ / study=勉強（算数の解説など） / swing=スマホを振る(注意)
 #         省略すると、公開済みなら今の分類のまま、新規なら tap
 #   -IndexOnly  ゲームはコピーせず、games.json からトップページだけ作り直して公開する
 param(
@@ -9,7 +9,7 @@ param(
   [string]$Title,
   [string]$Desc = "",
   [string[]]$Files,
-  [ValidateSet("", "camera", "tap", "voice", "swing")][string]$Cat = "",
+  [ValidateSet("", "camera", "tap", "voice", "study", "swing")][string]$Cat = "",
   [switch]$IndexOnly
 )
 $ErrorActionPreference = "Stop"
@@ -78,6 +78,7 @@ $cats = @(
   @{ id="camera"; short="カメラ";   icon="📷" },
   @{ id="tap";    short="タップ";   icon="👆" },
   @{ id="voice";  short="声";       icon="🗣️" },
+  @{ id="study";  short="勉強";     icon="📚" },
   @{ id="swing";  short="振る(注意)"; icon="📱" }
 )
 $gamesJs = "[" + (($games | ForEach-Object { ConvertTo-Json $_ -Compress }) -join ",") + "]"

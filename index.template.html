@@ -44,7 +44,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{ou
 .choose{margin-top:44px;text-align:center}
 .choose h2{font-size:30px;font-weight:900;letter-spacing:.07em}
 .choose .sub{font-size:14px;color:var(--muted);margin-top:8px}
-.pick{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;margin-top:26px}
+.pick{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-top:26px}
 .pick button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:230px;padding:22px 12px;border:3px solid var(--ink);background:linear-gradient(#faf6ea,#f2eddf);color:var(--ink);box-shadow:6px 6px 0 var(--green);transition:transform .15s,box-shadow .15s}
 .pick button:hover{transform:translate(-2px,-2px);box-shadow:8px 8px 0 var(--red)}
 .pick button:active{transform:translate(4px,4px);box-shadow:2px 2px 0 var(--green)}
@@ -218,6 +218,7 @@ var PICKS=[
   {id:"camera",ic:"📷",nm:"カメラ",ds:"からだを うごかして あそぶ"},
   {id:"tap",ic:"👆",nm:"タップ",ds:"スマホを さわって あそぶ"},
   {id:"voice",ic:"🗣️",nm:"声",ds:"こえだけで あそぶ"},
+  {id:"study",ic:"📚",nm:"勉強",ds:"さんすうなど べんきょうに なる"},
   {id:"all",ic:"🎮",nm:"すべて",ds:"ぜんぶ ならべて みる"}
 ];
 function buildPick(){
