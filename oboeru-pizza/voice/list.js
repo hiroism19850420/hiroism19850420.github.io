@@ -1,0 +1,2 @@
+// tools/make_voice.py が 作る（四国めたん／VOICEVOX）。id → 長さ（秒）
+window.VOICE_LIB = {"seeno":0.533,"dozo":0.48,"yatta":1.397,"oshii":0.501,"again":2.741,"perfect":1.493,"over":2.453,"start":0.992,"salami":0.427,"cheese":0.448,"tomato":0.437,"pepper":0.48,"mushroom":0.48,"corn":0.427,"shrimp":0.341,"pine":0.64,"squid":0.32,"bacon":0.48,"onion":0.533,"eggplant":0.341,"potato":0.448,"sausage":0.661,"olive":0.469};
