@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ぱちっと ほしぞら</title>
+<style>
+html,body{margin:0;height:100%;background:#070b1c;overflow:hidden;touch-action:none;user-select:none;-webkit-tap-highlight-color:transparent;font-family:system-ui,sans-serif}
+canvas{display:block;width:100%;height:100%}
+</style><script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head><body><canvas id="c"></canvas>
+<script>
+const cv=document.getElementById('c'),g=cv.getContext('2d');
+let W,H,dpr;
+function rs(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;g.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener('resize',rs);rs();
+const BPM=96,BEAT=60/BPM,LEN=48,TRAVEL=2.4;
+const SCALE=[0,2,4,7,9,12,14,16];
+let ac,master,state='title',t0=0,stars=[],caught=[],bg=[],step=0,fx=[],msg='',msgT=0;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+for(let i=0;i<90;i++)bg.push({x:Math.random(),y:Math.random(),r:rnd(.4,1.5),p:rnd(0,6)});
+function freq(m){return 261.63*Math.pow(2,m/12)}
+function tone(m,when,dur,vol,type){
+  const o=ac.createOscillator(),v=ac.createGain();
+  o.type=type||'sine';o.frequency.value=freq(m);
+  v.gain.setValueAtTime(.0001,when);v.gain.exponentialRampToValueAtTime(vol,when+.01);
+  v.gain.exponentialRampToValueAtTime(.0001,when+dur);
+  o.connect(v);v.connect(master);o.start(when);o.stop(when+dur+.05);
+}
+function now(){return ac.currentTime-t0}
+function makeStars(){
+  stars=[];
+  const total=Math.floor(LEN/BEAT);
+  let k=3;
+  for(let i=4;i<total-2;i++){
+    if(i%4==3&&Math.random()<.4)continue;
+    k=Math.max(0,Math.min(7,k+Math.floor(rnd(-2,3))));
+    stars.push({t:i*BEAT,k,y:.2+.55*(1-k/7),hit:false,gone:false,a:1});
+  }
+}
+function start(){
+  if(!ac){
+    ac=new (window.AudioContext||window.webkitAudioContext)();
+    master=ac.createGain();master.gain.value=.5;
+    const cp=ac.createDynamicsCompressor();master.connect(cp);cp.connect(ac.destination);
+  }
+  ac.resume();
+  makeStars();caught=[];fx=[];step=0;msg='';
+  t0=ac.currentTime+.3;state='play';
+}
+const CH=[[-12,-5,0],[-15,-8,-3],[-19,-12,-7],[-17,-10,-5]];
+function backing(){
+  if(state!=='play')return;
+  const lim=now()+.25;
+  while(step*BEAT<lim&&step*BEAT<LEN+1){
+    const ts=t0+step*BEAT;
+    if(ts>ac.currentTime-.05){
+      const ch=CH[Math.floor(step/4)%4];
+      if(step%4==0)ch.forEach(m=>tone(m,ts,BEAT*3.8,.05,'sine'));
+      tone(ch[step%3]+12,ts,BEAT*.8,.025,'triangle');
+    }
+    step++;
+  }
+}
+setInterval(backing,40);
+function press(){
+  if(state==='title'){start();return}
+  if(state==='end'){if(now()>LEN+3)state='title';return}
+  if(state!=='play')return;
+  const t=now();let best=null,d=9;
+  for(const s of stars){if(s.hit||s.gone)continue;const e=Math.abs(t-s.t);if(e<.45&&e<d){best=s;d=e}}
+  if(best)catchStar(best,d);
+}
+function catchStar(s,d){
+  s.hit=true;
+  const m=SCALE[s.k];
+  tone(m+12,ac.currentTime,.7,.16,'triangle');tone(m+24,ac.currentTime,.4,.04,'sine');
+  msg=d<.15?'ぱちっ！':'きらり';msgT=performance.now()+500;
+  caught.push({x:.06+.88*Math.min(1,s.t/LEN)+rnd(-.01,.01),y:.1+.45*(1-s.k/7)+rnd(0,.08)});
+  fx.push({x:W*.2,y:H*s.y,r:0,life:.6,c:'#ffe9a0'});
+  for(let i=0;i<10;i++)fx.push({x:W*.2,y:H*s.y,vx:rnd(-90,90),vy:rnd(-90,90),life:.7,c:'#fff3c0',dot:1});
+}
+addEventListener('pointerdown',e=>{e.preventDefault();press()});
+addEventListener('keydown',e=>{if(!e.repeat&&(e.code=='Space'||e.code=='Enter')){e.preventDefault();press()}});
+function star5(x,y,r,rot){
+  g.beginPath();
+  for(let i=0;i<10;i++){const a=rot+i*Math.PI/5-Math.PI/2,rr=i%2?r*.45:r;g.lineTo(x+Math.cos(a)*rr,y+Math.sin(a)*rr)}
+  g.closePath();
+}
+let last=performance.now();
+function frame(ts){
+  const dt=Math.min(.05,(ts-last)/1000);last=ts;
+  const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#0a1030');gr.addColorStop(1,'#2a1d4a');
+  g.fillStyle=gr;g.fillRect(0,0,W,H);
+  for(const b of bg){g.globalAlpha=.4+.4*Math.sin(ts/700+b.p);g.fillStyle='#fff';g.fillRect(b.x*W,b.y*H,b.r,b.r)}
+  g.globalAlpha=1;
+  g.fillStyle='#fff6d8';g.beginPath();g.arc(W*.9,H*.17,Math.min(W,H)*.05,0,7);g.fill();
+  const hx=W*.2;
+  g.textAlign='center';
+  if(state==='title'){
+    g.fillStyle='#fff';g.font='900 '+Math.min(W*.09,54)+'px system-ui';g.fillText('ぱちっと ほしぞら',W/2,H*.42);
+    g.fillStyle='#b9c6ee';g.font=Math.min(W*.04,18)+'px system-ui';
+    g.fillText('ながれてくる ほしが ひかりの わに きたら、どこでも タップ',W/2,H*.55);
+    g.fillText('つかまえた ほしが、ほしぞらに のこるよ',W/2,H*.62);
+    g.fillStyle='#ffe9a0';g.fillText('タップして スタート',W/2,H*.76+Math.sin(ts/300)*4);
+  }else{
+    const t=now();
+    if(caught.length>1){
+      g.strokeStyle='rgba(255,233,160,.35)';g.lineWidth=1.5;g.beginPath();
+      caught.forEach((p,i)=>i?g.lineTo(p.x*W,p.y*H):g.moveTo(p.x*W,p.y*H));g.stroke();
+    }
+    for(const p of caught){g.fillStyle='#ffe9a0';g.globalAlpha=.8+.2*Math.sin(ts/300+p.x*20);star5(p.x*W,p.y*H,5,0);g.fill()}
+    g.globalAlpha=1;
+    const R=Math.min(W,H)*.07;
+    g.strokeStyle='rgba(255,233,160,.8)';g.lineWidth=3;g.beginPath();g.arc(hx,H*.5,R*1.3,0,7);g.stroke();
+    g.strokeStyle='rgba(255,233,160,.18)';g.lineWidth=14;g.beginPath();g.moveTo(hx,0);g.lineTo(hx,H);g.stroke();
+    const sp=(W-hx)/TRAVEL;
+    for(const s of stars){
+      if(s.hit)continue;
+      if(!s.gone&&t>s.t+.45)s.gone=true;
+      if(s.gone){s.a-=dt*2;if(s.a<=0)continue}
+      const x=hx+(s.t-t)*sp;if(x>W+30||x<-30)continue;
+      const y=H*s.y,r=Math.min(W,H)*.045;
+      g.globalAlpha=Math.max(0,s.a);
+      g.shadowColor='#ffe9a0';g.shadowBlur=18;
+      g.fillStyle=['#ffd879','#ffc4dc','#b9e6ff','#d2c4ff'][s.k%4];
+      star5(x,y,r,ts/900+s.t);g.fill();g.shadowBlur=0;
+    }
+    g.globalAlpha=1;
+    for(const f of fx){
+      f.life-=dt;
+      if(f.dot){f.x+=f.vx*dt;f.y+=f.vy*dt;g.globalAlpha=Math.max(0,f.life);g.fillStyle=f.c;g.fillRect(f.x,f.y,3,3)}
+      else{f.r+=dt*160;g.globalAlpha=Math.max(0,f.life*1.5);g.strokeStyle=f.c;g.lineWidth=3;g.beginPath();g.arc(f.x,f.y,f.r,0,7);g.stroke()}
+    }
+    fx=fx.filter(f=>f.life>0);g.globalAlpha=1;
+    if(performance.now()<msgT){g.fillStyle='#ffe9a0';g.font='900 '+Math.min(W*.06,32)+'px system-ui';g.fillText(msg,hx,H*.1)}
+    g.fillStyle='#2b3560';g.fillRect(0,H-4,W,4);g.fillStyle='#ffe9a0';g.fillRect(0,H-4,W*Math.min(1,t/LEN),4);
+    if(state==='play'&&t<.9){g.fillStyle='#fff';g.font='900 '+Math.min(W*.08,48)+'px system-ui';g.fillText('じゅんび…',W/2,H*.5)}
+    if(state==='play'&&t>LEN+.5)state='end';
+    if(state==='end'){
+      g.fillStyle='rgba(7,11,28,.45)';g.fillRect(0,H*.7,W,H*.3);
+      g.fillStyle='#fff';g.font='900 '+Math.min(W*.07,40)+'px system-ui';g.fillText('ほしぞらが できたよ',W/2,H*.8);
+      g.fillStyle='#b9c6ee';g.font=Math.min(W*.04,18)+'px system-ui';
+      g.fillText(caught.length+'こ の ほし',W/2,H*.88);
+      if(t>LEN+3){g.fillStyle='#ffe9a0';g.fillText('タップで もういちど',W/2,H*.95)}
+    }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>
