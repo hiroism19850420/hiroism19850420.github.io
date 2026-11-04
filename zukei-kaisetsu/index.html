@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>図形のひみつ — かいせつアニメ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#fbf7ee; --ink:#2b2a33; --card:#ffffff; --line:#e4dccb; --mute:#8a8576;
+  --c1:#3d8bfd; --c2:#ff9f2e; --c3:#2fb36d; --c4:#ef5b7f;
+  --c1a:rgba(61,139,253,.78); --c2a:rgba(255,159,46,.80); --c3a:rgba(47,179,109,.75); --c4a:rgba(239,91,127,.80);
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#1d1c22;--ink:#f1eee6;--card:#2a2931;--line:#3d3b47;--mute:#a09ba8}
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Yu Gothic",sans-serif;font-weight:500;line-height:1.6}
+header{display:flex;align-items:center;gap:12px;padding:12px 16px 4px;flex-wrap:wrap}
+header h1{font-size:18px;margin:0;font-weight:900;letter-spacing:.02em}
+header small{color:var(--mute)}
+nav{display:flex;gap:6px;padding:6px 16px 10px;overflow-x:auto}
+nav button{flex:0 0 auto;width:40px;height:40px;border-radius:50%;border:2px solid var(--line);background:var(--card);color:var(--ink);font:inherit;font-weight:900;font-size:16px;cursor:pointer}
+nav button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+main{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;padding:0 16px 16px;max-width:1100px;margin:0 auto}
+@media(max-width:760px){main{grid-template-columns:1fr}}
+.stmt{grid-column:1/-1;background:var(--card);border:2px solid var(--line);border-radius:16px;padding:10px 14px;font-size:15px}
+.stmt b{font-weight:900}
+.stage{background:var(--card);border:2px solid var(--line);border-radius:20px;padding:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;min-height:300px;user-select:none;-webkit-tap-highlight-color:transparent}
+.stage svg{width:100%;height:auto;max-height:62vh;display:block}
+.tap{position:absolute;right:12px;bottom:8px;font-size:12px;color:var(--mute)}
+.side{display:flex;flex-direction:column;gap:10px;min-width:0}
+.say{background:var(--card);border:2px solid var(--line);border-radius:18px;padding:12px 16px;font-size:17px;min-height:92px;position:relative}
+.say .no{position:absolute;left:-8px;top:-10px;background:var(--ink);color:var(--bg);border-radius:999px;font-size:12px;font-weight:900;padding:1px 10px}
+.k{font-style:normal;font-weight:900;padding:0 6px;border-radius:6px;color:#fff;white-space:nowrap}
+.k.c1{background:var(--c1)}.k.c2{background:var(--c2)}.k.c3{background:var(--c3)}.k.c4{background:var(--c4)}
+.note{background:var(--card);border:2px dashed var(--line);border-radius:18px;padding:10px 14px;flex:1;min-height:120px}
+.note h3{margin:0 0 4px;font-size:12px;color:var(--mute);font-weight:700}
+.note .ln{font-size:19px;font-weight:900;padding:2px 0;animation:in .45s ease both}
+.note .ln.ans{color:#fff;background:var(--ink);border-radius:10px;padding:2px 10px;display:inline-block;margin-top:4px}
+@keyframes in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.ctl{display:flex;gap:8px;align-items:center}
+.ctl button{font:inherit;font-weight:900;font-size:16px;border-radius:999px;border:2px solid var(--ink);padding:8px 18px;cursor:pointer;background:var(--card);color:var(--ink)}
+.ctl button.go{background:var(--ink);color:var(--bg);flex:1}
+.ctl button:disabled{opacity:.35;cursor:default}
+.dots{display:flex;gap:5px;margin-left:auto}
+.dots i{width:9px;height:9px;border-radius:50%;background:var(--line);display:block}
+.dots i.on{background:var(--ink)}
+/* 図 */
+svg text{font-family:"Zen Maru Gothic",sans-serif;font-weight:700;fill:var(--ink)}
+.part{fill:var(--card);stroke:var(--ink);stroke-width:1.6;stroke-linejoin:round;transition:fill .5s ease, opacity .5s ease, stroke .5s ease, stroke-width .5s ease}
+.part.f0{fill:rgba(128,128,128,.07)}
+.arc{fill:none;stroke:var(--ink);stroke-width:1.8;transition:stroke .5s ease, stroke-width .5s ease;stroke-linecap:round}
+.arc.dash{stroke-dasharray:4 4;stroke-width:1.2}
+.part.c1{fill:var(--c1a)}.part.c2{fill:var(--c2a)}.part.c3{fill:var(--c3a)}.part.c4{fill:var(--c4a)}
+.arc.c1{stroke:var(--c1);stroke-width:6}.arc.c2{stroke:var(--c2);stroke-width:6}.arc.c3{stroke:var(--c3);stroke-width:6}.arc.c4{stroke:var(--c4);stroke-width:6}
+.part.hide{opacity:0}
+.lab{font-size:12px}
+.pulse{animation:pl 1.2s ease-in-out infinite}
+@keyframes pl{50%{opacity:.82}}
+</style>
+<script data-goatcounter="https://hiroism.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script></head>
+<body>
+<header><h1>図形のひみつ</h1><small>クリックで つぎへ すすむよ（キーボードの → ← も つかえるよ）</small></header>
+<nav id="nav"></nav>
+<main>
+  <div class="stmt" id="stmt"></div>
+  <div class="stage" id="stage"><svg id="svg" viewBox="0 0 200 200"></svg><span class="tap">クリック → つぎへ</span></div>
+  <div class="side">
+    <div class="say" id="say"></div>
+    <div class="note"><h3>ノート</h3><div id="calc"></div></div>
+    <div class="ctl"><button id="back">◀ もどる</button><button class="go" id="next">つぎへ ▶</button><div class="dots" id="dots"></div></div>
+  </div>
+</main>
+<script>
+const K=(c,t)=>`<i class="k c${c}">${t}</i>`;
+const pt=(o,s)=>(x,y)=>[o[0]+x*s,o[1]+y*s];
+// 円弧 P→Q（中心C、半径r）。sw 省略時は 短い弧 を自動で。
+function A(P,Q,C,r,sw){
+  if(sw===undefined){const cr=(P[0]-C[0])*(Q[1]-C[1])-(P[1]-C[1])*(Q[0]-C[0]);sw=cr>0?1:0;}
+  return `A${r} ${r} 0 0 ${sw} ${Q[0]} ${Q[1]}`;
+}
+const M=p=>`M${p[0]} ${p[1]}`, L=p=>`L${p[0]} ${p[1]}`;
+const circ=(c,r)=>`M${c[0]-r} ${c[1]} a${r} ${r} 0 1 0 ${2*r} 0 a${r} ${r} 0 1 0 ${-2*r} 0Z`;
+const T=(x,y,t,a='middle')=>`<text class="lab" x="${x}" y="${y}" text-anchor="${a}">${t}</text>`;
+
+/* ---------- 問題のデータ ---------- */
+const P=[];
+
+/* 1 */
+(()=>{
+  const p=pt([36,36],14);
+  const c=[p(0,0),p(10,0),p(10,10),p(0,10)];
+  const semi={top:`${M(c[0])} ${A(c[0],c[1],p(5,0),70,0)}Z`,right:`${M(c[1])} ${A(c[1],c[2],p(10,5),70,0)}Z`,bottom:`${M(c[2])} ${A(c[2],c[3],p(5,10),70,0)}Z`,left:`${M(c[3])} ${A(c[3],c[0],p(0,5),70,0)}Z`};
+  const lens=(P1,Q1,C1,C2)=>`${M(P1)} ${A(P1,Q1,C1,70)} ${A(Q1,P1,C2,70)}Z`;
+  const mid=p(5,5);
+  const lenses=[lens(c[1],mid,p(5,0),p(10,5)),lens(c[2],mid,p(10,5),p(5,10)),lens(c[3],mid,p(5,10),p(0,5)),lens(c[0],mid,p(0,5),p(5,0))];
+  P.push({
+    stmt:'<b>1</b>　1辺10cmの正方形の各辺を直径とする半円を、内側に4つかきました。 (1) 色をぬった部分（花びら）の面積　(2) 4つの半円の曲線の長さの合計（円周率は3.14）',
+    vb:'0 0 200 200',
+    parts:[
+      {id:'sq',d:`${M(c[0])}${L(c[1])}${L(c[2])}${L(c[3])}Z`},
+      {id:'sT',d:semi.top},{id:'sR',d:semi.right},{id:'sB',d:semi.bottom},{id:'sL',d:semi.left},
+      {id:'l1',base:1,d:lenses[0]},{id:'l2',base:1,d:lenses[1]},{id:'l3',base:1,d:lenses[2]},{id:'l4',base:1,d:lenses[3]},
+      {id:'a1',t:'a',d:`${M(c[0])} ${A(c[0],c[1],p(5,0),70,0)}`},{id:'a2',t:'a',d:`${M(c[1])} ${A(c[1],c[2],p(10,5),70,0)}`},
+      {id:'a3',t:'a',d:`${M(c[2])} ${A(c[2],c[3],p(5,10),70,0)}`},{id:'a4',t:'a',d:`${M(c[3])} ${A(c[3],c[0],p(0,5),70,0)}`}],
+    labels:T(106,28,'10cm')+T(180,112,'10cm','start').replace('x="180"','x="182"'),
+    steps:[
+      {say:`ぬってあるのは、${K(4,'4まいの花びら')}だよ。まずは 半円を ぜんぶ 見てみよう。`,hl:{l1:4,l2:4,l3:4,l4:4}},
+      {say:`半円は 4つ。${K(1,'上')}・${K(2,'右')}・${K(3,'下')}・${K(4,'左')}。直径10cmの 半円だよ。`,hl:{sT:1,sR:2,sB:3,sL:4}},
+      {say:`半円2つで 円1つぶん。だから 4つで ${K(1,'円2つぶん')}（半径は5cm）。`,calc:'5×5×3.14×2 ＝ 157',hl:{sT:1,sR:1,sB:1,sL:1}},
+      {say:`この 157 を 正方形（面積100）の中に ならべたら、${K(4,'花びら')}のところは ${K(3,'2回')}数えているよね。`,hl:{sq:3,l1:4,l2:4,l3:4,l4:4}},
+      {say:`2回数えた分が 花びら！ だから 半円の合計から 正方形を ひくと、${K(4,'花びら')}がわかるよ。`,calc:'157 − 100 ＝ 57',ans:'(1) 57 cm²',hl:{l1:4,l2:4,l3:4,l4:4}},
+      {say:`(2) 曲線の長さ。${K(2,'4つの半円のまるい線')}を あつめると…`,hl:{a1:2,a2:2,a3:2,a4:2}},
+      {say:`半円4つ ＝ 円2つぶん。直径10cmの円の まわりが 2つぶん。`,calc:'10×3.14×2 ＝ 62.8',ans:'(2) 62.8 cm',hl:{a1:2,a2:2,a3:2,a4:2}}
+    ]});
+})();
+
+/* 2 */
+(()=>{
+  const p=pt([34,38],13);
+  const a=p(0,8),b=p(8,8),cc=p(8,0),d=p(0,0),r=104;
+  const qa=`${M(a)}${L(b)} ${A(b,d,a,r)}Z`;
+  const qc=`${M(cc)}${L(d)} ${A(d,b,cc,r)}Z`;
+  P.push({
+    stmt:'<b>2</b>　1辺8cmの正方形ABCDに、Aを中心とする半径8cmの四分円と、Cを中心とする半径8cmの四分円をかきました。色をぬった部分の面積は？（円周率3.14）',
+    vb:'0 0 200 200',
+    parts:[
+      {id:'sq',d:`${M(a)}${L(b)}${L(cc)}${L(d)}Z`},
+      {id:'qa',base:1,d:qa},{id:'qc',base:1,d:qc},
+      {id:'lens',base:1,d:`${M(b)} ${A(b,d,a,r)} ${A(d,b,cc,r)}Z`}],
+    labels:T(a[0]-8,a[1]+14,'A')+T(b[0]+8,b[1]+14,'B')+T(cc[0]+8,cc[1]-4,'C')+T(d[0]-8,d[1]-4,'D')+T(p(4,8)[0],p(4,8)[1]+16,'8cm'),
+    steps:[
+      {say:`ぬってあるのは 2つの四分円が ${K(4,'かさなった')}ところ（レンズの形）。`,hl:{lens:4}},
+      {say:`まず、Aを中心にした ${K(1,'四分円')}。半径8cm の 円の 4ぶんの1。`,calc:'8×8×3.14÷4 ＝ 50.24',hl:{qa:1}},
+      {say:`つぎに、Cを中心にした ${K(2,'四分円')}。これも おなじ 大きさ。`,calc:'50.24 ＋ 50.24 ＝ 100.48',hl:{qc:2}},
+      {say:`2つの四分円を 正方形に のせてみると、${K(3,'正方形')}は ぜんぶ おおわれて、レンズだけ ${K(4,'2回')} 数えているよ。`,hl:{sq:3,lens:4}},
+      {say:`だから 四分円2つの合計から ${K(3,'正方形')}を ひくと、${K(4,'2回数えた分（レンズ）')}が のこる！`,calc:'100.48 − 8×8 ＝ 36.48',ans:'36.48 cm²',hl:{lens:4}}
+    ]});
+})();
+
+/* 3 */
+(()=>{
+  const s=11, O=[52,52];
+  const Ap=[O[0],O[1]],Bp=[O[0],O[1]+6*s],Cp=[O[0]+8*s,O[1]+6*s];
+  const Oc=[O[0]+4*s,O[1]+3*s];
+  const mAB=[O[0],O[1]+3*s],mBC=[O[0]+4*s,O[1]+6*s];
+  const semAB=`${M(Ap)} ${A(Ap,Bp,mAB,3*s,0)}Z`;
+  const semBC=`${M(Bp)} ${A(Bp,Cp,mBC,4*s,0)}Z`;
+  const big=`${M(Ap)} ${A(Ap,Cp,Oc,5*s,0)}Z`;
+  const lune1=`${M(Ap)} ${A(Ap,Bp,mAB,3*s,0)} ${A(Bp,Ap,Oc,5*s)}Z`;
+  const lune2=`${M(Bp)} ${A(Bp,Cp,mBC,4*s,0)} ${A(Cp,Bp,Oc,5*s)}Z`;
+  P.push({
+    stmt:'<b>3</b>　直角三角形ABC（AB＝6cm、BC＝8cm、AC＝10cm）の3辺を直径とする半円をかきました。色をぬった2つの部分の面積の合計は？',
+    vb:'0 0 200 200',
+    parts:[
+      {id:'semAB',d:semAB},{id:'semBC',d:semBC},{id:'big',base:1,d:big},
+      {id:'tri',base:1,d:`${M(Ap)}${L(Bp)}${L(Cp)}Z`},
+      {id:'lune1',base:1,d:lune1},{id:'lune2',base:1,d:lune2}],
+    labels:T(Ap[0],Ap[1]-6,'A')+T(Bp[0]-10,Bp[1]+4,'B')+T(Cp[0]+8,Cp[1]+4,'C')+T(Ap[0]+4,mAB[1]+3,'6','start')+T(mBC[0],Bp[1]-5,'8')+T(Oc[0]+10,Oc[1]-8,'10'),
+    steps:[
+      {say:`ぬってあるのは、ABと BCの半円が ${K(4,'はみ出した')} 2つの三日月。`,hl:{lune1:4,lune2:4}},
+      {say:`ここで ふしぎな 作戦。${K(1,'ABの半円')}・${K(2,'BCの半円')}・${K(3,'三角形')} を 足してみよう。`,calc:'(ABの半円)＋(BCの半円)＋三角形',hl:{semAB:1,semBC:2,tri:3}},
+      {say:`いっぽう、${K(1,'大きな半円AC')}（斜辺10cmが直径）を ひくと、三日月が のこる。`,hl:{big:1,lune1:4,lune2:4}},
+      {say:`ここが ポイント！ 半円の面積は「半径×半径×3.14÷2」。<br>3×3 ＋ 4×4 ＝ 25 ＝ 5×5。だから ${K(1,'ABの半円')} ＋ ${K(2,'BCの半円')} ＝ ${K(1,'大きな半円AC')} ！`,calc:'3×3＋4×4 ＝ 5×5',hl:{semAB:1,semBC:2}},
+      {say:`ということは、小さい半円2つと 大きい半円が ぴったり 打ち消しあって、三日月2つ ＝ ${K(3,'三角形')} になるよ。`,hl:{big:1,semAB:1,semBC:1}},
+      {say:`三角形ABCの 面積を 求めるだけ！`,calc:'6×8÷2 ＝ 24',ans:'24 cm²',hl:{tri:3,lune1:4,lune2:4}}
+    ]});
+})();
+
+/* 4 */
+(()=>{
+  const p=pt([34,34],11);
+  const cs=[p(3,3),p(9,3),p(3,9),p(9,9)];
+  const parts=[{id:'sq',d:`${M(p(0,0))}${L(p(12,0))}${L(p(12,12))}${L(p(0,12))}Z`}];
+  cs.forEach((c,i)=>parts.push({id:'c'+i,d:circ(c,33)}));
+  cs.forEach((c,i)=>parts.push({id:'o'+i,t:'a',d:circ(c,33)}));
+  P.push({
+    stmt:'<b>4</b>　1辺12cmの正方形の中に、半径3cmの円を4つ、すきまなく入れました。 (1) 色をぬった部分の面積　(2) 4つの円の円周の合計（円周率3.14）',
+    vb:'0 0 200 200',parts,
+    labels:T(p(6,0)[0],p(0,0)[1]-6,'12cm')+T(p(3,3)[0],p(3,3)[1]+4,'r=3'),
+    steps:[
+      {say:`ぬってあるのは、${K(4,'円のすきま')}。正方形から 円を ぬいた 形だよ。`,hl:{sq:4}},
+      {say:`ぜんたいの ${K(1,'正方形')}の面積は？`,calc:'12×12 ＝ 144',hl:{sq:1}},
+      {say:`つぎに ${K(2,'円')}。1つぶんは 半径×半径×3.14。`,calc:'3×3×3.14 ＝ 28.26',hl:{c0:2}},
+      {say:`円は 4つ あるから、${K(2,'4つぶん')}。`,calc:'28.26×4 ＝ 113.04',hl:{c0:2,c1:2,c2:2,c3:2}},
+      {say:`${K(1,'正方形')} から ${K(2,'円4つ')} を ひけば、${K(4,'すきま')}！`,calc:'144 − 113.04 ＝ 30.96',ans:'(1) 30.96 cm²',hl:{sq:4}},
+      {say:`(2) 円周。円の まわりの長さは「直径×3.14」。直径は 6cm。`,calc:'6×3.14 ＝ 18.84（1つぶん）',hl:{o0:3}},
+      {say:`4つぶん 足して…`,calc:'18.84×4 ＝ 75.36',ans:'(2) 75.36 cm',hl:{o0:3,o1:3,o2:3,o3:3}}
+    ]});
+})();
+
+/* 5 */
+(()=>{
+  const p=pt([34,34],12);
+  const a=p(0,10),b=p(10,10),cc=p(10,0),d=p(0,0),r=120;
+  P.push({
+    stmt:'<b>5</b>　1辺10cmの正方形ABCDに、Aを中心とする半径10cmの四分円をかきました。 (1) 色をぬった部分の面積　(2) 点Cをふくむ、四分円の外の部分の面積（円周率3.14）',
+    vb:'0 0 200 200',
+    parts:[
+      {id:'sq',d:`${M(a)}${L(b)}${L(cc)}${L(d)}Z`},
+      {id:'sec',base:1,d:`${M(a)}${L(b)} ${A(b,d,a,r)}Z`},
+      {id:'tri',base:1,d:`${M(a)}${L(b)}${L(d)}Z`},
+      {id:'seg',base:1,d:`${M(b)} ${A(b,d,a,r)}Z`},
+      {id:'out',base:1,d:`${M(b)}${L(cc)}${L(d)} ${A(d,b,a,r)}Z`}],
+    labels:T(a[0]-8,a[1]+14,'A')+T(b[0]+8,b[1]+14,'B')+T(cc[0]+8,cc[1]-4,'C')+T(d[0]-8,d[1]-4,'D')+T(p(5,10)[0],p(5,10)[1]+16,'10cm'),
+    steps:[
+      {say:`ぬってあるのは、ふくらんだ ${K(4,'弓の形')}（弓形）。`,hl:{seg:4}},
+      {say:`まず ${K(1,'四分円')}ぜんぶ の面積。半径10cmの円の 4分の1。`,calc:'10×10×3.14÷4 ＝ 78.5',hl:{sec:1}},
+      {say:`つぎに ${K(3,'三角形ABD')}。たて10、よこ10 の 直角三角形。`,calc:'10×10÷2 ＝ 50',hl:{tri:3}},
+      {say:`四分円から 三角形を ひくと、のこるのは ${K(4,'弓形')}！`,calc:'78.5 − 50 ＝ 28.5',ans:'(1) 28.5 cm²',hl:{sec:1,tri:3,seg:4}},
+      {say:`(2) ${K(2,'四分円の外')}（点Cのまわり）。正方形から 四分円を ひこう。`,calc:'10×10 − 78.5 ＝ 21.5',ans:'(2) 21.5 cm²',hl:{out:2}}
+    ]});
+})();
+
+/* 6 */
+(()=>{
+  const p=pt([14,50],1), r=40;
+  const cs=[[54,90],[134,90],[214,90]];
+  const top=[[54,50],[214,50]], bot=[[54,130],[214,130]];
+  P.push({
+    stmt:'<b>6</b>　半径5cmの円3つが一列にならんでいます。まわりを ひもで ぴんと 1周かけます。ひもの長さは？（円周率3.14）',
+    vb:'0 0 270 180',
+    parts:[
+      {id:'band',d:`M54 50 L214 50 A40 40 0 0 1 214 130 L54 130 A40 40 0 0 1 54 50Z`},
+      ...cs.map((c,i)=>({id:'c'+i,d:circ(c,r)})),
+      {id:'t',t:'a',d:'M54 50 L214 50'},{id:'b',t:'a',d:'M214 130 L54 130'},
+      {id:'r',t:'a',d:'M214 50 A40 40 0 0 1 214 130'},{id:'l',t:'a',d:'M54 130 A40 40 0 0 1 54 50'}],
+    labels:T(134,40,'円の直径 10cm × 2'),
+    steps:[
+      {say:`ひもの 通る道を 見よう。まっすぐな 線と、まるい線が あるね。`,hl:{band:4}},
+      {say:`${K(1,'上のまっすぐ')}は 円2つぶんの 直径。10cm が 2つ。`,calc:'10×2 ＝ 20',hl:{t:1}},
+      {say:`${K(1,'下のまっすぐ')}も おなじ。上と下で 2本。`,calc:'20×2 ＝ 40',hl:{t:1,b:1}},
+      {say:`つぎは まるい線。${K(2,'左')}も ${K(2,'右')}も 半円。半円2つ ＝ ${K(2,'円1つぶん')}！`,calc:'10×3.14 ＝ 31.4',hl:{l:2,r:2}},
+      {say:`まっすぐな 40cm と、まるい 31.4cm を 足そう。`,calc:'40 ＋ 31.4 ＝ 71.4',ans:'71.4 cm',hl:{t:1,b:1,l:2,r:2}}
+    ]});
+})();
+
+/* 7 */
+(()=>{
+  const p=pt([20,40],1);
+  const a=[20,150],b=[80,150],c=[140,150];
+  const r=60,rr=30;
+  P.push({
+    stmt:'<b>7</b>　直径12cmの半円の中に、直径6cmの半円を2つかきました。 (1) 色をぬった部分の面積　(2) 色をぬった部分のまわりの長さ（円周率3.14）',
+    vb:'0 0 200 180',
+    parts:[
+      {id:'big',d:`${M(a)} ${A(a,c,b,r,1)}Z`},
+      {id:'s1',d:`${M(a)} ${A(a,b,[50,150],rr,1)}Z`},{id:'s2',d:`${M(b)} ${A(b,c,[110,150],rr,1)}Z`},
+      {id:'ab',t:'a',d:`${M(a)} ${A(a,c,b,r,1)}`},{id:'a1',t:'a',d:`${M(a)} ${A(a,b,[50,150],rr,1)}`},{id:'a2',t:'a',d:`${M(b)} ${A(b,c,[110,150],rr,1)}`}],
+    labels:T(80,168,'12cm')+T(50,138,'6')+T(110,138,'6'),
+    steps:[
+      {say:`ぬってあるのは、大きい半円から 小さい半円2つを ${K(4,'くりぬいた')} 形。`,hl:{big:4}},
+      {say:`まず ${K(1,'大きい半円')}。半径6cm。`,calc:'6×6×3.14÷2 ＝ 56.52',hl:{big:1}},
+      {say:`つぎに ${K(2,'小さい半円')}。半径3cm のが 2つ。`,calc:'3×3×3.14÷2×2 ＝ 28.26',hl:{s1:2,s2:2}},
+      {say:`大きい半円から 小さい半円を ひく。`,calc:'56.52 − 28.26 ＝ 28.26',ans:'(1) 28.26 cm²',hl:{big:4}},
+      {say:`(2) まわりの長さ。まず ${K(1,'大きい弧')}。直径12の 円周の はんぶん。`,calc:'12×3.14÷2 ＝ 18.84',hl:{ab:1}},
+      {say:`つぎに ${K(2,'小さい弧')} 2つ。直径6の 円周の はんぶんが 2つ ＝ 円1つぶん。`,calc:'6×3.14 ＝ 18.84',hl:{a1:2,a2:2}},
+      {say:`足し算で おしまい。（下の まっすぐな線は 小さい半円で ふさがるから ふくまないよ）`,calc:'18.84 ＋ 18.84 ＝ 37.68',ans:'(2) 37.68 cm',hl:{ab:1,a1:2,a2:2}}
+    ]});
+})();
+
+/* 8 */
+(()=>{
+  const r=40, Cs=[[60,150],[140,150],[100,150-40*Math.sqrt(3)]].map(q=>q.map(v=>+v.toFixed(2)));
+  const E=[];
+  for(let i=0;i<3;i++){
+    const a=Cs[i],b=Cs[(i+1)%3],dx=b[0]-a[0],dy=b[1]-a[1],L_=Math.hypot(dx,dy),nx=-dy/L_,ny=dx/L_;
+    E.push([[+(a[0]+r*nx).toFixed(2),+(a[1]+r*ny).toFixed(2)],[+(b[0]+r*nx).toFixed(2),+(b[1]+r*ny).toFixed(2)]]);
+  }
+  const arcOf=i=>{const a=E[i][1],b=E[(i+1)%3][0];return `${M(a)} ${A(a,b,Cs[(i+1)%3],r,0)}`;};
+  const body=`${M(E[0][0])} ${L(E[0][1])} ${arcOf(0).replace(/^M[^A]*/,'')} ${L(E[1][1])} ${arcOf(1).replace(/^M[^A]*/,'')} ${L(E[2][1])} ${arcOf(2).replace(/^M[^A]*/,'')}Z`;
+  P.push({
+    stmt:'<b>8</b>　半径5cmの円3つが、たがいに ふれ合っています。まわりを ひもで ぴんと 1周かけます。ひもの長さは？（円周率3.14）',
+    vb:'0 0 200 200',
+    parts:[
+      {id:'band',d:body},
+      ...Cs.map((c,i)=>({id:'c'+i,d:circ(c,r)})),
+      {id:'tri',t:'a dash',d:`${M(Cs[0])}${L(Cs[1])}${L(Cs[2])}Z`},
+      {id:'e0',t:'a',d:`${M(E[0][0])}${L(E[0][1])}`},{id:'e1',t:'a',d:`${M(E[1][0])}${L(E[1][1])}`},{id:'e2',t:'a',d:`${M(E[2][0])}${L(E[2][1])}`},
+      {id:'r0',t:'a',d:arcOf(0)},{id:'r1',t:'a',d:arcOf(1)},{id:'r2',t:'a',d:arcOf(2)}],
+    labels:T(100,142,'10cm'),
+    steps:[
+      {say:`ひもは、まっすぐな 3本と、まるい 3か所 で できているよ。`,hl:{band:4}},
+      {say:`円の ${K(3,'中心')} を つないでみよう。1辺は 半径＋半径 ＝ 10cm の ${K(3,'正三角形')}。`,hl:{tri:3}},
+      {say:`ひもの ${K(1,'まっすぐな部分')}は、この 辺と おなじ 長さ（長方形の 横の辺）。10cm が 3本。`,calc:'10×3 ＝ 30',hl:{e0:1,e1:1,e2:1}},
+      {say:`${K(2,'まるい部分')}は 3つ。中心の まわりの角を 足すと…`,hl:{r0:2,r1:2,r2:2}},
+      {say:`3つの おうぎ形の 角は 120°ずつ。足すと 360°。つまり ${K(2,'円1つぶん')}！`,calc:'10×3.14 ＝ 31.4',hl:{r0:2,r1:2,r2:2}},
+      {say:`まっすぐ 30cm ＋ まるい 31.4cm。`,calc:'30 ＋ 31.4 ＝ 61.4',ans:'61.4 cm',hl:{e0:1,e1:1,e2:1,r0:2,r1:2,r2:2}}
+    ]});
+})();
+
+/* ---------- 動かす部分 ---------- */
+const $=id=>document.getElementById(id);
+let cur=0, step=0;
+function build(i){
+  cur=i; step=0;
+  const q=P[i];
+  $('stmt').innerHTML=q.stmt;
+  $('svg').setAttribute('viewBox',q.vb);
+  $('svg').innerHTML=q.parts.map(p=>`<path id="p_${p.id}" class="${p.t?'arc '+(p.t.includes('dash')?'dash':''):'part'}" d="${p.d}"/>`).join('')+q.labels;
+  document.querySelectorAll('#nav button').forEach((b,j)=>b.classList.toggle('on',j===i));
+  $('dots').innerHTML=q.steps.map(()=>'<i></i>').join('');
+  show();
+}
+function show(){
+  const q=P[cur], s=q.steps[step];
+  q.parts.forEach(p=>{
+    const e=$('p_'+p.id); const v=s.hl[p.id];
+    e.setAttribute('class',(p.t?'arc '+(p.t.includes('dash')?'dash':''):'part')+(v?' c'+v:'')+(v===0||(v===undefined&&p.base)?' f0':''));
+  });
+  $('say').innerHTML=`<span class="no">${step+1} / ${q.steps.length}</span>`+s.say;
+  let h='';
+  for(let i=0;i<=step;i++){const t=q.steps[i]; if(t.calc)h+=`<div class="ln"${i===step?'':' style="animation:none"'}>${t.calc}</div>`; if(t.ans)h+=`<div class="ln ans"${i===step?'':' style="animation:none"'}>こたえ　${t.ans}</div><br>`;}
+  $('calc').innerHTML=h||'<div style="color:var(--mute)">（ここに 式が たまっていくよ）</div>';
+  document.querySelectorAll('#dots i').forEach((d,i)=>d.classList.toggle('on',i<=step));
+  $('back').disabled=step===0;
+  const last=step===q.steps.length-1;
+  $('next').textContent=last?(cur<P.length-1?'つぎの もんだいへ ▶':'はじめから ↺'):'つぎへ ▶';
+}
+function next(){
+  const q=P[cur];
+  if(step<q.steps.length-1){step++;show();}
+  else if(cur<P.length-1)build(cur+1); else build(0);
+}
+function back(){ if(step>0){step--;show();} }
+$('nav').innerHTML=P.map((_,i)=>`<button>${i+1}</button>`).join('');
+document.querySelectorAll('#nav button').forEach((b,i)=>b.onclick=()=>build(i));
+$('stage').onclick=next; $('next').onclick=next; $('back').onclick=back;
+addEventListener('keydown',e=>{if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();next();}else if(e.key==='ArrowLeft')back();});
+build(0);
+// 確認用： ?dbg で window.dbg
+if(location.search.includes('dbg'))window.dbg={build,next,back,P,get cur(){return cur},get step(){return step}};
+</script>
+</body>
+</html>
