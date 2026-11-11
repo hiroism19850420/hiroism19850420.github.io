@@ -501,7 +501,7 @@ function drawParts(){
 }
 function drawBanner(){
   const b=S.banner;if(!b)return;
-  const sz=Math.min(W*.11,H*.16,90),y=H*.13;
+  let sz=Math.min(W*.11,H*.16,90);ctx.font='900 '+sz+'px '+FONT;{const tw=ctx.measureText(b.text).width;if(tw>W*.88)sz*=W*.88/tw}const y=H*.13;
   const sc=easeBack(b.t/.4),al=b.t>b.max-.5?clamp((b.max-b.t)/.5,0,1):1;
   if(sc<=0)return;
   ctx.save();ctx.translate(W/2,y);ctx.scale(sc,sc);ctx.rotate(Math.sin(S.clock*3)*.015);ctx.translate(-W/2,-y);
@@ -634,6 +634,7 @@ requestAnimationFrame(loop);
 </script>
 </body>
 </html>
+
 
 
 
