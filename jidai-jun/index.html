@@ -331,14 +331,16 @@ function shufflePad(){for(let i=NMAX-1;i>0;i--){const j=(Math.random()*(i+1))|0;
 function nextQ(){
   if(S.qi>=S.qs.length){
     const sc=S.score,N=S.qs.length;
+    if(S.mode==='plain'){S.phase='result';S.t=0;stopEarSilent();return}
     if(sc===N)finale('ぜんぶ せいかい！！','クイズ マスター',1.6,'ぜんぶ せいかい！すごーい！！');
     else finale(sc+' / '+N+' もん せいかい！','また ちょうせんしてね',.3+sc/N,sc+'もん せいかい！すごーい！');
     return;
   }
   S.cur=S.qs[S.qi];S.phase='qa';S.t=0;S.lt=0;S.lastHeard=0;S.banner=null;shufflePad();startEar();
 }
-function startQuiz(){S.qs=pickQs();S.qi=0;S.score=0;S.n=NMAX;nextQ()}
-function begin(mode){initAudio();openEar();S.mode=mode||'grow';S.n=1;S.fails=0;S.phase='title';S.timers=[];if(S.mode==='quiz')startQuiz();else startRound()}
+function stopEarSilent(){}
+function startQuiz(){S.qs=S.mode==='plain'?QZ.slice().sort(()=>Math.random()-.5):pickQs();S.wrong=[];S.qi=0;S.score=0;S.n=NMAX;nextQ()}
+function begin(mode){initAudio();openEar();S.mode=mode||'grow';S.n=1;S.fails=0;S.phase='title';S.timers=[];if(S.mode==='quiz'||S.mode==='plain')startQuiz();else startRound()}
 
 /* ---------- update ---------- */
 function update(dt){
@@ -384,14 +386,14 @@ function update(dt){
     if(DBG&&window.dbg&&window.dbg.auto&&S.lt>1.2&&!S.autoSaid){S.autoSaid=true;S.voiceSeq=[Math.random()<(window.dbg.err||0)?(ans+3)%NMAX:ans];S.lastHeard=S.lt}
     if(heard.includes(ans)){
       S.score++;S.phase='qok';S.t=0;
-      celebrate(Math.min(10,3+S.score),' ');
+      if(S.mode!=='plain')celebrate(Math.min(10,3+S.score),' ');
     }else if((S.tapSeq.length&&!S.tapSeq.includes(ans))||(heard.length&&quiet>1.5)){
-      S.phase='qng';S.t=0;sFail();
+      S.phase='qng';S.t=0;if(S.mode==='plain')S.wrong.push(S.cur);else sFail();
     }
   }else if(S.phase==='qok'){
-    if(S.t>3.6){S.qi++;nextQ()}
+    if(S.t>(S.mode==='plain'?.7:3.6)){S.qi++;nextQ()}
   }else if(S.phase==='qng'){
-    if(S.t>3.4){S.qi++;nextQ()}
+    if(S.t>(S.mode==='plain'?2.2:3.4)){S.qi++;nextQ()}
   }
   if(S.phase!=='listen'&&S.phase!=='qa')S.autoSaid=false;
   // fireworks
@@ -519,8 +521,8 @@ function drawHeader(){
   else if(S.phase==='ready')t=S.mode==='all'?'さいしょから さいごまで！　せーのっ！':'せーのっ！';
   else if(S.phase==='listen')t=S.tapMode?'ボタンを じゅんばんに おしてね':(S.mode==='all'?'縄文から 令和まで いってね！':'じゅんばんに いってね！');
   else if(S.phase==='fail')t=S.msg;
-  else if(S.phase==='qa')t=S.tapMode?'クイズ '+(S.qi+1)+'/'+S.qs.length+'　ボタンで こたえてね':'クイズ '+(S.qi+1)+'/'+S.qs.length+'　いつの じだい？';
-  else if(S.phase==='qng')t='おしい！ こたえは…';
+  else if(S.phase==='qa')t=S.tapMode?(S.mode==='plain'?'もんだい ':'クイズ ')+(S.qi+1)+'/'+S.qs.length+'　ボタンで こたえてね':(S.mode==='plain'?'もんだい ':'クイズ ')+(S.qi+1)+'/'+S.qs.length+'　いつの じだい？';
+  else if(S.phase==='qng')t='こたえは…';
   if(!t)return;
   const sz=Math.min(W*.06,H*.09,38);
   ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='900 '+sz+'px '+FONT;ctx.lineJoin='round';ctx.lineWidth=sz*.16;ctx.strokeStyle='#fff';
@@ -546,7 +548,12 @@ function drawPad(){
     ctx.strokeText(nm,r.x+r.w/2,r.y+r.h/2);ctx.fillText(nm,r.x+r.w/2,r.y+r.h/2);
   }
 }
-function titleBtns(){const g=8,w=Math.min(230,(W-24-g*2)/3),h=Math.min(70,H*.17),x0=W/2-(w*3+g*2)/2;return {w,h,y:H*.745,list:[x0,x0+w+g,x0+(w+g)*2]}}
+function titleBtns(){
+  const g=8,cols=W>=700?4:2,rows=4/cols,w=Math.min(230,(W-24-g*(cols-1))/cols),h=cols===4?Math.min(70,H*.17):Math.min(62,H*.09);
+  const y0=cols===4?H*.745:H*.55,x0=W/2-(w*cols+g*(cols-1))/2,list=[];
+  for(let k=0;k<4;k++)list.push({x:x0+(k%cols)*(w+g),y:y0+Math.floor(k/cols)*(h+g)});
+  return {w,h,list,bottom:y0+rows*h+(rows-1)*g};
+}
 function drawTitle(){
   const sz=Math.min(W*.09,H*.14,84);
   gold(sz,H*.2,'じだいじゅん');
@@ -556,17 +563,17 @@ function drawTitle(){
   ctx.fillText('れきしの じだいを じゅんばんに こえで いってね',W/2,H*.2+sz*1.9);
   ctx.fillText('どんどん ふえるよ。あっていたら…ゴージャス！',W/2,H*.2+sz*1.9+fs*1.6);
   const B=titleBtns(),pu=1+.04*Math.sin(S.clock*5);
-  [['ふえていく','おぼえて ふやす',['#ffe56a','#ff9d00']],['いきなり ぜんぶ','はじめから おわりまで',['#9ff0ff','#2a9dff']],['クイズ','いつの じだい？',['#ffb3e6','#e0409a']]].forEach(([t1,t2,c],k)=>{
-    const r={x:B.list[k]};
-    ctx.save();ctx.translate(r.x+B.w/2,B.y+B.h/2);ctx.scale(pu,pu);ctx.translate(-(r.x+B.w/2),-(B.y+B.h/2));
-    const g=ctx.createLinearGradient(0,B.y,0,B.y+B.h);g.addColorStop(0,c[0]);g.addColorStop(1,c[1]);
-    ctx.shadowColor=c[0];ctx.shadowBlur=26;roundRect(r.x,B.y,B.w,B.h,B.h/2.4);ctx.fillStyle=g;ctx.fill();ctx.shadowBlur=0;ctx.lineWidth=4;ctx.strokeStyle='#fff';ctx.stroke();
-    ctx.fillStyle='#3a1a00';ctx.font='900 '+Math.min(B.h*.36,B.w/(t1.length+1))+'px '+FONT;ctx.fillText(t1,r.x+B.w/2,B.y+B.h*.4);
-    ctx.font='700 '+Math.min(B.h*.2,B.w/(t2.length+1))+'px '+FONT;ctx.fillText(t2,r.x+B.w/2,B.y+B.h*.74);ctx.restore();
+  [['ふえていく','おぼえて ふやす',['#ffe56a','#ff9d00']],['いきなり ぜんぶ','はじめから おわりまで',['#9ff0ff','#2a9dff']],['クイズ','いつの じだい？',['#ffb3e6','#e0409a']],[QZ.length+'もん れんぞく','えんしゅつ なし',['#e6e6e6','#9aa3b2']]].forEach(([t1,t2,c],k)=>{
+    const r=B.list[k];
+    ctx.save();ctx.translate(r.x+B.w/2,r.y+B.h/2);ctx.scale(pu,pu);ctx.translate(-(r.x+B.w/2),-(r.y+B.h/2));
+    const g=ctx.createLinearGradient(0,r.y,0,r.y+B.h);g.addColorStop(0,c[0]);g.addColorStop(1,c[1]);
+    ctx.shadowColor=c[0];ctx.shadowBlur=26;roundRect(r.x,r.y,B.w,B.h,B.h/2.4);ctx.fillStyle=g;ctx.fill();ctx.shadowBlur=0;ctx.lineWidth=4;ctx.strokeStyle='#fff';ctx.stroke();
+    ctx.fillStyle='#3a1a00';ctx.font='900 '+Math.min(B.h*.36,B.w/(t1.length+1))+'px '+FONT;ctx.fillText(t1,r.x+B.w/2,r.y+B.h*.4);
+    ctx.font='700 '+Math.min(B.h*.2,B.w/(t2.length+1))+'px '+FONT;ctx.fillText(t2,r.x+B.w/2,r.y+B.h*.74);ctx.restore();
   });
   ctx.restore();
   ctx.save();ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.75)';ctx.font='500 '+Math.max(11,fs*.75)+'px '+FONT;
-  ctx.fillText(SR?'マイクを つかうよ（きょかを おねがいします）':'このブラウザは マイクが つかえないので ボタンで こたえます',W/2,H*.745+B.h+fs*1.3);ctx.restore();
+  ctx.fillText(SR?'マイクを つかうよ（きょかを おねがいします）':'このブラウザは マイクが つかえないので ボタンで こたえます',W/2,B.bottom+fs*1.5);ctx.restore();
   // demo cards
   const names=[];
   names.forEach((nm,i)=>{const cw=Math.min(50,W*.11),x=W/2+(i-1.5)*(cw+12),y=H*.655;ctx.save();ctx.translate(x,y+Math.sin(S.clock*2+i)*4);
@@ -577,6 +584,7 @@ function drawTitle(){
 function wrapJp(t,maxw){const lines=[];let cur='';for(const ch of t){if(ctx.measureText(cur+ch).width>maxw&&cur){lines.push(cur);cur=ch}else cur+=ch}if(cur)lines.push(cur);return lines}
 function drawQuiz(){
   if(S.phase==='over'||!S.cur)return;
+  const mark=S.mode==='plain'&&S.phase==='qok'?' ○':'';
   const px=W*.05,pw=W*.9,py=H*.2,ph=H*.36;
   const ap=easeBack(S.phase==='qa'?S.t/.4:1);
   ctx.save();ctx.translate(W/2,py+ph/2);ctx.scale(ap,ap);ctx.translate(-W/2,-(py+ph/2));
@@ -591,20 +599,34 @@ function drawQuiz(){
   if(S.phase==='qng'||S.phase==='qok'){
     const nm=ERAS[S.cur[1]].n,sz=Math.min(ph*.3,W*.12);ctx.font='900 '+sz+'px '+FONT;
     ctx.lineJoin='round';ctx.lineWidth=sz*.14;ctx.strokeStyle='rgba(60,20,0,.8)';ctx.fillStyle=hsl(15+S.cur[1]*23,90,60);
-    const y=py+ph*.74;ctx.strokeText(nm+' じだい',W/2,y);ctx.fillText(nm+' じだい',W/2,y);
+    const y=py+ph*.74;ctx.strokeText(nm+' じだい'+mark,W/2,y);ctx.fillText(nm+' じだい'+mark,W/2,y);
   }
+  ctx.restore();
+}
+
+function drawResult(){
+  const N=S.qs.length;ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillStyle='#4b2a9a';ctx.font='900 '+Math.min(W*.07,H*.08,34)+'px '+FONT;ctx.fillText('けっか',W/2,H*.14);
+  ctx.font='900 '+Math.min(W*.14,H*.17,80)+'px '+FONT;ctx.fillStyle='#2a1a7a';ctx.fillText(S.score+' / '+N,W/2,H*.3);
+  const fs=Math.min(W*.04,H*.045,18);ctx.font='700 '+fs+'px '+FONT;ctx.fillStyle='#4b2a9a';
+  ctx.fillText(S.wrong.length?'まちがえた もんだい（'+S.wrong.length+'）':'ぜんぶ せいかい',W/2,H*.43);
+  ctx.font='500 '+fs*.9+'px '+FONT;
+  const maxL=Math.floor((H*.45)/(fs*1.5));
+  S.wrong.slice(0,maxL).forEach((q,i)=>{let t=q[0]+' → '+ERAS[q[1]].n;if(t.length>Math.floor(W/(fs*.9))-1)t=t.slice(0,Math.floor(W/(fs*.9))-2)+'…';ctx.fillText(t,W/2,H*.5+i*fs*1.5)});
+  ctx.globalAlpha=.6+.4*Math.sin(S.clock*5);ctx.font='900 '+fs*1.2+'px '+FONT;ctx.fillText('タップで もどる',W/2,H*.95);
   ctx.restore();
 }
 function render(){
   ctx.save();
   if(S.shake>0)ctx.translate(R(-1,1)*S.shake*12,R(-1,1)*S.shake*12);
   drawBg();
-  if(S.mode==='quiz'&&S.phase!=='title'){drawQuiz()}
-  else if(S.phase!=='title'){
+  if((S.mode==='quiz'||S.mode==='plain')&&S.phase!=='title'&&S.phase!=='result'){drawQuiz()}
+  else if(S.phase!=='title'&&S.mode!=='plain'&&S.mode!=='quiz'){
     const n=S.n;
     for(let i=0;i<n;i++)drawCard(i,n);
   }
   drawParts();
+  if(S.phase==='result')drawResult();
   if(S.phase==='title')drawTitle();
   else{drawHeader();drawBanner()}
   if(S.phase==='listen'||S.phase==='qa')drawPad();
@@ -619,7 +641,8 @@ function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;update(dt);re
 cv.addEventListener('pointerdown',e=>{
   initAudio();
   const x=e.clientX,y=e.clientY;
-  if(S.phase==='title'){const B=titleBtns();if(y>=B.y&&y<=B.y+B.h)B.list.forEach((bx,k)=>{if(x>=bx&&x<=bx+B.w)begin(['grow','all','quiz'][k])});return}
+  if(S.phase==='title'){const B=titleBtns();B.list.forEach((r,k)=>{if(x>=r.x&&x<=r.x+B.w&&y>=r.y&&y<=r.y+B.h)begin(['grow','all','quiz','plain'][k])});return}
+  if(S.phase==='result'){if(S.t>.6){S.phase='title';S.mode='grow';S.n=1}return}
   if(S.phase==='show'){if(S.t>.6){S.t=S.showDur}return}
   if(S.phase==='listen'||S.phase==='qa'){
     for(let i=0;i<NMAX;i++){const r=padRect(i);if(x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h){tapEra(S.padOrder[i]);return}}
@@ -634,6 +657,8 @@ requestAnimationFrame(loop);
 </script>
 </body>
 </html>
+
+
 
 
 
