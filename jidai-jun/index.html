@@ -132,7 +132,7 @@ const allow=n=>n<=3?0:n<=7?1:2;
 /* ---------- state ---------- */
 const S={phase:'title',t:0,clock:0,n:1,fails:0,flip:new Array(NMAX).fill(0),flipT:new Array(NMAX).fill(0),
   parts:[],fw:[],timers:[],banner:null,shake:0,flash:0,night:1,rays:0,
-  voiceBase:[],voiceSeq:[],tapSeq:[],heardText:'',hit:0,lastHeard:0,lt:0,msg:'',tapMode:false,showDur:3,pulse:new Array(NMAX).fill(0)};
+  skip:0,voiceBase:[],voiceSeq:[],tapSeq:[],heardText:'',hit:0,lastHeard:0,lt:0,msg:'',tapMode:false,showDur:3,pulse:new Array(NMAX).fill(0)};
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 const DBG=/[?&]dbg/.test(location.search);
 let ear=null;
@@ -140,33 +140,38 @@ function heardSeq(){
   const v=S.voiceBase.concat(S.voiceSeq);
   return v.length>=S.tapSeq.length?v:S.tapSeq;
 }
-function startEar(){
-  S.voiceBase=[];S.voiceSeq=[];S.tapSeq=[];S.heardText='';S.hit=0;
+let earOn=false,lastLen=0;
+function openEar(){
+  // Safari などは「タップした その場」でしか マイクを はじめられないので、最初のタップで 開いて ずっと つけておく
   if(!SR){S.tapMode=true;return}
-  S.tapMode=false;
+  S.tapMode=false;earOn=true;
   const make=()=>{
     const r=new SR();r.lang='ja-JP';r.continuous=true;r.interimResults=true;r.maxAlternatives=3;
     r.onresult=e=>{
+      lastLen=e.results.length;
+      if(S.phase!=='listen')return;
       let txt='';
-      for(let i=0;i<e.results.length;i++){
+      for(let i=Math.min(S.skip,e.results.length);i<e.results.length;i++){
         let best='',bc=-1;
         for(let j=0;j<e.results[i].length;j++){const s=e.results[i][j].transcript,c=parse(s).length;if(c>bc){bc=c;best=s}}
         txt+=best+' ';
       }
       S.heardText=txt.trim();S.voiceSeq=parse(txt);S.lastHeard=S.lt;
     };
-    r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){S.tapMode=true}};
+    r.onerror=e=>{if(e.error==='not-allowed'||e.error==='service-not-allowed'){S.tapMode=true;earOn=false}};
     r.onend=()=>{
-      if(ear===r&&S.phase==='listen'){
-        S.voiceBase=S.voiceBase.concat(S.voiceSeq);S.voiceSeq=[];
-        try{ear=make();ear.start()}catch(e){}
-      }
+      S.voiceBase=S.voiceBase.concat(S.voiceSeq);S.voiceSeq=[];S.skip=0;lastLen=0;
+      if(earOn&&ear===r){setTimeout(()=>{if(earOn&&ear===r){try{ear=make();ear.start()}catch(e){}}},150)}
     };
     return r;
   };
-  try{stopEar();ear=make();ear.start()}catch(e){S.tapMode=true}
+  try{ear=make();ear.start()}catch(e){S.tapMode=true;earOn=false}
 }
-function stopEar(){const r=ear;ear=null;if(r){try{r.onend=null;r.abort()}catch(e){}}}
+function startEar(){
+  S.voiceBase=[];S.voiceSeq=[];S.tapSeq=[];S.heardText='';S.hit=0;S.skip=lastLen;
+  if(!SR||!earOn)S.tapMode=true;
+}
+function stopEar(){}
 
 /* ---------- layout ---------- */
 function padInfo(){
@@ -296,7 +301,7 @@ function tapEra(id){
   if(S.phase!=='listen')return;
   S.tapSeq.push(id);S.lastHeard=S.lt;
 }
-function begin(){initAudio();S.n=1;S.fails=0;S.phase='title';S.timers=[];startRound()}
+function begin(){initAudio();openEar();S.n=1;S.fails=0;S.phase='title';S.timers=[];startRound()}
 
 /* ---------- update ---------- */
 function update(dt){
