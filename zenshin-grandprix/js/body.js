@@ -2,7 +2,7 @@
 import { CFG } from './config.js';
 import { clamp, lerp, smoothstep, damp, OneEuro, History, toDeg } from './util.js';
 
-const C = CFG.body;
+const C = CFG.body, X = CFG.plus;
 const MP_VER = '0.10.14';
 const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
 const MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
@@ -12,16 +12,17 @@ export const Body = {
   mode: 'off', seen: false, full: false, legs: false, hands: false, u: 0.16, cx: 0.5, cy: 0.5,
   lift: 0, throttle: 0, cadence: 0, legPhase: 0, steer: 0, steerSrc: 'none', wheelDeg: 0, rawDeg: 0, handGap: 0,
   air: false, crouch: false, banzai: false, banzaiT: 0, banzaiArmed: true, lostT: 0, seenT: 0, isLost: false,
-  steps: 0, jumps: 0, squats: 0, banzais: 0, cost: 0, every: 0, lm: null, asp: 4 / 3,
+  steps: 0, jumps: 0, squats: 0, banzais: 0, claps: 0, lastClap: -9, cost: 0, every: 0, lm: null, asp: 4 / 3,
   neutral: 0, legSens: 1, steerFull: 32, swap: false, counting: true,
   on(n, fn) { (subs[n] = subs[n] || []).push(fn); return this; },
   emit(n, d) { (subs[n] || []).forEach(f => { try { f(d); } catch (e) { console.error(e); } }); },
   setNeutral(deg) { this.neutral = clamp(deg, -C.NEUTRAL_MAX, C.NEUTRAL_MAX); },
   setSens(leg = 'mid', steer = 'mid', swap = false) { this.legSens = C.LEG_SENS[leg] || 1; this.steerFull = C.STEER_FULL[steer] || 32; this.swap = !!swap; },
-  resetCounts() { this.steps = 0; this.jumps = 0; this.squats = 0; this.banzais = 0; },
+  resetCounts() { this.steps = 0; this.jumps = 0; this.squats = 0; this.banzais = 0; this.claps = 0; },
   reset() {
     Object.assign(this, { baseY: null, prevBodyY: null, vUpAvg: 0, lastJump: -9, maskT: -9, rawPrev: 0, lastSide: '', handsLostT: 9, blendT: 0, lastHandDeg: 0,
-      throttle: 0, steer: 0, air: false, crouch: false, banzai: false, banzaiT: 0, banzaiArmed: true, lostT: 0, seenT: 0, isLost: false, prevT: null, lastPeakT: -9, yMean: null, yState: 'up' });
+      throttle: 0, steer: 0, air: false, crouch: false, banzai: false, banzaiT: 0, banzaiArmed: true, lostT: 0, seenT: 0, isLost: false, prevT: null, lastPeakT: -9, yMean: null, yState: 'up', clapClosed: false, lastClap: -9 });
+    this.histG = new History(32);
     this.histD = new History(48); this.histA = new History(48); this.histY = new History(48); this.stepTimes = new History(32);
     this.euro = new OneEuro(C.EURO_MIN, C.EURO_BETA, C.EURO_D);
   },
@@ -148,8 +149,20 @@ export const Body = {
       if (this.banzai && down) { this.banzai = false; this.emit('banzaiEnd'); }
       if (down) this.banzaiArmed = true;
     }
+    // 拍手：はなれていた 両手が さっと くっつく（ハンドルを にぎる 手の間より ずっと 近い）
+    if (this.hands && !up) {
+      const g = Math.hypot(lw.x - rw.x, lw.y - rw.y) / u;
+      const wasOpen = this.histG.maxSince(t - X.CLAP_WIN) > X.CLAP_OPEN;
+      this.histG.push(t, g);
+      if (!this.clapClosed && g < X.CLAP_CLOSE && wasOpen && t - this.lastClap > X.CLAP_GAP) {
+        this.clapClosed = true; this.lastClap = t; this.claps++; this.emit('clap');
+      }
+      if (g > X.CLAP_CLOSE * 1.6) this.clapClosed = false;
+    }
     this.emit('pose', this);
   },
+  // だれも うつっていない
+  noPerson(dt) { this.lm = null; this.seen = false; this.lostClock(dt); this.relaxSteer(dt); this.throttle = damp(this.throttle, 0, C.THR_DOWN, dt); this.banzaiT = 0; },
   step(t) { this.stepTimes.push(t, 1); if (this.counting) this.steps++; this.emit('step'); },
   relaxSteer(dt) { this.steer = Math.abs(this.steer) < dt / C.STEER_RELAX ? 0 : this.steer - Math.sign(this.steer) * dt / C.STEER_RELAX; },
   lostClock(dt) {
@@ -192,6 +205,7 @@ export const Body = {
     const v = this.video;
     if (this.mode !== 'cam' || !this.pose || !v || v.readyState < 2) return false;
     if (v.currentTime === this.lastVT || ts < this.nextAt) return false;
+    if (this.twoOn && this.halves) return this.tickTwo(ts, v);
     const now = ts / 1000, dt = this.lastT ? Math.min(0.2, now - this.lastT) : 0.033;
     this.lastVT = v.currentTime; this.lastT = now;
     let res = null;
@@ -204,11 +218,54 @@ export const Body = {
     this.asp = (v.videoWidth || 640) / (v.videoHeight || 480);
     const lm = res && res.landmarks && res.landmarks[0];
     if (lm) this.feed(lm, dt, now);
-    else { this.lm = null; this.seen = false; this.lostClock(dt); this.relaxSteer(dt); this.throttle = damp(this.throttle, 0, C.THR_DOWN, dt); }
+    else this.noPerson(dt);
     return true;
-  }
+  },
+
+  // ---------- ふたりで（画面の左に立つ人 = players[0]、右の人 = players[1]） ----------
+  twoOn: false, halves: null,
+  async loadHalves() {
+    if (this.halves) return true;
+    try {
+      const { PoseLandmarker, FilesetResolver } = await import(`${MP_URL}/vision_bundle.mjs`);
+      const files = await FilesetResolver.forVisionTasks(`${MP_URL}/wasm`);
+      const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL_URL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
+      this.halves = [await make('GPU').catch(() => make('CPU')), await make('GPU').catch(() => make('CPU'))];
+      return true;
+    } catch (e) { console.error(e); return false; }
+  },
+  // 画面を 左右半分に 切って 1人ずつ 読む（2人を 1度に 探す設定は とても おそいので）
+  tickTwo(ts, v) {
+    const now = ts / 1000, dt = this.lastT ? Math.min(0.2, now - this.lastT) : 0.033;
+    this.lastVT = v.currentTime; this.lastT = now;
+    const vw = v.videoWidth || 640, vh = v.videoHeight || 480, hw = Math.floor(vw / 2);
+    if (!this.hc) { this.hc = [0, 1].map(() => { const c = document.createElement('canvas'); c.width = hw; c.height = vh; return c; }); this.hx = this.hc.map(c => c.getContext('2d')); }
+    const out = [null, null], t0 = performance.now();
+    try {
+      // 鏡うつしの 画面の左 ＝ カメラ映像の 右半分
+      [[0, hw], [1, 0]].forEach(([i, sx]) => {
+        this.hx[i].drawImage(v, sx, 0, hw, vh, 0, 0, hw, vh);
+        const res = this.halves[i].detectForVideo(this.hc[i], ts + i * 0.001);
+        const lm = res && res.landmarks && res.landmarks[0];
+        if (lm) out[i] = lm.map(p => ({ x: sx / vw + p.x * hw / vw, y: p.y, z: p.z, visibility: p.visibility }));
+      });
+    } catch (e) { return false; }
+    this.cost += (performance.now() - t0 - this.cost) * 0.2;
+    this.nextAt = ts + Math.min(C.MAX_GAP, this.cost * C.COST_K);
+    this.every += ((dt * 1000) - this.every) * 0.2;
+    this.asp = vw / vh;
+    this.players.forEach((P, i) => out[i] ? P.feed(out[i], dt, now) : P.noPerson(dt));
+    this.lm = out[0] || out[1];
+    this.count = (out[0] ? 1 : 0) + (out[1] ? 1 : 0);
+    return true;
+  },
+  resetPlayers() { this.players.forEach(P => P.reset()); }
 };
 Body.reset();
+// ふたりぶんの 体（Body と 同じ 形。イベントは 出さない）
+function makePlayer() { const p = Object.create(Body); p.emit = () => {}; p.counting = false; p.lm = null; p.reset(); return p; }
+Body.players = [makePlayer(), makePlayer()];
+Body.count = 0;
 
 // ---------- 合成した 姿勢（付録A） ----------
 const BASE = [];
@@ -233,6 +290,11 @@ export function synthPose(spec = {}, t = 0) {
     lm[15].x = hx + Math.cos(th) * r * ax; lm[15].y = hy - Math.sin(th) * r;
     lm[14].x = (lm[12].x + lm[16].x) / 2 - 0.02; lm[14].y = (lm[12].y + lm[16].y) / 2 + 0.03;
     lm[13].x = (lm[11].x + lm[15].x) / 2 + 0.02; lm[13].y = (lm[11].y + lm[15].y) / 2 + 0.03;
+  }
+  if (spec.handGap != null) {
+    // 両手の間（u）を 直接 きめる（拍手の テスト用）
+    const ax = 1 / (spec.asp || 4 / 3), hy = cy + 0.75 * u, r = spec.handGap * u / 2;
+    lm[16].x = cx - r * ax; lm[15].x = cx + r * ax; lm[16].y = lm[15].y = hy;
   }
   if (spec.run) {
     const { f = 2, a = 0.4, b = 0.08 } = spec.run, ph = Math.PI * f * t;
@@ -281,14 +343,17 @@ export function drawMirror(cv, video, B) {
   const c = cv.getContext('2d');
   if (video && video.readyState >= 2) { c.save(); c.translate(w, 0); c.scale(-1, 1); c.drawImage(video, 0, 0, w, h); c.restore(); }
   else { c.fillStyle = '#0b1630'; c.fillRect(0, 0, w, h); }
-  const lm = B.lm; if (!lm) return;
-  const P = i => ({ x: (1 - lm[i].x) * w, y: lm[i].y * h, v: lm[i].visibility ?? 1 });
-  c.lineCap = 'round'; c.strokeStyle = '#fff'; c.lineWidth = w * 0.012;
-  const line = (a, b) => { c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); };
-  const dot = (p, r, col) => { c.fillStyle = col; c.beginPath(); c.arc(p.x, p.y, r, 0, Math.PI * 2); c.fill(); };
-  for (const [a, b] of BONES) { const p = P(a), q = P(b); if (p.v > 0.4 && q.v > 0.4) line(p, q); }
-  if (B.steerSrc === 'hands' && B.hands) { c.strokeStyle = '#ffd54a'; c.lineWidth = w * 0.016; line(P(15), P(16)); }
-  if (P(15).v > 0.4) dot(P(15), w * 0.035, '#3fa9f5');
-  if (P(16).v > 0.4) dot(P(16), w * 0.035, '#ff5a5a');
-  if (B.legs) { dot(P(25), w * 0.025, '#7ee081'); dot(P(26), w * 0.025, '#7ee081'); }
+  const draw = (X, tint) => {
+    const lm = X.lm; if (!lm) return;
+    const P = i => ({ x: (1 - lm[i].x) * w, y: lm[i].y * h, v: lm[i].visibility ?? 1 });
+    c.lineCap = 'round'; c.strokeStyle = tint || '#fff'; c.lineWidth = w * 0.012;
+    const line = (a, b) => { c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); };
+    const dot = (p, r, col) => { c.fillStyle = col; c.beginPath(); c.arc(p.x, p.y, r, 0, Math.PI * 2); c.fill(); };
+    for (const [a, b] of BONES) { const p = P(a), q = P(b); if (p.v > 0.4 && q.v > 0.4) line(p, q); }
+    if (X.steerSrc === 'hands' && X.hands) { c.strokeStyle = '#ffd54a'; c.lineWidth = w * 0.016; line(P(15), P(16)); }
+    if (P(15).v > 0.4) dot(P(15), w * 0.035, '#3fa9f5');
+    if (P(16).v > 0.4) dot(P(16), w * 0.035, '#ff5a5a');
+    if (X.legs) { dot(P(25), w * 0.025, '#7ee081'); dot(P(26), w * 0.025, '#7ee081'); }
+  };
+  if (B.twoOn) { draw(B.players[0], '#7fe9ff'); draw(B.players[1], '#ffa8d8'); } else draw(B);
 }

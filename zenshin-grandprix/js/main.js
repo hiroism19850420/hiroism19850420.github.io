@@ -13,6 +13,7 @@ import { Input } from './input.js';
 import { Body, synthPose, drawMirror } from './body.js';
 import { FX, FX_COLORS } from './fx.js';
 import { HUD } from './hud.js';
+import { Two } from './twop.js';
 import { Audio, checkSongs } from './audio.js';
 import { VOICE_PRIO } from './voicelines.js';
 import { Save } from './save.js';
@@ -20,6 +21,7 @@ import { Screens } from './screens.js';
 import { Stages } from './stages.js';
 import { picSVG } from './pics.js';
 import { ZONE } from './track.js';
+import { PlusView, Ghost, ITEM_NAME } from './plus.js';
 
 const Q = new URLSearchParams(location.search);
 const DBG = Q.has('dbg');
@@ -28,7 +30,7 @@ const V3 = THREE.Vector3;
 // ---------- アプリの 状態 ----------
 const App = {
   state: 'boot', mode: null, char: 'mimi', diff: 'easy', course: 'c1', gp: null, race: null, models: [], portraits: {},
-  camKind: null, busy: false, t: 0, paused: false, pauseKind: null, auto: null, frameMs: 16, qTimer: 0, qLow: 0, qHigh: 0,
+  camKind: null, two: false, char2: 'goro', hs: [{}, {}], busy: false, t: 0, paused: false, pauseKind: null, auto: null, frameMs: 16, qTimer: 0, qLow: 0, qHigh: 0,
   stats0: null, statsRace: null
 };
 window.__zgp = App;
@@ -44,6 +46,7 @@ try { await document.fonts.load('800 40px "M PLUS Rounded 1c"'); } catch (e) {}
 progress(0.4);
 World.init($('gl'));
 const S0 = Save.data.settings;
+document.body.classList.toggle('easy', !!S0.easy);
 // スマホ・タブレット（指で さわる 画面）。はじめは 軽い 画質から（はやければ 自動で 上がる）
 const TOUCH = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 1 && !matchMedia('(pointer: fine)').matches;
 document.body.classList.toggle('touch', TOUCH);
@@ -51,8 +54,13 @@ if (TOUCH && !S0._touchQ) { S0._autoLevel = 'low'; S0._touchQ = true; Save.save(
 const qPick = () => Q.get('q') || (S0.quality === 'auto' ? (S0._autoLevel || 'mid') : S0.quality);
 World.setQuality(qPick());
 Cam.init(World.camera);
+// ふたりで はしるときの 右がわの カメラ（Cam と 同じ しくみ）
+const Cam2 = Object.assign(Object.create(Cam), { cam: World.camera2, pos: new V3(), look: new V3(), yaw: 0, fov: 60, shakeT: 0, shakeA: 0, shakeKick: 0, tunnelK: 0, mode: 'chase' });
+const camOf = k => (k && App.race && k === App.race.player2 ? Cam2 : Cam);
+function camDist(p) { let d = p.distanceTo(World.camera.position); if (App.race && App.race.player2) d = Math.min(d, p.distanceTo(World.camera2.position)); return d; }
+const hIdx = k => (App.race ? App.race.humans.indexOf(k) : -1);
 Input.init(); Input.body = Body;
-HUD.init();
+HUD.init(); Two.init();
 Screens.init(App);
 Body.setSens(S0.legSens, S0.steerSens, S0.swap);
 Body.setNeutral(Save.data.prep.theta0 || 0);
@@ -99,6 +107,14 @@ function exit(s, next) {
   if (s === 'title' || s === 'char' || s === 'prep' || s === 'podium') { if (next !== 'diff' && next !== 'course' && next !== 'settings') Stages.clear(); }
   if (['intro', 'grid', 'race'].includes(s) && !['grid', 'race', 'pause', 'result'].includes(next)) { /* そのまま */ }
 }
+async function startTwo() {
+  if (Body.mode !== 'cam') return;
+  const msg = $('twoMsg'); msg.textContent = 'ふたりぶんの じゅんび中…（すこし かかります）'; msg.classList.add('on');
+  const ok = await Body.loadHalves();
+  msg.classList.remove('on');
+  if (!ok) { msg.textContent = 'ふたりで よみとる じゅんびに しっぱいしました'; msg.classList.add('on'); setTimeout(() => msg.classList.remove('on'), 3000); return; }
+  App.mode = 'single'; App.two = true; go('char');
+}
 async function enter(s, prev, data) {
   const menuSong = () => Audio.music('title');
   switch (s) {
@@ -121,8 +137,11 @@ async function enter(s, prev, data) {
       HUD.show(false);
       Stages.titleGrid(App.course3d, App.char);
       Screens.title(act => {
-        if (act === 'gp') { App.mode = 'gp'; go('char'); }
-        else if (act === 'single') { App.mode = 'single'; go('char'); }
+        if (act === 'gp') { App.mode = 'gp'; App.two = false; go('char'); }
+        else if (act === 'single') { App.mode = 'single'; App.two = false; go('char'); }
+        else if (act === 'ta') { App.mode = 'ta'; App.two = false; go('char'); }
+        else if (act === 'two') startTwo();
+        else if (act === 'easy') { Save.set('settings.easy', !Save.data.settings.easy); onSetting('easy', Save.data.settings.easy); Audio.play('menuMove'); $('titleEasyT').textContent = Save.data.settings.easy ? '🚗 かんたん：いま ON（アクセル じどう）' : '🚗 かんたん：ハンドルだけ'; }
         else if (act === 'prep') go('prep');
         else if (act === 'settings') go('settings');
       });
@@ -194,6 +213,7 @@ async function enter(s, prev, data) {
 }
 function onSetting(k, v) {
   const S = Save.data.settings;
+  if (k === 'easy') document.body.classList.toggle('easy', !!v);
   if (k === 'bgm' || k === 'sfx') Audio.setVolumes(S.bgm, S.sfx);
   if (k === 'voice') Audio.voiceOn = v;
   if (k === 'legSens' || k === 'steerSens' || k === 'swap') Body.setSens(S.legSens, S.steerSens, S.swap);
@@ -221,7 +241,7 @@ async function keepAwake() {
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && App.awake) keepAwake(); });
 if (TOUCH) {
   // 指の ボタンは 絵＋みじかい 名前
-  for (const [id, pic, label] of [['tPedal', 'run', 'こぐ'], ['tJump', 'jump', 'ジャンプ'], ['tSquat', 'squat', 'しゃがむ'], ['tTurbo', 'star', 'ターボ']]) $(id).innerHTML = picSVG(pic) + '<span>' + label + '</span>';
+  for (const [id, pic, label] of [['tPedal', 'run', 'こぐ'], ['tJump', 'jump', 'ジャンプ'], ['tSquat', 'squat', 'しゃがむ'], ['tTurbo', 'star', 'ターボ'], ['tItem', 'clap', 'アイテム']]) $(id).innerHTML = picSVG(pic) + '<span>' + label + '</span>';
   $('gateNoCam').textContent = '👆 タッチで あそぶ';
   $('gateNoCam').classList.remove('small');
   $('gateNotes').innerHTML = 'スマホを よこにして 立てかけ、ぜんしんが うつる所まで はなれてね（2〜3m）。<br>まわりに ぶつかる ものが ないか みてね。';
@@ -290,7 +310,7 @@ function afterAudio() {
   const S = Save.data.settings;
   Audio.setVolumes(S.bgm, S.sfx); Audio.voiceOn = S.voice;
   Audio.loadVoices(window.ZGP_VOICE || {});
-  FX.onFirework = (kind, pos) => { const d = pos.distanceTo(World.camera.position); const vol = clamp(1 / (1 + d / 60), 0.1, 1); if (kind === 'up') Audio.play('fireworkUp', { vol }); else Audio.play('fireworkBoom', { vol, delay: 0.3 }); };
+  FX.onFirework = (kind, pos) => { const d = camDist(pos); const vol = clamp(1 / (1 + d / 60), 0.1, 1); if (kind === 'up') Audio.play('fireworkUp', { vol }); else Audio.play('fireworkBoom', { vol, delay: 0.3 }); };
   // さわるたびに 音を 起こす
   addEventListener('pointerdown', () => { if (Audio.ctx && Audio.ctx.state !== 'running') Audio.ctx.resume(); }, { passive: true });
 }
@@ -305,7 +325,8 @@ const PREP_STEPS = [
   { pic: 'run', text: 'その場で あしぶみ！', voice: 'p5', test: (B, st, dt) => (st.t += B.throttle > CFG.prep.RUN_THR ? dt : 0) >= CFG.prep.RUN_T, prog: st => st.t / CFG.prep.RUN_T, pass: () => { Save.data.prep.legs = Body.legs; } },
   { pic: 'jump', text: 'ジャンプ！', voice: 'jump', event: 'jump' },
   { pic: 'squat', text: 'しゃがんで！', voice: 'squat', event: 'squat' },
-  { pic: 'banzai', text: 'バンザイ！', voice: 'p8', event: 'banzai' }
+  { pic: 'banzai', text: 'バンザイ！', voice: 'p8', event: 'banzai' },
+  { pic: 'clap', text: 'てを パン！と たたいてね（アイテム）', voice: 'pClap', event: 'clap' }
 ];
 function holdStill(B, st, dt) {
   st.list = st.list || [];
@@ -325,7 +346,7 @@ const Prep = {
     const slot = $('prepMirrorSlot'); slot.innerHTML = ''; this.cv = document.createElement('canvas'); slot.appendChild(this.cv);
     Screens.open('scrPrep', { onOk: i => i === 0 ? this.skip() : go('title'), onBack: () => go('title'), backBtn: false });
     this.show();
-    this.offs = ['jump', 'squat', 'banzai'].map(e => { const f = () => { this.ev[e] = true; }; Body.on(e, f); return [e, f]; });
+    this.offs = ['jump', 'squat', 'banzai', 'clap'].map(e => { const f = () => { this.ev[e] = true; }; Body.on(e, f); return [e, f]; });
   },
   show() {
     const s = PREP_STEPS[this.i];
@@ -375,8 +396,11 @@ const Prep = {
 // ---------- レース ----------
 function clearRace() {
   for (const m of App.models) World.scene.remove(m.group);
+  if (App.plusView) { App.plusView.dispose(); App.plusView = null; }
+  document.body.classList.remove('ta');
   App.models = []; App.race = null; HUD.show(false); HUD.clearLines(); $('vignette').classList.remove('strong');
   $('btnPause').classList.remove('on'); $('touch').classList.remove('on');
+  document.body.classList.remove('two', 'splitOn'); Body.twoOn = false; Two.clear();
   Audio.silenceLoops(); Audio.crowd(0);
 }
 function newRace(id, retry) {
@@ -385,15 +409,26 @@ function newRace(id, retry) {
   const c = App.course3d, S = Save.data.settings;
   const laps = Number(Q.get('laps')) || S.laps;
   const gp = App.gp;
-  const order = gp ? CHAR_IDS.filter(x => x !== App.char).sort((a, b) => (gp.points[a] || 0) - (gp.points[b] || 0)) : null;
+  const two = !!App.two && !gp;
+  const ta = App.mode === 'ta' && !gp && !two;
+  if (two) App.char2 = CHAR_IDS[(CHAR_IDS.indexOf(App.char) + 1) % CHAR_IDS.length];
+  const order = ta ? [] : gp ? CHAR_IDS.filter(x => x !== App.char).sort((a, b) => (gp.points[a] || 0) - (gp.points[b] || 0)) : two ? CHAR_IDS.filter(x => x !== App.char && x !== App.char2) : null;
   const assist = S.assist === 'auto' ? null : S.assist;
-  const race = App.race = new Race(c.course, c.track, { laps, diff: App.diff, playerChar: App.char, order, assist, seed: (Date.now() & 0xfff) + 1, points: gp ? gp.points : null });
+  const race = App.race = new Race(c.course, c.track, { laps, diff: App.diff, playerChar: App.char, playerChar2: two ? App.char2 : null, order, assist, seed: (Date.now() & 0xfff) + 1, points: gp ? gp.points : null, ta, ghost: ta ? Ghost.load(id, laps) : null });
+  document.body.classList.toggle('ta', ta);
+  if (two) { document.body.classList.add('two'); Body.twoOn = Body.mode === 'cam'; Body.resetPlayers(); App.hs = [{}, {}]; Two.setup(race); Cam2.mode = 'chase'; }
   App.models = race.karts.map(k => { const m = new KartModel(k.id, { night: !!c.course.night }); World.scene.add(m.group); m.tag = makeTag(k); if (m.tag) World.scene.add(m.tag); return m; });
   if (c.course.night) {
-    const pm = App.models[race.karts.indexOf(race.player)];
-    const sl = new THREE.SpotLight('#fff2cc', 30, 40, 0.55, 0.6); sl.position.set(0, 1.0, 0.8); sl.target.position.set(0, 0, 10); pm.body.add(sl, sl.target);
+    for (const h of race.humans) {
+      const pm = App.models[race.karts.indexOf(h)];
+      const sl = new THREE.SpotLight('#fff2cc', 30, 40, 0.55, 0.6); sl.position.set(0, 1.0, 0.8); sl.target.position.set(0, 0, 10); pm.body.add(sl, sl.target);
+    }
   }
   HUD.setRace(race, App.portraits, World.quality);
+  App.plusView = new PlusView(race.plus, World.scene, App.models, World.quality);
+  HUD.setItemHint(Body.mode === 'cam' ? '👏 てを パン！' : TOUCH ? 'アイテム ボタン' : 'X キーで つかう');
+  App.itemTips = 0; App.coinCombo = 0; App.mtSaid = false; App.noItemTips = 0;
+  if (ta) setTimeout(() => { if (App.race === race && App.state === 'intro') sayV('taStart'); }, 2400);
   c.trackMesh.setLights(0);
   // 統計の 始まり
   App.stats0 = { steps: Body.steps, jumps: Body.jumps, squats: Body.squats, banzais: Body.banzais, isteps: Input.steps };
@@ -435,6 +470,7 @@ function toGrid() {
   const race = App.race; if (!race) return;
   Screens.introOut(); Screens.hideAll();
   race.toGrid(); Cam.toGrid(race.player);
+  if (race.player2) { Cam2.snapChase(race.player2); }
   HUD.show(true); HUD.lights(0, true);
   App.state = 'grid';
   $('btnPause').classList.add('on');
@@ -444,10 +480,11 @@ function toGrid() {
 // ---------- できごと → 表示・音・声・効果 ----------
 function sayV(id) { Audio.say(id, VOICE_PRIO[id] || 5); }
 function handleEvents(race) {
-  const pl = race.player, models = App.models, c3 = App.course3d;
+  const pl = race.player, models = App.models, c3 = App.course3d, two = !!race.player2;
+  const toast = (k, text, cls) => { if (two) Two.say(hIdx(k), text); else HUD.toast(text, cls); };
   for (const e of race.takeEvents()) {
-    const k = e.kart, isP = k === pl, mi = k ? race.karts.indexOf(k) : -1, m = models[mi];
-    const near = k ? k.wpos.distanceTo(World.camera.position) : 0;
+    const k = e.kart, isP = !!(k && k.isPlayer), mi = k ? race.karts.indexOf(k) : -1, m = models[mi];
+    const near = k ? camDist(k.wpos) : 0;
     const pan = k ? panOf(k.wpos) : 0, vol = k ? clamp(1 / (1 + near / 10), 0.05, 1) : 1;
     switch (e.type) {
       case 'light': {
@@ -457,19 +494,19 @@ function handleEvents(race) {
         break;
       }
       case 'go': Cam.mode = 'chase'; App.state = 'race'; break;
-      case 'rocket': if (isP) { HUD.toast('ロケットスタート！'); sayV('rocket'); Audio.play('rocket'); Cam.kick(0.25); const back = backDir(k); FX.rocketSmoke(k.wpos, back); } break;
+      case 'rocket': if (isP) { toast(k, 'ロケットスタート！'); sayV('rocket'); Audio.play('rocket'); camOf(k).kick(0.25); const back = backDir(k); FX.rocketSmoke(k.wpos, back); } break;
       case 'rocketRival': Audio.play('boost', { vol: vol * 0.5, pan }); break;
       case 'pad': Audio.play('boost', { vol: isP ? 1 : vol * 0.5, pan }); break;
-      case 'slide': if (isP) { HUD.toast('スライディング！'); sayV('slide'); Audio.play('whoosh'); Audio.play('boost'); HUD.cueBurst(); } break;
+      case 'slide': if (isP) { toast(k, 'スライディング！'); sayV('slide'); Audio.play('whoosh'); Audio.play('boost'); (two || HUD.cueBurst()); } break;
       case 'gateMiss': if (isP) Audio.play('gatePass'); break;
       case 'gateWobble': c3.trackMesh.wobbleGate(e.v, k.crouch ? 0.4 : 1); break;
-      case 'launch': if (isP) { Audio.play(e.v ? 'superJump' : 'jump'); if (e.v) { HUD.toast('スーパージャンプ！'); sayV('super'); } HUD.cueBurst(); } else Audio.play('jump', { vol: vol * 0.5, pan }); break;
-      case 'super': if (isP) { HUD.toast('スーパージャンプ！'); sayV('super'); Audio.play('superJump'); } break;
+      case 'launch': if (isP) { Audio.play(e.v ? 'superJump' : 'jump'); if (e.v) { toast(k, 'スーパージャンプ！'); sayV('super'); } (two || HUD.cueBurst()); } else Audio.play('jump', { vol: vol * 0.5, pan }); break;
+      case 'super': if (isP) { toast(k, 'スーパージャンプ！'); sayV('super'); Audio.play('superJump'); } break;
       case 'hop': if (isP) Audio.play('jump', { vol: 0.6 }); break;
-      case 'land': if (m) m.land(e.v); if (e.v > 4 && near < 60) FX.landRing(k.wpos, k.surf); if (isP) { Audio.play('land', { imp: e.v }); Cam.shake(Math.min(0.12, e.v * 0.012), 0.2); } else if (near < 30) Audio.play('land', { imp: e.v, vol: vol * 0.6, pan }); break;
-      case 'trickLand': if (isP) { HUD.toast('トリック！'); sayV('trick'); Audio.play('boost'); } break;
-      case 'turbo': if (isP) { HUD.toast('ターボ！', 'y'); sayV('turbo'); Audio.play('turbo'); Cam.kick(0.25); } else Audio.play('boost', { vol: vol * 0.6, pan }); break;
-      case 'noStar': if (isP && App.tipNoStar < 3 && App.t - (App.noStarT || -9) > 2) { App.tipNoStar++; App.noStarT = App.t; HUD.toast('ほしを あつめよう'); } break;
+      case 'land': if (m) m.land(e.v); if (e.v > 4 && near < 60) FX.landRing(k.wpos, k.surf); if (isP) { Audio.play('land', { imp: e.v }); camOf(k).shake(Math.min(0.12, e.v * 0.012), 0.2); } else if (near < 30) Audio.play('land', { imp: e.v, vol: vol * 0.6, pan }); break;
+      case 'trickLand': if (isP) { toast(k, 'トリック！'); sayV('trick'); Audio.play('boost'); } break;
+      case 'turbo': if (isP) { toast(k, 'ターボ！', 'y'); sayV('turbo'); Audio.play('turbo'); camOf(k).kick(0.25); } else Audio.play('boost', { vol: vol * 0.6, pan }); break;
+      case 'noStar': if (isP && App.tipNoStar < 3 && App.t - (App.noStarT || -9) > 2) { App.tipNoStar++; App.noStarT = App.t; toast(k, 'ほしを あつめよう'); } break;
       case 'star': {
         const st = e.v, p = c3.track.pos(st.s, st.d, st.y, new V3());
         if (near < 80) FX.sparkle(p);
@@ -477,25 +514,80 @@ function handleEvents(race) {
         break;
       }
       case 'gauge': if (isP) { Audio.play('gaugeFull'); if (!App.firstGauge) { App.firstGauge = true; setTimeout(() => { HUD.turboTip(); sayV('banzaiTurbo'); }, 300); } } break;
-      case 'turboTip': HUD.turboTip(); sayV('banzaiTurbo'); break;
-      case 'wall': if (isP) { Audio.play('bumpWall', { imp: e.v }); if (e.v > CFG.phys.WALL_SHAKE) { Cam.shake(0.06, 0.15); FX.sparks(k.wpos, sideDir(k)); } } else if (near < 25) Audio.play('bumpWall', { imp: e.v, vol: vol * 0.5, pan }); break;
+      case 'turboTip': if (two) break; HUD.turboTip(); sayV('banzaiTurbo'); break;
+      case 'wall': if (isP) { Audio.play('bumpWall', { imp: e.v }); if (e.v > CFG.phys.WALL_SHAKE) { camOf(k).shake(0.06, 0.15); FX.sparks(k.wpos, sideDir(k)); } } else if (near < 25) Audio.play('bumpWall', { imp: e.v, vol: vol * 0.5, pan }); break;
       case 'scrape': if (isP) Audio.play('scrape'); break;
-      case 'bump': if (isP || e.v === pl) { Audio.play('bumpCar'); Cam.shake(0.04, 0.12); } else if (near < 25) Audio.play('bumpCar', { vol: vol * 0.5, pan }); break;
+      case 'bump': if (isP || (e.v && e.v.isPlayer)) { Audio.play('bumpCar'); camOf(k).shake(0.04, 0.12); } else if (near < 25) Audio.play('bumpCar', { vol: vol * 0.5, pan }); break;
       case 'cone': Audio.play('cone', { vol: isP ? 1 : vol, pan }); break;
       case 'slip': if (isP) Audio.play('whoosh'); break;
-      case 'lap': HUD.big(`${e.v}しゅうめ`, 'font-size:64px;color:#fff'); Audio.play('lap'); setTimeout(() => { if (App.race === race && race.phase === 'run') HUD.big(''); }, 1200); break;
-      case 'final': HUD.banner(); sayV('final'); Audio.musicVolume(0.4, 0.1); Audio.music('final', { onEnd: () => {} }); setTimeout(() => { if (App.race === race) { Audio.music(c3.course.music, { tempo: CFG.audio.FINAL_TEMPO }); Audio.musicTempo(CFG.audio.FINAL_TEMPO); } }, 3000); break;
+      case 'lap': if (two) { Two.say(hIdx(k), `${e.v}しゅうめ`); Audio.play('lap'); break; } HUD.big(`${e.v}しゅうめ`, 'font-size:64px;color:#fff'); Audio.play('lap'); setTimeout(() => { if (App.race === race && race.phase === 'run') HUD.big(''); }, 1200); break;
+      case 'final': if (two) { Two.say(hIdx(k), 'ファイナル ラップ！'); Audio.play('lap'); break; } HUD.banner(); sayV('final'); Audio.musicVolume(0.4, 0.1); Audio.music('final', { onEnd: () => {} }); setTimeout(() => { if (App.race === race) { Audio.music(c3.course.music, { tempo: CFG.audio.FINAL_TEMPO }); Audio.musicTempo(CFG.audio.FINAL_TEMPO); } }, 3000); break;
       case 'up': Audio.play('overtake'); break;
+      // ---- 第35部 ----
+      case 'coin': {
+        if (near < 60) FX.sparkle(App.plusView.coinPos(e.v, _tmpV2), FX_COLORS.gold, 6);
+        if (isP) { App.coinCombo = App.t - (App.coinT || -9) < 0.6 ? Math.min(12, App.coinCombo + 1) : 0; App.coinT = App.t; Audio.play('coin', { combo: App.coinCombo }); }
+        break;
+      }
+      case 'boxGet': {
+        if (near < 70) { const bp = App.plusView.boxPos(e.v.box, _tmpV2); FX.sparkle(bp, FX_COLORS.white, 16); FX.glowPuff(bp, FX_COLORS.turbo0, 2); }
+        if (isP && e.v.got) Audio.play('boxGet'); else if (near < 30) Audio.play('boxGet', { vol: vol * 0.4, pan });
+        break;
+      }
+      case 'itemReady':
+        if (isP) {
+          Audio.play('itemReady');
+          if (two) Two.say(hIdx(k), ITEM_NAME[e.v] + '！');
+          else if (App.itemTips < 2) { App.itemTips++; toast(k, Body.mode === 'cam' ? '👏 てを パン！で つかう' : TOUCH ? 'アイテム ボタンで つかう' : 'X キーで つかう', 'y'); if (Body.mode === 'cam') sayV('clapItem'); }
+        }
+        break;
+      case 'noItem': if (isP && !e.v && race.plus.itemsOn && App.noItemTips < 2 && App.t - (App.noItemT || -9) > 3) { App.noItemTips++; App.noItemT = App.t; toast(k, 'カプセルを とってね'); } break;
+      case 'useItem': {
+        const it = e.v;
+        if (isP) Audio.play('clap');
+        if (it === 'jet') { if (isP) { toast(k, 'ジェット！', 'y'); Audio.play('jet'); camOf(k).kick(0.25); FX.rocketSmoke(k.wpos, backDir(k)); } else Audio.play('boost', { vol: vol * 0.6, pan }); }
+        else if (it === 'shield') { if (isP) { toast(k, 'バリア！', 'b'); Audio.play('shieldOn'); } if (near < 50) FX.sparkle(_tmpV2.copy(k.wpos).setY(k.wpos.y + 0.8), FX_COLORS.turbo0, 20); }
+        else if (it === 'magnet') { if (isP) { toast(k, 'じしゃく！', 'y'); Audio.play('magnet'); } }
+        else if (it === 'bubble') Audio.play('bubbleShoot', isP ? {} : { vol: vol * 0.7, pan });
+        else if (it === 'pudding') Audio.play('puddingDrop', isP ? {} : { vol: vol * 0.7, pan });
+        break;
+      }
+      case 'hit': {
+        Audio.play('spin', isP ? {} : { vol: vol * 0.7, pan });
+        if (near < 60) { FX.sparkle(_tmpV2.copy(k.wpos).setY(k.wpos.y + 1.6), FX_COLORS.white, 10); for (let i = 0; i < (e.v.lost || 0); i++) FX.sparkle(_tmpV2.copy(k.wpos).add(new V3((Math.random() - 0.5) * 2, 1 + Math.random(), (Math.random() - 0.5) * 2)), FX_COLORS.gold, 5); }
+        if (isP) { toast(k, 'くるりん！'); sayV('kururin'); camOf(k).shake(0.05, 0.25); }
+        break;
+      }
+      case 'shieldBlock': Audio.play('shieldBlock', isP ? {} : { vol, pan }); if (near < 60) FX.sparkle(_tmpV2.copy(k.wpos).setY(k.wpos.y + 0.8), FX_COLORS.turbo0, 24); if (isP) { toast(k, 'バリアで ふせいだ！', 'b'); sayV('shieldOk'); } break;
+      case 'bubblePop': case 'bubbleFade': {
+        const sp = App.plusView.shotPos(e.v, _tmpV2);
+        if (camDist(sp) < 70) { FX.sparkle(sp, FX_COLORS.turbo0, 18); FX.glowPuff(sp, FX_COLORS.white, 1.6); }
+        if (e.type === 'bubblePop') Audio.play('bubblePop', isP ? {} : { vol, pan });
+        break;
+      }
+      case 'puddingSplat': {
+        Audio.play('puddingSplat', isP ? {} : { vol, pan });
+        if (near < 60) { const pp = k.track.pos(e.v.s, e.v.d, 0.4, _tmpV2); for (let i = 0; i < 12; i++) FX.add.spawn({ x: pp.x, y: pp.y, z: pp.z, vx: (Math.random() - 0.5) * 6, vy: 2 + Math.random() * 3, vz: (Math.random() - 0.5) * 6, g: 14, life: 0.6, s0: 0.35, s1: 0.2, c0: [1, 0.83, 0.42], a0: 1, a1: 0, frame: 2 }); }
+        break;
+      }
+      case 'driftStart': if (isP) Audio.play('drift'); break;
+      case 'driftLv': if (isP) Audio.play('driftLv', { lv: e.v }); break;
+      case 'miniTurbo':
+        if (isP) { Audio.play('boost'); camOf(k).kick(e.v === 2 ? 0.2 : 0.12); if (e.v === 2) toast(k, 'スーパー ミニターボ！', 'y'); else if (!App.mtSaid) toast(k, 'ミニターボ！'); if (!App.mtSaid) { App.mtSaid = true; sayV('miniTurbo'); } }
+        else if (near < 25) Audio.play('boost', { vol: vol * 0.4, pan });
+        break;
+      case 'split': { const d = e.v, good = d < 0; HUD.toast(`👻 ${good ? '−' : '＋'}${Math.abs(d).toFixed(2)}びょう`, good ? 'g' : 'r'); Audio.play('split', { good }); break; }
       case 'top': sayV('top'); break;
-      case 'cueVoice': sayV(e.v === 'jump' ? 'jump' : e.v === 'squat' ? 'squat' : 'run'); break;
-      case 'goal': onGoal(race, e.v); break;
-      case 'rescue': HUD.almost(true); sayV('almost'); App.cheer = 1; break;
+      case 'cueVoice': if (two) break; sayV(e.v === 'jump' ? 'jump' : e.v === 'squat' ? 'squat' : 'run'); break;
+      case 'goal': if (two) onGoalTwo(race, k, e.v); else onGoal(race, e.v); break;
+      case 'allGoal': onAllGoal(race); break;
+      case 'rescue': if (two) { race.humans.forEach((hh, ii) => { if (!hh.finished) Two.say(ii, 'あと すこし！', 2500); }); break; } HUD.almost(true); sayV('almost'); App.cheer = 1; break;
       case 'done': if (App.state === 'race' || App.state === 'finish') go('result'); break;
       case 'slowmoEnd': if (Cam.mode !== 'goal') Cam.setGoal(pl); break;
     }
   }
 }
-const _tmpV = new V3();
+const _tmpV = new V3(), _tmpV2 = new V3();
 function panOf(p) { const cam = World.camera; _tmpV.copy(p).applyMatrix4(cam.matrixWorldInverse); return clamp(_tmpV.x / 12, -1, 1); }
 function backDir(k) { return new V3(-Math.sin(k.yawW), 0, -Math.cos(k.yawW)); }
 function sideDir(k) { const f = k.track.frame(k.s, {}); const s = -Math.sign(k.d); return new V3(f.lfx * s, 0, f.lfz * s); }
@@ -518,8 +610,29 @@ function onGoal(race, pos) {
     jumps: cam ? Body.jumps - s0.jumps : race.player.stats.jumps || 0,
     squats: cam ? Body.squats - s0.squats : 0,
     banzais: cam ? Body.banzais - s0.banzais : 0,
-    bestLap: race.stats.bestLap, time: race.player.finishTime, cam
+    bestLap: race.stats.bestLap, time: race.player.finishTime, cam, coins: race.player.stats.coins
   };
+  if (race.ta) {
+    const old = race.plus.ghost;
+    App.statsRace.ghostOld = old ? old.time : null;
+    App.statsRace.ghostNew = race.plus.finishGhost(App.char, race.course.id, race.laps);
+    if (old && App.statsRace.ghostNew) setTimeout(() => sayV('ghostWin'), 2600);
+  }
+  $('btnPause').classList.remove('on'); $('touch').classList.remove('on');
+}
+
+function onGoalTwo(race, k, pos) {
+  Two.goal(hIdx(k), pos);
+  FX.confetti(new V3().copy(k.wpos).add(new V3(0, 3, 0)), 220, 6, 4);
+  Audio.play('confetti'); App.cheer = 1;
+  sayV('goal');
+}
+function onAllGoal(race) {
+  App.state = 'finish';
+  Audio.stopMusic(0.3);
+  const first = race.finishOrder.find(k => k.isPlayer);
+  setTimeout(() => Audio.music(race.finishOrder.indexOf(first) < 3 ? 'goalWin' : 'goalPlay', { onEnd: () => setTimeout(() => { if (App.state === 'finish' || App.state === 'result') Audio.music('result'); }, 1000) }), 350);
+  App.statsRace = { two: true, time: Math.max(...race.humans.map(h => h.finishTime)), cam: true, steps: 0, jumps: 0, bestLap: Infinity };
   $('btnPause').classList.remove('on'); $('touch').classList.remove('on');
 }
 
@@ -529,12 +642,33 @@ function showResult() {
   const race = App.race, c = App.course3d.course, laps = race.laps;
   const list = race.results();
   const st = App.statsRace || { steps: 0, jumps: 0, bestLap: Infinity };
+  if (race.player2) {
+    const rows2 = list.map(r => ({ id: r.k.id, t: r.t, you: r.k.isPlayer, tag: r.k === race.player ? '1P' : r.k === race.player2 ? '2P' : '' }));
+    Screens.result(c, rows2, { html: `<span>1P　${fmtTime(race.player.finishTime)}</span><span>2P　${fmtTime(race.player2.finishTime)}</span>` }, [
+      { text: 'もういちど', fn: () => go('intro', { course: c.id }) },
+      { text: 'コースを えらぶ', fn: () => go('course') },
+      { text: 'タイトルへ', fn: () => go('title') }
+    ], App.portraits);
+    App.lastPos = 1;
+    return;
+  }
   const rec = { time: race.player.finishTime, lap: st.bestLap, char: App.char, laps, at: Date.now(), nocam: !st.cam };
-  const best = Save.setBest(c.id, laps, rec);
+  const best = Save.data.settings.easy ? false : Save.setBest(c.id, laps, rec);
   if (st.cam) Save.addTotals(st, race.player.finishTime);
   if (best) setTimeout(() => sayV('best'), 1600);
   const rows = list.map(r => ({ id: r.k.id, t: r.t, you: r.k.isPlayer, best: r.k.isPlayer && best }));
   const pos = list.findIndex(r => r.k.isPlayer) + 1;
+  if (race.ta) {
+    const g = st.ghostOld, me = race.player.finishTime;
+    const html = `<span>⏱ タイム ${fmtTime(me)}</span><span>👻 ${g ? 'ゴースト ' + fmtTime(g) + (me < g ? '　かった！' : '') : 'ゴースト ―'}</span><span>${st.ghostNew ? 'あたらしい ゴーストを のこしたよ' : 'いちばん はやい しゅう ' + (isFinite(st.bestLap) ? fmtTime(st.bestLap) : '―')}</span>`;
+    Screens.result(c, rows, { html }, [
+      { text: 'もういちど', fn: () => go('intro', { course: c.id }) },
+      { text: 'コースを えらぶ', fn: () => go('course') },
+      { text: 'タイトルへ', fn: () => go('title') }
+    ], App.portraits);
+    App.lastPos = 1;
+    return;
+  }
   if (App.gp) {
     const gp = App.gp;
     gp.results.push(list.map(r => r.k.id));
@@ -621,6 +755,7 @@ Body.on('lost', () => { if (Body.mode === 'cam' && (App.state === 'race' || App.
 Body.on('found', () => { if (App.paused && App.pauseKind === 'lost') { if (App.race) App.race.holdGrid = false; resume(); } });
 Body.on('jump', () => Input.queue.push('jump'));
 Body.on('banzai', () => Input.queue.push('banzai'));
+Body.on('clap', () => Input.queue.push('item'));
 
 // ---------- 鏡 ----------
 let mirrorTick = 0;
@@ -628,6 +763,13 @@ function updateMirror() {
   if (Body.mode !== 'cam') return;
   const box = $('mirrorBox');
   drawMirror($('mirrorCv'), $('camVideo'), Body);
+  if (Body.twoOn) {
+    const ok = Body.players.map(p => p.seen);
+    box.classList.toggle('lost', !(ok[0] && ok[1]));
+    const tip2 = $('mirrorTip'); const t2 = !ok[0] && !ok[1] ? 'ふたり うつってね' : !ok[0] ? '1P（左）が うつってないよ' : !ok[1] ? '2P（右）が うつってないよ' : '';
+    tip2.textContent = t2; tip2.style.display = t2 ? 'block' : 'none';
+    return;
+  }
   box.classList.toggle('lost', !Body.seen);
   const tip = $('mirrorTip');
   const t = !Body.seen ? 'カメラに うつってね' : (!Body.legs && !Body.hands) ? 'もう すこし はなれてね' : (!Body.hands && Body.handsLostT > 0.3) ? 'ハンドルを むねの まえで にぎってね' : '';
@@ -666,32 +808,36 @@ function frame(dt, ts) {
   const menu = !['intro', 'grid', 'race', 'finish'].includes(App.state) || App.paused;
   Input.update(dt, menu);
   if (Input.take('pause') && !menu) { pause('menu'); Input.take('back'); }
-  if (menu && !App.busy) { Screens.update(dt); Screens.charUpdate(); Input.take('jump'); Input.take('tap'); if (App.state !== 'prep') Input.take('banzai'); }
+  if (menu && !App.busy) { Screens.update(dt); Screens.charUpdate(); Input.take('jump'); Input.take('tap'); Input.take('item'); if (App.state !== 'prep') Input.take('banzai'); }
   if (!menu) { for (const n of App.state === 'intro' ? ['menuL', 'menuR', 'back', 'tap'] : ['ok', 'menuL', 'menuR', 'back', 'tap', 'bodyOk']) Input.take(n); }
   $('mirror').classList.toggle('on', Body.mode === 'cam' && App.state !== 'prep' && App.state !== 'gate');
   Prep.update(dt);
   const race = App.race;
   if (race) {
     const pl = race.player;
-    if (App.auto) App.auto.think(dt);
+    if (race.player2) { humanInputs(race, dt); Input.take('item'); }
+    else if (App.auto) { App.auto.think(dt); if (race.plus.itemsOn && race.phase === 'run') race.plus.rivalItem(pl, dt); }
     else {
-      pl.input.throttle = Input.throttle; pl.input.steer = Input.steer; pl.input.crouch = Input.crouch; pl.input.legPhase = Input.legPhase;
+      pl.input.throttle = Save.data.settings.easy ? 1 : Input.throttle; pl.input.steer = Input.steer; pl.input.crouch = Input.crouch; pl.input.legPhase = Input.legPhase;
       if (Input.take('jump')) pl.input.jump = true;
       if (Input.take('banzai')) pl.input.banzai = true;
+      if (Input.take('item')) pl.input.item = true;
       pl.banzaiHold = Input.banzaiHeld;
     }
+    if (race.player2 && App.state === 'intro' && Body.players.some(p => p.banzaiT > 0.3)) toGrid();
     if (App.state === 'intro' && (App.t >= App.introEnd || Input.take('ok') || Input.take('banzai') || Input.take('bodyOk'))) toGrid();
     if (!App.paused) race.update(dt * dbgSpeed);
     if (App.lightsHideAt && App.t > App.lightsHideAt) { App.lightsHideAt = 0; HUD.lightsAway(); }
     handleEvents(race);
+    if (App.plusView) App.plusView.update(dt, t, race);
     // カートの 見た目
     const a = race.alpha || 0;
     race.karts.forEach((k, i) => {
       const m = App.models[i]; if (!m) return;
       m.group.position.lerpVectors(k.prevPos, k.wpos, a); m.group.quaternion.slerpQuaternions(k.prevQuat, k.wquat, a);
-      const far = k.wpos.distanceTo(World.camera.position) > 80;
-      m.pose({ v: k.v, steer: k.steerShown, throttle: race.phase === 'intro' ? 0.05 : k.input.throttle, pedalA: k.pedalA, roll: k.rollShown, bob: k.bob, boost: k.boostT > 0, trickA: k.trickA, crouch: k.crouchShown, banzai: k.banzaiShown, face: k.face, accelY: k.accelY, accelX: k.accelX * 0.05, wave: k.finished && !k.faceHappy && !k.isPlayer, far }, dt, t);
-      if (m.tag) { m.tag.position.copy(m.group.position).add(new V3(0, 2.1, 0)); const d = k.wpos.distanceTo(World.camera.position); m.tag.visible = d < CFG.hud.TAG_FAR && d > CFG.hud.TAG_HIDE && race.phase !== 'intro'; m.tag.material.opacity = d < CFG.hud.TAG_NEAR ? 0.5 : 1; }
+      const far = camDist(k.wpos) > 80;
+      m.pose({ v: k.v, steer: k.steerShown, throttle: race.phase === 'intro' ? 0.05 : k.input.throttle, pedalA: k.pedalA, roll: k.rollShown, bob: k.bob, boost: k.boostT > 0, trickA: k.trickA, crouch: k.crouchShown, banzai: k.banzaiShown, face: k.face, accelY: k.accelY, accelX: k.accelX * 0.05, wave: k.finished && !k.faceHappy && !k.isPlayer, clap: k.clapT > 0, far }, dt, t);
+      if (m.tag) { m.tag.position.copy(m.group.position).add(new V3(0, 2.1, 0)); const d = camDist(k.wpos); m.tag.visible = d < CFG.hud.TAG_FAR && d > CFG.hud.TAG_HIDE && race.phase !== 'intro'; m.tag.material.opacity = d < CFG.hud.TAG_NEAR ? 0.5 : 1; }
       kartFX(k, m, dt, race);
     });
     if (['grid', 'race', 'finish'].includes(App.state) || race.phase === 'done') { HUD.update(dt, race, t); }
@@ -704,7 +850,7 @@ function frame(dt, ts) {
       if (sc && sc.crowd) { const d = pl.wpos.distanceTo(sc.crowd.center); App.cheer = Math.max(0, App.cheer - dt * 0.3); Audio.crowd(clamp(1 - d / 90, 0, 1) * 0.6 + App.cheer * 0.4); sc.cheer = App.cheer > 0.5; }
     }
     // トンネル
-    const tk = Cam.tunnelK || 0;
+    const tk = Math.max(Cam.tunnelK || 0, race.player2 ? Cam2.tunnelK || 0 : 0);
     World.setTunnel(tk * 0.85);
     if ((tk > 0.5) !== !!App.inTunnel) { App.inTunnel = tk > 0.5; Audio.setTunnel(App.inTunnel); }
     $('vignette').classList.toggle('strong', pl.boostT > 0);
@@ -722,6 +868,9 @@ function frame(dt, ts) {
   if (App.podiumQ && App.state === 'podium') { const tt = App.t - App.podiumT0; while (App.podiumQ.length && App.podiumQ[0][0] <= tt) App.podiumQ.shift()[1](); }
   Stages.update(dt, t);
   Cam.update(dt, { kart: race ? race.player : null });
+  const split = !!(race && race.player2 && ['grid', 'race', 'finish'].includes(App.state));
+  if (split) Cam2.update(dt, { kart: race.player2 });
+  document.body.classList.toggle('splitOn', split);
   World.update(dt);
   World.sky.position.copy(World.camera.position);
   Course3D.update(dt, t, race ? race.karts : [], World.camera);
@@ -730,12 +879,32 @@ function frame(dt, ts) {
   World.followShadow(fp.x, fp.y, fp.z);
   Audio.ambTick(dt, t);
   if (Audio.ctx) $('audioTip').classList.toggle('on', Audio.ctx.state !== 'running' && App.state !== 'gate');
-  World.render();
+  if (split) { World.renderSplit(race.player.wpos, race.player2.wpos); if (['grid', 'race'].includes(App.state)) Two.update(race); }
+  else World.render();
   if (DBG) dbgInfo(dt);
 }
 const _bk = new V3(), _nz = new V3();
+// ふたりで はしる：ひとりずつ の 体から 入力を 作る
+function humanInputs(race, dt) {
+  const easy = Save.data.settings.easy;
+  race.humans.forEach((k, i) => {
+    const P = Body.players[i], st = App.hs[i], o = App.override2 && App.override2[i];
+    k.input.throttle = easy ? 1 : P.throttle; k.input.steer = P.steer; k.input.crouch = P.crouch; k.input.legPhase = P.legs && P.throttle > 0.05 ? P.legPhase : null;
+    if (P.air && !st.air) k.input.jump = true;
+    if (P.banzai && !st.banzai) k.input.banzai = true;
+    if (st.claps != null && P.claps !== st.claps) k.input.item = true;
+    st.air = P.air; st.banzai = P.banzai; st.claps = P.claps;
+    k.banzaiHold = P.banzaiT > 0.05;
+    if (o) { for (const key of ['throttle', 'steer', 'crouch']) if (o[key] != null) k.input[key] = o[key]; if (o.jump) { k.input.jump = true; o.jump = false; } if (o.banzai) { k.input.banzai = true; o.banzai = false; } if (o.item) { k.input.item = true; o.item = false; } }
+    const a = App.autos && App.autos[i]; if (a) a.think(dt);
+  });
+  // どちらかが 見えなく なったら ひとやすみ
+  const lost = Body.twoOn && Body.players.some(p => p.isLost);
+  if (lost && !App.paused && ['grid', 'race'].includes(App.state)) { if (App.state === 'grid') race.holdGrid = true; pause('lost'); }
+  else if (!lost && App.paused && App.pauseKind === 'lost') { race.holdGrid = false; resume(); }
+}
 function kartFX(k, m, dt, race) {
-  const near = k.wpos.distanceTo(World.camera.position);
+  const near = camDist(k.wpos);
   if (near > 70) return;
   const back = _bk.set(-Math.sin(k.yawW), 0, -Math.cos(k.yawW));
   if (k.ground && k.v > 3) {
@@ -748,6 +917,18 @@ function kartFX(k, m, dt, race) {
   if (k.boostT > 0 || k.boostFadeT > 0) {
     k._flAcc = (k._flAcc || 0) + 60 * dt;
     while (k._flAcc > 1) { k._flAcc -= 1; for (let i = 0; i < 2; i++) FX.flame(m.nozzleWorld(i, _nz), back, k.turbo); }
+  }
+  // ドリフトの 火花（白 → 青 → オレンジ）
+  if (k.drift && k.ground && k.v > 4) {
+    k._dfAcc = (k._dfAcc || 0) + (k.driftLv ? 70 : 30) * dt;
+    const col = k.driftLv === 2 ? [1, 0.42, 0.05] : k.driftLv === 1 ? [0.15, 0.55, 1] : [1, 0.9, 0.55];
+    while (k._dfAcc > 1) {
+      k._dfAcc -= 1;
+      for (const wi of [2, 3]) {
+        const wp = m.wheels[wi].steer.getWorldPosition(_nz); wp.y -= 0.2;
+        FX.add.spawn({ x: wp.x, y: wp.y, z: wp.z, vx: back.x * 3 + (Math.random() - 0.5) * 3, vy: 1 + Math.random() * 2.5, vz: back.z * 3 + (Math.random() - 0.5) * 3, g: 12, life: 0.28, s0: k.driftLv ? 0.42 : 0.22, s1: 0.08, c0: col, c1: col, a0: 1, a1: 0, frame: k.driftLv ? 2 : 1 });
+      }
+    }
   }
   if (k.isPlayer && k.slipping) { k._wAcc = (k._wAcc || 0) + 30 * dt; while (k._wAcc > 1) { k._wAcc -= 1; FX.wind(k.wpos, _nz.set(-back.x, 0, -back.z)); } }
 }
@@ -778,9 +959,10 @@ requestAnimationFrame(loop);
 if (DBG && Q.has('course')) {
   // ?dbg&course=… ：入口と タイトルを とばす
   Audio.init(); Audio.unlock(); afterAudio();
-  Body.mode = 'nocam'; App.char = Q.get('char') || App.char; App.diff = Q.get('diff') || 'easy'; App.mode = 'single';
+  Body.mode = 'nocam'; App.char = Q.get('char') || App.char; App.diff = Q.get('diff') || 'easy'; App.mode = Q.has('ta') ? 'ta' : 'single';
   $('nocamBadge').classList.add('on');
   App.state = 'intro';
+  App.two = Q.has('two');
   newRace(Q.get('course'));
   if (Q.has('skip')) toGrid();
   if (Q.has('auto')) setAuto(Number(Q.get('auto')) || 0.9);
@@ -793,10 +975,9 @@ if (DBG && Q.has('course')) {
 function setAuto(level) {
   const race = App.race; if (!race) return;
   if (level == null) { App.auto = null; return; }
-  const a = new Rival(race.player, race, level, 99);
-  a.D = { ...a.D, base: 21.6, alat: 16, sjump: 1, slide: 1, trick: 0.5, rocket: 1, turbo: 'smart' };
-  a.person = {};
-  App.auto = a;
+  const mk = (k, n) => { const a = new Rival(k, race, level, 99 + n); a.D = { ...a.D, base: 21.6, alat: 16, sjump: 1, slide: 1, trick: 0.5, rocket: 1, turbo: 'smart' }; a.person = {}; return a; };
+  if (race.player2) { App.autos = race.humans.map(mk); return; }
+  App.auto = mk(race.player, 0);
 }
 function dbgInfo(dt) {
   const el = $('dbgInfo'); if (!el.dataset.on) return;
@@ -809,7 +990,7 @@ if (DBG) {
   const dbgApi = {
     get ready() { return App.state !== 'boot' && !App.busy; }, App, World, Cam, Body, Input, Audio, FX, HUD, Save, THREE, CFG, Stages, Screens,
     get race() { return App.race; },
-    state() { const r = App.race, p = r && r.player; return { app: App.state, phase: r && r.phase, time: r && +r.time.toFixed(2), lap: p && p.lap, s: p && +p.s.toFixed(1), d: p && +p.d.toFixed(2), v: p && +p.v.toFixed(2), pos: r && r.playerPos, stars: p && p.stars, order: r && r.order.map(k => k.id), fin: r && r.finishOrder.map(k => [k.id, +k.finishTime.toFixed(2)]) }; },
+    state() { const r = App.race, p = r && r.player; return { app: App.state, phase: r && r.phase, time: r && +r.time.toFixed(2), lap: p && p.lap, s: p && +p.s.toFixed(1), d: p && +p.d.toFixed(2), v: p && +p.v.toFixed(2), pos: r && r.playerPos, stars: p && p.stars, coins: p && p.coins, item: p && (p.item || (p.rollT > 0 ? 'roll' : null)), drift: p && p.driftLv, order: r && r.order.map(k => k.id), fin: r && r.finishOrder.map(k => [k.id, +k.finishTime.toFixed(2)]) }; },
     go(name, opt) { return go(name, opt); },
     course(id) { return buildCourse(id); },
     step(n = 1, dt = 1 / 60) { for (let i = 0; i < n; i++) frame(dt, performance.now()); return this.state(); },
@@ -818,6 +999,7 @@ if (DBG) {
     pause(v) { loopPaused = v; },
     input(o) { Input.override = o; },
     auto(level) { setAuto(level); },
+    in2(a) { App.override2 = a; },
     warp(s, lap = 0) { const p = App.race.player; p.s = p.track.wrapS(s); p.lap = lap; p.d = 0; p.psi = 0; p.computeWorld(); p.prevPos.copy(p.wpos); p.prevQuat.copy(p.wquat); Cam.snapChase(p); },
     finish() { const r = App.race; this.warp(r.track.L - 15, r.laps - 1); },
     feed(lm, dt, t) { Body.feed(lm, dt, t); },
@@ -831,6 +1013,10 @@ if (DBG) {
     info(on = true) { const el = $('dbgInfo'); el.dataset.on = on ? '1' : ''; el.style.display = on ? 'block' : 'none'; return { calls: World.renderer.info.render.calls, tris: World.renderer.info.render.triangles, times: Course3D.times }; },
     voice(id) { Audio.say(id, 9); }, song(id) { Audio.music(id); }, sfx(n) { Audio.play(n); },
     speed(k) { dbgSpeed = k; },
+    give(it) { const p = App.race.player; p.item = it; p.rollT = 0; return it; },
+    use() { App.race.player.input.item = true; },
+    plus() { const P = App.race.plus; return { coins: P.coins.length, boxes: P.boxes.length, shots: P.shots.length, traps: P.traps.length, ghost: !!P.ghost, rec: P.rec.p.length, karts: App.race.karts.map(k => ({ id: k.id, coins: k.coins, item: k.item, mts: k.stats.mts, items: k.stats.items, hits: k.stats.hits })) }; },
+    ghost(id, laps = 3) { return Ghost.load(id, laps); },
     checkSongs, shot() { World.render(); return World.renderer.domElement.toDataURL('image/png'); }
   };
   // MediaPipe の 中で「dbg」という 名前の 関数を よぶ 所が あるので、よべる 形に しておく（ただの 物だと カメラが 動かない）

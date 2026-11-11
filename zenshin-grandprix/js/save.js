@@ -7,7 +7,7 @@ const DEF = () => ({
   best: {},
   cups: { easy: 0, normal: 0, hard: 0 },
   total: { steps: 0, jumps: 0, squats: 0, banzais: 0, races: 0, seconds: 0 },
-  settings: { laps: 3, assist: 'auto', legSens: 'mid', steerSens: 'mid', bgm: 6, sfx: 8, voice: true, quality: 'auto', swap: false, diffSingle: 'easy', _autoLevel: 'mid' }
+  settings: { laps: 3, assist: 'auto', legSens: 'mid', steerSens: 'mid', bgm: 6, sfx: 8, voice: true, quality: 'auto', swap: false, easy: false, diffSingle: 'easy', _autoLevel: 'mid' }
 });
 function merge(a, b) { for (const k in b) { if (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) && a[k] && typeof a[k] === 'object') merge(a[k], b[k]); else if (b[k] !== undefined) a[k] = b[k]; } return a; }
 

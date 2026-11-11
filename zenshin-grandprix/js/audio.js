@@ -207,6 +207,24 @@ export const Audio = {
       case 'curb': T.tone(90, t, 0.03, 0.28, out); break;
       case 'scrape': T.noiseBurst(t, 0.08, 0.07, 'bandpass', 3000, out); break;
       case 'chirp': { const f = 2000 + Math.random() * 2000; T.sweepTone('sine', f, f * (1.2 + Math.random() * 0.4), t, 0.07, 0.05, this.ambBus); T.sweepTone('sine', f * 1.1, f * 0.9, t + 0.09, 0.06, 0.04, this.ambBus); break; }
+      // 第35部
+      case 'coin': { const k = Math.pow(2, (o.combo || 0) / 24); T.tone(1975.5 * k, t, 0.06, 0.22, out, 'square'); T.tone(2637 * k, t + 0.05, 0.16, 0.2, out, 'triangle'); break; }
+      case 'boxGet': [784, 988, 1175, 1568].forEach((f, i) => T.tone(f, t + i * 0.035, 0.08, 0.18, out, 'triangle')); T.noiseBurst(t, 0.06, 0.15, 'highpass', 3000, out); break;
+      case 'roll': T.tone(1400 + Math.random() * 600, t, 0.025, 0.08, out, 'square'); break;
+      case 'itemReady': T.bell(1568, t, 0.32, out); T.bell(2093, t + 0.07, 0.3, out); break;
+      case 'clap': T.noiseBurst(t, 0.05, 0.6, 'bandpass', 1500, out, 1.2); T.noiseBurst(t + 0.008, 0.08, 0.3, 'highpass', 3000, out); break;
+      case 'jet': T.sweepNoise(t, 0.7, 400, 3200, 0.45, out); T.sweepTone('sawtooth', 120, 520, t, 0.6, 0.12, out); T.drum('kick', t, 0.6, out); break;
+      case 'bubbleShoot': T.sweepTone('sine', 300, 1200, t, 0.18, 0.3, out); T.sweepTone('sine', 600, 1800, t + 0.06, 0.12, 0.15, out); break;
+      case 'bubblePop': T.sweepTone('sine', 1800, 300, t, 0.08, 0.4, out); T.noiseBurst(t, 0.04, 0.3, 'highpass', 2500, out); break;
+      case 'puddingDrop': { const os = T.osc('sine', 220, t); os.frequency.linearRampToValueAtTime(330, t + 0.06); os.frequency.linearRampToValueAtTime(180, t + 0.18); os.connect(T.env(t, 0.4, 0.005, 0.22)).connect(out); os.stop(t + 0.3); break; }
+      case 'puddingSplat': T.sweepNoise(t, 0.25, 1500, 300, 0.35, out); { const os = T.osc('sine', 260, t); os.frequency.linearRampToValueAtTime(140, t + 0.2); os.connect(T.env(t, 0.35, 0.005, 0.25)).connect(out); os.stop(t + 0.3); } break;
+      case 'spin': for (let i = 0; i < 6; i++) T.tone(1046.5 * Math.pow(2, -i / 12), t + i * 0.09, 0.08, 0.16, out, 'triangle'); break;
+      case 'shieldOn': T.sweepTone('sine', 400, 1600, t, 0.35, 0.25, out); [1318.5, 1760, 2637].forEach((f, i) => T.bell(f, t + 0.1 + i * 0.05, 0.15, out)); break;
+      case 'shieldBlock': T.bell(2093, t, 0.35, out); T.bell(1568, t + 0.04, 0.3, out); T.noiseBurst(t, 0.12, 0.2, 'highpass', 4000, out); break;
+      case 'magnet': T.sweepTone('square', 220, 880, t, 0.5, 0.06, out); T.sweepTone('sine', 330, 1320, t, 0.5, 0.2, out); break;
+      case 'driftLv': T.tone(o.lv === 2 ? 1568 : 1175, t, 0.1, 0.2, out, 'triangle'); T.tone(o.lv === 2 ? 2349 : 1760, t + 0.05, 0.12, 0.16, out, 'triangle'); break;
+      case 'drift': T.noiseBurst(t, 0.18, 0.12, 'bandpass', 2600, out, 2); break;
+      case 'split': T.tone(o.good ? 1760 : 660, t, 0.12, 0.25, out, 'triangle'); if (o.good) T.tone(2349, t + 0.08, 0.14, 0.22, out, 'triangle'); break;
       case 'gull': T.sweepTone('sawtooth', 900, 600, t, 0.25, 0.025, this.ambBus); break;
     }
   },

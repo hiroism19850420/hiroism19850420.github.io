@@ -76,7 +76,7 @@ export class Rival {
     return this.steer;
   }
   rubber() {
-    const race = this.race, D = this.D, pl = race.player;
+    const race = this.race, D = this.D, pl = race.humans.find(h => !h.finished) || race.player;
     if (pl.finished || race.phase !== 'run') return 1;
     const gap = this.k.prog - pl.prog;
     const ahead = race.finalLap ? D.rbAhead / 2 : D.rbAhead;
@@ -102,9 +102,11 @@ export class Rival {
     return this.avoidD;
   }
   dontPush(vWant) {
-    const k = this.k, pl = this.race.player;
-    const ds = k.track.dsWrap(k.s, pl.s);
-    if (ds > 0 && ds < A.NO_PUSH_BACK && Math.abs(pl.d - k.d) < 1.6) return Math.min(vWant, pl.v + A.NO_PUSH_DV);
+    const k = this.k;
+    for (const pl of this.race.humans) {
+      const ds = k.track.dsWrap(k.s, pl.s);
+      if (ds > 0 && ds < A.NO_PUSH_BACK && Math.abs(pl.d - k.d) < 1.6) vWant = Math.min(vWant, pl.v + A.NO_PUSH_DV);
+    }
     return vWant;
   }
   actions(dt) {

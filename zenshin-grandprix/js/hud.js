@@ -4,6 +4,7 @@ import { fmtTime, clamp, $ } from './util.js';
 import { picSVG } from './pics.js';
 import { CHARS } from './models.js';
 import { ZONE } from './track.js';
+import { ITEM_SVG, ITEMS, ITEM_NAME } from './plus.js';
 
 const H = CFG.hud;
 export const HUD = {
@@ -11,7 +12,9 @@ export const HUD = {
     this.el = { hud: $('hud'), rank: $('hudRankNum'), crown: $('hudCrown'), list: $('hudList'), lap: $('hudLap'), lapLabel: $('hudLapLabel'), lapNum: $('hudLapNum'), lapOf: $('hudLapOf'), time: $('hudTime'),
       map: $('hudMap'), stars: $('hudStarNum'), cells: [...document.querySelectorAll('.hudCell')], speedArc: $('hudSpeedArc'), speedNum: $('hudSpeedNum'),
       toast: $('hudToast'), cue: $('hudCue'), cuePic: $('hudCuePic'), cueText: $('hudCueText'), cueRing: $('hudCueRingFg'), lights: $('hudLights'), lightEls: [...document.querySelectorAll('#hudLightBox .light')], ready: $('hudReady'),
-      big: $('hudBig'), banner: $('hudBanner'), almost: $('hudAlmost'), tip: $('hudTurboTip'), run: $('hudRun'), count: $('hudCount') };
+      big: $('hudBig'), banner: $('hudBanner'), almost: $('hudAlmost'), tip: $('hudTurboTip'), run: $('hudRun'), count: $('hudCount'),
+      item: $('hudItem'), itemPic: $('hudItemPic'), itemHint: $('hudItemHint'), coins: $('hudCoinNum'), coinBox: $('hudCoins') };
+    $('hudCoinIcon').innerHTML = ITEM_SVG.coin;
     this.el.ready.innerHTML = picSVG('run') + '<span>あしぶみ じゅんび！</span>';
     this.el.tip.innerHTML = picSVG('banzai') + '<span>バンザイで ターボ！</span>';
     this.el.run.innerHTML = picSVG('run') + '<span>あしぶみ！</span>';
@@ -31,7 +34,8 @@ export const HUD = {
       L.appendChild(d); this.faces[k.id] = d; d._i = -1;
     });
     this.el.lapOf.textContent = '/' + race.laps;
-    this.pos = 0; this.lapShown = 0; this.tt = -1; this.kmh = -1; this.starsShown = -1;
+    this.pos = 0; this.lapShown = 0; this.tt = -1; this.kmh = -1; this.starsShown = -1; this.itemShown = undefined; this.coinsShown = -1;
+    this.el.item.style.display = race.plus.itemsOn ? '' : 'none';
     this.buildMap(race.track);
     this.el.lights.classList.remove('on', 'away');
     this.el.almost.classList.remove('on'); this.el.banner.classList.remove('on'); this.el.big.innerHTML = ''; this.el.toast.innerHTML = '';
@@ -108,12 +112,36 @@ export const HUD = {
       const full = Math.floor(p.stars / 5), part = (p.stars % 5) / 5;
       E.cells.forEach((c, i) => { c.classList.toggle('full', i < full); c.firstChild.style.width = i < full ? '100%' : i === full ? (part * 100) + '%' : '0%'; });
     }
+    this.updateItem(p, t);
+    if (p.coins !== this.coinsShown) {
+      if (this.coinsShown >= 0 && p.coins > this.coinsShown) { E.coinBox.classList.remove('pop'); void E.coinBox.offsetWidth; E.coinBox.classList.add('pop'); }
+      if (this.coinsShown >= 0 && p.coins < this.coinsShown) { E.coinBox.classList.remove('lose'); void E.coinBox.offsetWidth; E.coinBox.classList.add('lose'); }
+      E.coins.textContent = p.coins; E.coinBox.classList.toggle('max', p.coins >= CFG.plus.COIN_MAX); this.coinsShown = p.coins;
+    }
     this.drawMap(race);
     this.speedLines(dt, p);
     this.updateCue(race);
     if (this.toastBusy > 0) this.toastBusy -= dt;
     else if (this.toastQ.length) { const q = this.toastQ.shift(); this.showToast(q.text, q.cls); }
   },
+  // ---------- アイテムの 枠 ----------
+  updateItem(p, t) {
+    const E = this.el;
+    let key;
+    if (p.rollT > 0) key = 'roll:' + ITEMS[Math.floor(t * 12) % ITEMS.length];
+    else key = p.item || '';
+    if (key === this.itemShown) return;
+    const was = this.itemShown;
+    this.itemShown = key;
+    const it = key.startsWith('roll:') ? key.slice(5) : key;
+    E.itemPic.innerHTML = it ? ITEM_SVG[it] : '';
+    E.item.classList.toggle('roll', key.startsWith('roll:'));
+    E.item.classList.toggle('has', !!p.item);
+    E.itemHint.textContent = p.item ? ITEM_NAME[p.item] : '';
+    if (p.item && was && was.startsWith('roll:')) { E.item.classList.remove('got'); void E.item.offsetWidth; E.item.classList.add('got'); }
+  },
+  setItemHint(text) { $('hudItemHow').textContent = text; },
+
   // ---------- 合図 ----------
   updateCue(race) {
     const c = race.cue, E = this.el;

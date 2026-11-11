@@ -115,6 +115,7 @@ export const World = {
     setAniso(r.capabilities.getMaxAnisotropy());
     const scene = this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(60, 16 / 9, CFG.cam.NEAR, CFG.cam.FAR);
+    this.camera2 = new THREE.PerspectiveCamera(60, 16 / 9, CFG.cam.NEAR, CFG.cam.FAR);   // ふたりで はしる とき（右の 画面）
     // 環境マップ
     const pm = new THREE.PMREMGenerator(r);
     this.envTex = pm.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -357,4 +358,19 @@ export const World = {
     }
   },
   render() { this.renderer.render(this.scene, this.camera); }
+  ,
+  // 左右に 分けて 2回 かく（左 = camera、右 = camera2）。followL / followR は それぞれの 画面の 中心の 位置
+  renderSplit(followL, followR) {
+    const r = this.renderer, w = innerWidth, h = innerHeight, hw = Math.floor(w / 2);
+    r.setScissorTest(true);
+    [[this.camera, 0, followL], [this.camera2, hw, followR]].forEach(([cam, x, f]) => {
+      r.setViewport(x, 0, hw, h); r.setScissor(x, 0, hw, h);
+      cam.aspect = hw / h; cam.updateProjectionMatrix();
+      this.sky.position.copy(cam.position);
+      if (f) this.followShadow(f.x, f.y, f.z);
+      r.render(this.scene, cam);
+    });
+    r.setScissorTest(false); r.setViewport(0, 0, w, h);
+    this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+  }
 };

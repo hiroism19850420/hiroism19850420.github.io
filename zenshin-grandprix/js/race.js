@@ -5,6 +5,7 @@ import { clamp, rng } from './util.js';
 import { Kart } from './kart.js';
 import { Rival, buildRacingLine } from './ai.js';
 import { CHAR_IDS } from './models.js';
+import { Plus } from './plus.js';
 
 const R = CFG.race, P = CFG.phys;
 
@@ -16,14 +17,17 @@ export class Race {
     this.line = track._line || (track._line = buildRacingLine(track));
     const r = rng(opts.seed || (Date.now() & 0xffff));
     const others = (opts.order || CHAR_IDS.filter(c => c !== opts.playerChar)).slice(0, 5);
-    const ids = [...others, opts.playerChar];
+    const ids = [...others, opts.playerChar, ...(opts.playerChar2 ? [opts.playerChar2] : [])];
     this.karts = ids.map((id, i) => {
-      const k = new Kart(track, id, id === opts.playerChar);
+      const k = new Kart(track, id, id === opts.playerChar || id === opts.playerChar2);
       const [gs, gd] = R.GRID[i];
       k.reset(gs, gd); k.lap = -1; k.grid = i;
       return k;
     });
-    this.player = this.karts.find(k => k.isPlayer);
+    this.player = this.karts.find(k => k.id === opts.playerChar);
+    this.player2 = opts.playerChar2 ? this.karts.find(k => k.id === opts.playerChar2) : null;   // ふたりで はしるとき
+    this.humans = [this.player, this.player2].filter(Boolean);
+    this.cs = this.humans.map(() => ({ cueSaid: {}, turboTips: 0, turboIdle: 0, runIdle: 0, runSaid: 0, runCueOn: false, cue: null }));
     const D = CFG.ai.DIFF[this.diff];
     // 強さの くじ（グランプリでは 点数の 多いライバルほど 強くなりやすい）
     const spread = D.spread.slice();
@@ -31,16 +35,19 @@ export class Race {
     let order = rivals.map((k, i) => ({ k, w: r() + (opts.points ? (opts.points[k.id] || 0) * 0.04 : 0) }));
     order.sort((a, b) => b.w - a.w);
     this.rivals = order.map((o, i) => new Rival(o.k, this, spread[i], (opts.seed || 1) * 31 + i));
-    this.player.assist = CFG.phys.ASSIST[opts.assist || D.assist];
+    this.humans.forEach(h => h.assist = CFG.phys.ASSIST[opts.assist || D.assist]);
     this.rivals.forEach(rv => rv.k.assist = 0);
     this.phase = 'intro'; this.t = 0; this.time = 0; this.lights = 0; this.events = [];
-    this.order = this.karts.slice(); this.playerPos = 6; this.finishOrder = [];
+    this.order = this.karts.slice(); this.playerPos = this.karts.length; this.player2Pos = this.karts.length; this.finishOrder = [];
     this.finalLap = false; this.rescue = false; this.slowmo = null; this.acc = 0; this.stepDt = P.DT;
-    this.cue = null; this.cueSaid = {}; this.turboTips = 0; this.turboIdle = 0; this.runIdle = 0; this.runSaid = 0;
+    this.cue = null;
     this.topSaid = false; this.paused = false; this.speed = 1; this.rocketDone = new Set();
     this.stats = { steps: 0, jumps: 0, squats: 0, banzais: 0, turbos: 0, stars: 0, bestLap: Infinity };
     this.resetStars();
+    this.ta = !!opts.ta;
+    this.plus = new Plus(this, opts);
   }
+  useItem(k) { return this.plus.use(k); }
   resetStars() {
     for (const st of this.track.stars) { st.alive = true; st.respawnAt = 0; st.takenBy = null; st.grow = 1; st.shrink = 0; }
     for (const c of this.track.cones) { c.state = 'stand'; c.t = 0; }
@@ -74,6 +81,7 @@ export class Race {
     for (const kt of this.karts) kt.computeWorld();
     if (this.phase === 'run' || this.phase === 'finish' || this.phase === 'done') {
       this.pickStars(dt); this.hitCones(); this.slipstream(dt); this.rank();
+      this.plus.update(dt);
       if (this.phase === 'run') { this.cues(dt); this.rocketWatch(); }
     }
     if (this.phase === 'finish') { this.finishT += dt / (this.slowmo ? this.slowmo.k : 1); if (this.finishT >= R.RESULT_AT) { this.phase = 'done'; this.event('done'); } }
@@ -94,16 +102,17 @@ export class Race {
     this.event('go');
   }
   rocketWatch() {
-    const pl = this.player;
-    if (this.rocketDone.has(pl)) return;
-    const g = this.phase === 'grid' ? (this.t - this.gridT0) - R.LIGHTS[3] : this.time;
-    if (g < -P.ROCKET_PRE || g > P.ROCKET_POST) return;
-    if (pl.input.throttle > P.ROCKET_THR) {
-      this.rocketDone.add(pl);
-      if (this.phase === 'run') { pl.startBoost('rocket'); this.event('rocket', pl); }
-      else this.pendingRocket = true;
+    for (const pl of this.humans) {
+      if (this.rocketDone.has(pl)) continue;
+      const g = this.phase === 'grid' ? (this.t - this.gridT0) - R.LIGHTS[3] : this.time;
+      if (g < -P.ROCKET_PRE || g > P.ROCKET_POST) continue;
+      if (pl.input.throttle > P.ROCKET_THR) {
+        this.rocketDone.add(pl);
+        if (this.phase === 'run') { pl.startBoost('rocket'); this.event('rocket', pl); }
+        else pl.pendingRocket = true;
+      }
+      if (this.phase === 'run' && pl.pendingRocket) { pl.pendingRocket = false; pl.startBoost('rocket'); this.event('rocket', pl); }
     }
-    if (this.phase === 'run' && this.pendingRocket) { this.pendingRocket = false; pl.startBoost('rocket'); this.event('rocket', pl); }
   }
 
   // ---------- 線を こえた ----------
@@ -112,11 +121,12 @@ export class Race {
     if (kart.lap < 0) { kart.lap = 0; kart.lapStart = Math.max(0, tCross); return; }
     const lapT = tCross - kart.lapStart;
     kart.lapTimes.push(lapT); kart.lapStart = tCross;
+    this.plus.onLap(kart, kart.lap, tCross);
     kart.lap++;
     if (kart.isPlayer) this.stats.bestLap = Math.min(this.stats.bestLap, lapT);
     if (kart.lap >= this.laps) this.finishKart(kart, tCross);
     else if (kart.isPlayer) {
-      if (kart.lap === this.laps - 1) { this.finalLap = true; this.event('final'); }
+      if (kart.lap === this.laps - 1) { this.finalLap = true; this.event('final', kart); }
       else this.event('lap', kart, kart.lap + 1);
     }
   }
@@ -125,7 +135,12 @@ export class Race {
     kart.finished = true; kart.finishTime = t;
     this.finishOrder.push(kart);
     kart.faceHappy = this.finishOrder.length <= 3; kart.celebrate = true;
-    if (kart.isPlayer) {
+    if (kart.isPlayer && this.player2) {
+      // ふたりで はしる：ふたりとも ゴールしたら おわり（スローは なし）
+      kart.autoV = 10; kart.assist = 1;
+      this.event('goal', kart, this.finishOrder.length);
+      if (this.humans.every(h => h.finished)) { this.phase = 'finish'; this.finishT = 0; this.predictTimes(); this.event('allGoal'); }
+    } else if (kart.isPlayer) {
       this.phase = 'finish'; this.finishT = 0;
       this.slowmo = { k: R.SLOWMO, left: R.SLOWMO_T };
       kart.autoV = 10; kart.assist = 1;
@@ -134,12 +149,13 @@ export class Race {
     } else {
       kart.autoV = 8;
       kart.parkD = (kart.d > 0 ? 1 : -1) * (this.track.course.width / 2 - 1.5);
-      if (!this.player.finished && this.finishOrder.length === this.karts.length - 1) { this.rescue = true; this.player.vmin = P.VMIN_RESCUE; this.event('rescue'); }
+      const left = this.humans.filter(h => !h.finished);
+      if (!this.rescue && left.length && this.rivals.every(rv => rv.k.finished)) { this.rescue = true; left.forEach(h => h.vmin = P.VMIN_RESCUE); this.event('rescue'); }
     }
   }
   predictTimes() {
     const L = this.track.L;
-    let last = this.player.finishTime;
+    let last = Math.max(...this.humans.map(h => h.finishTime));
     const rest = this.karts.filter(k => !k.finished).map(k => {
       const prog = Math.max(0, k.lap) * L + (k.lap < 0 ? 0 : k.s);
       const avg = Math.max(R.PREDICT_MINV, prog / Math.max(1, this.time));
@@ -160,9 +176,10 @@ export class Race {
     for (const k of this.karts) k.prog = k.finished ? 1e9 - k.finishTime : k.lap * L + k.s;
     this.order = this.karts.slice().sort((a, b) => b.prog - a.prog);
     const pos = this.order.indexOf(this.player) + 1;
-    if (pos !== this.playerPos && this.phase === 'run') { this.event(pos < this.playerPos ? 'up' : 'down', this.player, pos); }
+    if (pos !== this.playerPos && this.phase === 'run' && !this.player2) { this.event(pos < this.playerPos ? 'up' : 'down', this.player, pos); }
     this.playerPos = pos;
-    if (pos === 1 && !this.topSaid && this.time > 3 && this.phase === 'run') { this.topSaid = true; this.event('top'); }
+    if (this.player2) this.player2Pos = this.order.indexOf(this.player2) + 1;
+    if (pos === 1 && !this.topSaid && this.time > 3 && this.phase === 'run' && this.karts.length > 1) { this.topSaid = true; this.event('top'); }
   }
 
   // ---------- 当たり ----------
@@ -193,12 +210,12 @@ export class Race {
 
   // ---------- 星 ----------
   pickStars(dt) {
-    const tr = this.track, pl = this.player;
+    const tr = this.track;
     for (const st of tr.stars) {
       if (!st.alive) {
         // 出しなおし
         // プレイヤーが 取った星：1周して、星の 60m 手前まで 来たら 出す。ライバルが 取った星：4秒で 出す
-        const respawn = st.takenBy === pl ? pl.prog > st.progTaken + tr.L - P.STAR_RESPAWN_AHEAD : this.time > st.respawnAt;
+        const respawn = st.takenBy && st.takenBy.isPlayer ? st.takenBy.prog > st.progTaken + tr.L - P.STAR_RESPAWN_AHEAD : this.time > st.respawnAt;
         if (respawn) { st.alive = true; st.grow = 0; }
         continue;
       }
@@ -264,8 +281,12 @@ export class Race {
 
   // ---------- 合図（17.5） ----------
   cues(dt) {
-    const pl = this.player, tr = this.track;
-    if (pl.finished) { this.cue = null; return; }
+    this.humans.forEach((pl, i) => this.cuesFor(pl, this.cs[i], dt));
+    this.cue = this.cs[0].cue;
+  }
+  cuesFor(pl, S, dt) {
+    const tr = this.track;
+    if (pl.finished) { S.cue = null; return; }
     let cue = null;
     const r = tr.nextRamp(pl.s, pl.d, 60);
     if (r) {
@@ -279,18 +300,18 @@ export class Race {
     }
     if (cue) {
       const key = cue.kind + ':' + (cue.id.s | 0) + ':' + pl.lap;
-      if (!this.cueSaid[key]) { this.cueSaid[key] = true; if (pl.lap < R.CUE_VOICE_LAPS) this.event('cueVoice', pl, cue.kind); }
+      if (!S.cueSaid[key]) { S.cueSaid[key] = true; if (pl.lap < R.CUE_VOICE_LAPS) this.event('cueVoice', pl, cue.kind); }
     }
     // 足ぶみの 合図
-    if (pl.input.throttle < 0.15 && pl.boostT <= 0) this.runIdle += dt; else this.runIdle = 0;
-    if (!cue && this.runIdle > R.RUN_CUE_T) { cue = { kind: 'run', p: 1, now: false }; if (!this.runCueOn) { this.runCueOn = true; if (this.runSaid < R.RUN_CUE_VOICE) { this.runSaid++; this.event('cueVoice', pl, 'run'); } } }
-    else if (this.runIdle === 0) this.runCueOn = false;
+    if (pl.input.throttle < 0.15 && pl.boostT <= 0) S.runIdle += dt; else S.runIdle = 0;
+    if (!cue && S.runIdle > R.RUN_CUE_T) { cue = { kind: 'run', p: 1, now: false }; if (!S.runCueOn) { S.runCueOn = true; if (S.runSaid < R.RUN_CUE_VOICE) { S.runSaid++; this.event('cueVoice', pl, 'run'); } } }
+    else if (S.runIdle === 0) S.runCueOn = false;
     // ターボの 合図
-    this.turboIdle += dt;
-    if (pl.turbo) this.turboIdle = 0;
-    if (pl.stars >= 5 && this.turboIdle > R.TURBO_CUE_IDLE && this.turboTips < R.TURBO_CUE_MAX && tr.kMax(pl.s, pl.s + R.TURBO_CUE_CLEAR) < 1 / R.TURBO_CUE_R) {
-      this.turboTips++; this.turboIdle = -20; this.event('turboTip', pl);
+    S.turboIdle += dt;
+    if (pl.turbo) S.turboIdle = 0;
+    if (pl.stars >= 5 && S.turboIdle > R.TURBO_CUE_IDLE && S.turboTips < R.TURBO_CUE_MAX && tr.kMax(pl.s, pl.s + R.TURBO_CUE_CLEAR) < 1 / R.TURBO_CUE_R) {
+      S.turboTips++; S.turboIdle = -20; this.event('turboTip', pl);
     }
-    this.cue = cue;
+    S.cue = cue;
   }
 }

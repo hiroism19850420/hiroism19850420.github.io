@@ -94,6 +94,8 @@ export const Screens = {
   title(onPick) {
     const d = Save.data;
     $('titlePrep').classList.toggle('hide', !this.camMode);
+    $('titleTwo').classList.toggle('hide', !this.camMode);
+    $('titleEasyT').textContent = d.settings.easy ? '🚗 かんたん：いま ON（アクセル じどう）' : '🚗 かんたん：ハンドルだけ';
     $('titleSteps').textContent = d.total.steps > 0 ? `これまでに ${d.total.steps.toLocaleString()} 歩` : '';
     $('titleCups').innerHTML = ['easy', 'normal', 'hard'].map(k => CUP(d.cups[k] || 0)).join('');
     const logo = $('logo'); logo.classList.remove('in'); void logo.offsetWidth; logo.classList.add('in');
@@ -158,9 +160,9 @@ export const Screens = {
   result(course, rows, stats, buttons, portraits) {
     $('resultTitle').textContent = `けっか　${course.name}`;
     const box = $('resultRows');
-    box.innerHTML = rows.map((r, i) => `<div class="rRow${r.you ? ' you' : ''}"><div class="pos">${i + 1}</div><img src="${portraits[r.id] ? portraits[r.id][i === 0 ? 'happy' : 'normal'] : ''}"><div class="nm">${CHARS[r.id].name}${r.you ? '（あなた）' : ''}</div><div class="best">${r.best ? '★さいこう きろく！' : ''}</div><div class="tm">${fmtTime(r.t)}</div></div>`).join('');
+    box.innerHTML = rows.map((r, i) => `<div class="rRow${r.you ? ' you' : ''}"><div class="pos">${i + 1}</div><img src="${portraits[r.id] ? portraits[r.id][i === 0 ? 'happy' : 'normal'] : ''}"><div class="nm">${CHARS[r.id].name}${r.you ? (r.tag ? '（' + r.tag + '）' : '（あなた）') : ''}</div><div class="best">${r.best ? '★さいこう きろく！' : ''}</div><div class="tm">${fmtTime(r.t)}</div></div>`).join('');
     [...box.children].forEach((el, i) => setTimeout(() => el.classList.add('in'), 120 * i + 100));
-    $('resultStats').innerHTML = `<span>${picSVG('run')}あしぶみ ${stats.steps} 歩</span><span>${picSVG('jump')}ジャンプ ${stats.jumps} かい</span><span>いちばん はやい しゅう ${isFinite(stats.bestLap) ? fmtTime(stats.bestLap) : '―'}</span>`;
+    $('resultStats').innerHTML = stats.html || `<span>${picSVG('run')}あしぶみ ${stats.steps} 歩</span><span>${picSVG('jump')}ジャンプ ${stats.jumps} かい</span><span>いちばん はやい しゅう ${isFinite(stats.bestLap) ? fmtTime(stats.bestLap) : '―'}</span>`;
     const bb = $('resultBtns');
     bb.innerHTML = buttons.map((b, i) => `<button class="btn ${i === 0 ? 'main' : 'sub'}" data-nav="${i}">${b.text}<span class="holdRing">${RING}</span></button>`).join('');
     this.open('scrResult', { onOk: i => buttons[i].fn(), focus: 0 });
@@ -200,6 +202,7 @@ export const Screens = {
   settings(onChange, onPrep, onReset, onBack) {
     const S = Save.data.settings;
     const ROWS = [
+      ['easy', 'かんたん（アクセル じどう）', [[false, 'ふつう'], [true, 'かんたん']]],
       ['diffSingle', 'むずかしさ（ひとつ はしる）', [['easy', 'のんびり'], ['normal', 'ふつう'], ['hard', 'はやい']]],
       ['laps', 'しゅうの かず', [[2, '2'], [3, '3'], [4, '4']]],
       ['assist', 'おまかせハンドル', [['auto', 'じどう'], ['strong', 'つよい'], ['some', 'すこし'], ['none', 'なし']]],

@@ -82,6 +82,7 @@ export class History {
   }
   last(k = 0) { const j = (this.i - 1 - k + this.n * 2) % this.n; return k < this.len ? this.v[j] : 0; }
   lastT(k = 0) { const j = (this.i - 1 - k + this.n * 2) % this.n; return k < this.len ? this.t[j] : -1e9; }
+  maxSince(t0) { let mx = -Infinity; for (let k = 0; k < this.len; k++) { const j = (this.i - 1 - k + this.n) % this.n; if (this.t[j] < t0) break; if (this.v[j] > mx) mx = this.v[j]; } return mx; }
   countSince(t0) { let c = 0; for (let k = 0; k < this.len; k++) { const j = (this.i - 1 - k + this.n) % this.n; if (this.t[j] < t0) break; c++; } return c; }
   clear() { this.len = 0; this.i = 0; }
 }

@@ -4,13 +4,13 @@ import { CFG } from './config.js';
 import { clamp, lerp, damp, wrapAngle } from './util.js';
 import { ZONE } from './track.js';
 
-const P = CFG.phys;
+const P = CFG.phys, X = CFG.plus;
 const _e = new THREE.Euler(0, 0, 0, 'YXZ');
 
 export class Kart {
   constructor(track, charId, isPlayer = false) {
     this.track = track; this.id = charId; this.isPlayer = isPlayer;
-    this.input = { throttle: 0, steer: 0, jump: false, banzai: false, crouch: false, legPhase: null };
+    this.input = { throttle: 0, steer: 0, jump: false, banzai: false, crouch: false, legPhase: null, item: false };
     this.wpos = new THREE.Vector3(); this.wquat = new THREE.Quaternion();
     this.prevPos = new THREE.Vector3(); this.prevQuat = new THREE.Quaternion();
     this.reset(0, 0);
@@ -26,7 +26,10 @@ export class Kart {
       // 見た目
       pedalA: Math.random() * 6, steerShown: 0, rollShown: 0, bob: 0, accelX: 0, accelY: 0, face: 'normal', faceT: 0,
       trickA: 0, banzaiShown: false, banzaiT: 0, crouchShown: false, wave: false, clap: false, lookYaw: 0, prevVh: 0,
-      wallT: 0, stats: { steps: 0, jumps: 0, squats: 0, banzais: 0, turbos: 0, stars: 0, walls: 0 }
+      wallT: 0, stats: { steps: 0, jumps: 0, squats: 0, banzais: 0, turbos: 0, stars: 0, walls: 0, coins: 0, items: 0, mts: 0, hits: 0 },
+      // 追加の あそび（第35部）
+      coins: 0, item: null, rollT: 0, shieldT: 0, spinT: 0, spinA: 0, magnetT: 0, clapT: 0,
+      drift: 0, driftT: 0, driftLv: 0, driftShown: 0
     });
     this.computeWorld(); this.prevPos.copy(this.wpos); this.prevQuat.copy(this.wquat);
   }
@@ -36,8 +39,12 @@ export class Kart {
     const tr = this.track, inp = this.input;
     if (this.frozen) { this.visual(dt, race, 0); return; }
     const running = race.phase === 'run' || race.phase === 'finish' || race.phase === 'done';
-    const thr = running ? inp.throttle : 0;
-    const steer = clamp(inp.steer, -1, 1);
+    const thr = running ? inp.throttle * (this.spinT > 0 ? 0.4 : 1) : 0;
+    const steer = this.spinT > 0 ? 0 : clamp(inp.steer, -1, 1);
+    // くるりん（じゃまに 当たった）
+    if (this.spinT > 0) { this.spinT = Math.max(0, this.spinT - dt); this.spinA = (1 - this.spinT / X.HIT_SPIN) * Math.PI * 2; if (this.spinT === 0) this.spinA = 0; }
+    if (this.shieldT > 0) { this.shieldT = Math.max(0, this.shieldT - dt); if (this.shieldT === 0) race.event('shieldEnd', this); }
+    if (this.clapT > 0) this.clapT -= dt;
     // しゃがみ（ゲートの判定のために 時刻を 覚える）
     if (inp.crouch && !this.crouch) { this.lastCrouchT = race.time; if (race.time < this.gateLateUntil) race.slide(this); }
     this.crouch = !!inp.crouch;
@@ -59,7 +66,8 @@ export class Kart {
 
     // 目標の 速さ
     const vmin = this.vmin * (surf === 'air' ? 1 : this.surfK);
-    let vt = this.vmin + (P.VMAX - this.vmin) * thr;
+    const vmax = P.VMAX + this.coins * X.COIN_V;
+    let vt = this.vmin + (vmax - this.vmin) * thr;
     vt *= this.surfK;
     vt -= tr.slopeAt(this.s) * P.SLOPE_K;
     if (this.boostV > 0) vt = Math.max(vt, P.VMAX * P.BOOST_FLOOR) + this.boostV;
@@ -88,6 +96,8 @@ export class Kart {
       else this.dAim = this.d;
     }
     w = clamp(w, -capW * 1.15, capW * 1.15);
+    this.updateDrift(dt, race, running, steer);
+    if (this.drift) w *= X.DRIFT_W;
     if (!this.ground) w *= P.AIR_STEER;
     this.w = lerp(this.w, w, 1 - Math.exp(-dt * P.GRIP_RATE * grip));
     this.yawRate = this.w;
@@ -162,11 +172,44 @@ export class Kart {
       if (this.stars >= P.STARS_PER_TURBO) { this.stars -= P.STARS_PER_TURBO; this.startBoost('turbo'); this.turbo = true; this.stats.turbos++; race.event('turbo', this); }
       else race.event('noStar', this);
     }
+    // アイテム（拍手）
+    if (inp.item) { inp.item = false; if (race.phase === 'run' && !this.finished && race.useItem) race.useItem(this); }
     inp.jump = false; inp.banzai = false;
     if (running) this.time += dt;
     this.visual(dt, race, thr);
   }
 
+  // ドリフト：大きく 切りつづけると 火花が たまり、もどすと ミニターボ
+  updateDrift(dt, race, running, steer) {
+    const can = this.isPlayer && running && race.phase === 'run' && !this.finished && this.spinT <= 0 && this.autoV == null;   // ライバルは ドリフトしない（すじが くずれる）
+    if (!this.drift) {
+      if (can && this.ground && this.v > X.DRIFT_VMIN && Math.abs(steer) > X.DRIFT_STEER) { this.drift = Math.sign(steer); this.driftT = 0; this.driftLv = 0; race.event('driftStart', this); }
+      return;
+    }
+    const hold = can && Math.sign(steer) === this.drift && Math.abs(steer) > X.DRIFT_END && this.v > X.DRIFT_VMIN * 0.7;
+    if (hold) {
+      if (this.ground) this.driftT += dt;
+      const lv = this.driftT >= X.DRIFT_T2 ? 2 : this.driftT >= X.DRIFT_T1 ? 1 : 0;
+      if (lv > this.driftLv) { this.driftLv = lv; race.event('driftLv', this, lv); }
+      return;
+    }
+    const lv = this.driftLv;
+    this.drift = 0; this.driftT = 0; this.driftLv = 0;
+    if (lv >= 1 && can) { this.startBoost(lv === 2 ? 'mt2' : 'mt1'); this.stats.mts++; race.event('miniTurbo', this, lv); }
+    else race.event('driftEnd', this);
+  }
+  // じゃまに 当たった（バリアが あれば ふせぐ）。くるっと 1回転して 遅くなるだけ
+  hit(race, by) {
+    if (this.finished) return false;
+    if (this.shieldT > 0) { this.shieldT = 0; race.event('shieldBlock', this, by); return false; }
+    if (this.spinT > 0) return false;
+    this.spinT = X.HIT_SPIN; this.v *= X.HIT_V; this.drift = 0; this.driftLv = 0; this.driftT = 0;
+    this.boostT = 0; this.boostFadeT = 0; this.boostV = 0; this.turbo = false; this.boostKind = null;
+    const lost = Math.min(this.coins, X.COIN_LOSE); this.coins -= lost;
+    this.setFace('oops', 1.2); this.stats.hits++;
+    race.event('hit', this, { by, lost });
+    return true;
+  }
   onJump(race) {
     const r = this.track.nextRamp(this.s, this.d, 40);
     if (r && Math.abs(this.d - (r.d || 0)) < r.width / 2 + 0.3) {
@@ -258,6 +301,7 @@ export class Kart {
     this.banzaiShown = this.banzaiT > 0 || this.trick || !!this.banzaiHold || (this.finished && this.celebrate);
     this.crouchShown = this.crouch;
     if (this.jumpAnim > 0) this.jumpAnim -= dt;
+    this.driftShown = damp(this.driftShown, this.drift * X.DRIFT_ANG, 0.12, dt);
   }
 
   // 描画の 位置と 向き
@@ -266,6 +310,7 @@ export class Kart {
     const p = tr.pos(this.s, this.d, this.h, this._p || (this._p = {}));
     this.wpos.set(p.x, p.y, p.z);
     const yaw = tr.yawAt(this.s) + this.psi;
+    const yawShown = yaw + (this.driftShown || 0) + (this.spinA || 0);
     let pitch;
     if (this.ground) {
       let sl = tr.slopeAt(this.s);
@@ -275,7 +320,7 @@ export class Kart {
     } else pitch = -clamp(Math.atan2(this.vh, Math.max(this.v, 1)) * 0.7, -0.3, 0.35);
     this.pitchShown = this.pitchShown == null ? pitch : damp(this.pitchShown, pitch, 0.06, 1 / 60);
     const bank = (Math.abs(this.d) <= tr.wAt(this.s) / 2 ? tr.bankAt(this.s) : 0);
-    _e.set(this.pitchShown, yaw, -bank, 'YXZ');
+    _e.set(this.pitchShown, yawShown, -bank, 'YXZ');
     this.wquat.setFromEuler(_e);
     this.yawW = yaw;
   }

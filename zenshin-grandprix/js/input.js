@@ -24,6 +24,7 @@ export const Input = {
       if (c === 'Space') { this.kTap = Math.min(1.2, this.kTap + K.TAP_ADD); this.steps++; this.queue.push('tap'); }
       if (c === 'KeyJ') this.queue.push('jump');
       if (c === 'KeyB') this.queue.push('banzai');
+      if (c === 'KeyX' || c === 'KeyI' || c === 'ShiftLeft' || c === 'ShiftRight') this.queue.push('item');
       if (c === 'Enter') { this.queue.push('banzai'); this.queue.push('ok'); }
       if (c === 'Escape') { this.queue.push('back'); this.queue.push('pause'); }
       if (c === 'KeyP') this.queue.push('pause');
@@ -47,6 +48,7 @@ export const Input = {
     tb('tJump', () => this.queue.push('jump'));
     tb('tSquat', () => this.touchSquat = true, () => this.touchSquat = false);
     tb('tTurbo', () => this.queue.push('banzai'));
+    tb('tItem', () => this.queue.push('item'));
   },
   has(c) { return this.keys.has(c); },
   take(name) { const i = this.queue.indexOf(name); if (i < 0) return false; this.queue.splice(i, 1); return true; },
