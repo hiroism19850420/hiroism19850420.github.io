@@ -149,7 +149,7 @@ function openEar(){
     const r=new SR();r.lang='ja-JP';r.continuous=true;r.interimResults=true;r.maxAlternatives=3;
     r.onresult=e=>{
       lastLen=e.results.length;
-      if(S.phase!=='listen')return;
+      if(S.phase!=='listen'&&S.phase!=='qa')return;
       let txt='';
       for(let i=Math.min(S.skip,e.results.length);i<e.results.length;i++){
         let best='',bc=-1;
@@ -253,10 +253,10 @@ function hitFx(idx,n,k){
   S.shake=Math.max(S.shake,.35);S.flash=Math.max(S.flash,.22);S.pulse[idx]=1;
 }
 const BANNERS=['せいかい！','すごい！！','てんさい！！','ごうかく！！','パーフェクト！','おみごと！！','ブラボー！！','ゴージャス！！'];
-function celebrate(n){
+function celebrate(n,q){
   const sc=1+n*.12;
   S.shake=1;S.flash=1;S.rays=1;
-  S.banner={text:BANNERS[(n-1)%BANNERS.length],sub:ERAS.slice(0,n).map(e=>e.n).join(' → '),t:0,max:2.6+n*.15};
+  S.banner={text:BANNERS[(n-1)%BANNERS.length],sub:q||ERAS.slice(0,n).map(e=>e.n).join(' → '),t:0,max:q?2.6:2.6+n*.15};
   sFanfare(sc);sApplause(2.2+n*.15);say(['せいかーい！','すごーい！','てんさーい！','ごうかく！'][n%4]);
   const FW=3+n;
   for(let i=0;i<FW;i++)launch(R(.1,.9)*W,R(.08,.4)*H,.15+i*.2,null,1+n*.06);
@@ -264,13 +264,13 @@ function celebrate(n){
   for(let i=0;i<4;i++)later(.2+i*.3,()=>{for(let k=0;k<12+n*3;k++)coin(R(0,W),H+10,R(-120,120),R(-1000,-640),R(10,18))});
   for(let i=0;i<4;i++)later(.1+i*.35,()=>{for(let k=0;k<6+n;k++)emoji(R(0,W),-30,R(-60,60),R(120,260))});
   later(.4,()=>{for(let i=0;i<6;i++)ring(W/2,H*.4,rh(),20+i*20,.9+i*.12,6)});
-  for(let i=0;i<n;i++)later(.05+i*.07,()=>{const r=cardRect(i,n);S.pulse[i]=1;ring(r.x,r.y,45,r.w*.3,.7,4);burst(r.x,r.y,18,45,200,{});sTick(i)});
+  for(let i=0;!q&&i<n;i++)later(.05+i*.07,()=>{const r=cardRect(i,n);S.pulse[i]=1;ring(r.x,r.y,45,r.w*.3,.7,4);burst(r.x,r.y,18,45,200,{});sTick(i)});
 }
-function finale(){
+function finale(ttl,sub,sc,voice){
   S.phase='over';S.t=0;S.shake=1.4;S.flash=1;S.rays=1;
-  S.banner={text:'ぜんぶ いえた！！',sub:'ゴージャス マスター',t:0,max:99};
-  sFanfare(3);sApplause(5);say('ぜんぶ いえたー！すごーい！！',1.9);
-  for(let i=0;i<20;i++)launch(R(.05,.95)*W,R(.05,.45)*H,.1+i*.18,null,1.5);
+  S.banner={text:ttl||'ぜんぶ いえた！！',sub:sub||'ゴージャス マスター',t:0,max:99};sc=sc||1;
+  sFanfare(3);sApplause(5);say(voice||'ぜんぶ いえたー！すごーい！！',1.9);
+  for(let i=0,N=Math.round(20*sc);i<N;i++)launch(R(.05,.95)*W,R(.05,.45)*H,.1+i*.18,null,1.5);
   for(let i=0;i<14;i++)later(i*.4,()=>{sWhoosh();for(let k=0;k<50;k++){confetti(-10,H*.9,R(260,820),R(-1000,-380));confetti(W+10,H*.9,R(-820,-260),R(-1000,-380))}for(let k=0;k<20;k++)coin(R(0,W),H+10,R(-120,120),R(-1100,-640))});
   for(let i=0;i<10;i++)later(i*.5,()=>{for(let k=0;k<14;k++)emoji(R(0,W),-30,R(-60,60),R(120,260))});
 }
@@ -300,10 +300,45 @@ function judge(){
   }
 }
 function tapEra(id){
-  if(S.phase!=='listen')return;
+  if(S.phase!=='listen'&&S.phase!=='qa')return;
   S.tapSeq.push(id);S.lastHeard=S.lt;
 }
-function begin(mode){initAudio();openEar();S.mode=mode||'grow';S.n=1;S.fails=0;S.phase='title';S.timers=[];startRound()}
+
+const QZ=[
+['土器に 縄の もようを つけて つくっていたのは',0],['貝塚が つくられたのは',0],['大きな 集落、三内丸山遺跡が さかえたのは',0],['土偶が つくられたのは',0],['木の実を ひろい 狩りで くらしていたのは',0],
+['稲作が はじまったのは',1],['卑弥呼が いたのは',1],['吉野ヶ里遺跡の ような むらが あったのは',1],['銅鐸や 銅剣が つくられたのは',1],['米づくりが ひろまり、むらどうしの 争いが おきたのは',1],
+['大きな お墓（古墳）を 建てることが はやったのは',2],['埴輪が つくられたのは',2],['大仙古墳（仁徳天皇陵）が つくられたのは',2],['ヤマト政権が 力を のばしたのは',2],
+['聖徳太子が 活やくしたのは',3],['十七条の憲法が つくられたのは',3],['法隆寺が 建てられたのは',3],['中大兄皇子たちが 大化の改新を したのは',3],['小野妹子が 遣隋使として 送られたのは',3],
+['東大寺の 大仏が つくられたのは',4],['平城京に 都が あったのは',4],['聖武天皇が 大仏を つくらせたのは',4],['鑑真が 日本に やってきたのは',4],['万葉集が まとめられたのは',4],
+['紫式部が 源氏物語を 書いたのは',5],['清少納言が 枕草子を 書いたのは',5],['藤原道長が 力を もったのは',5],['平清盛が 活やくしたのは',5],['平安京に 都が あったのは',5],['十二単を きた 貴族が くらしていたのは',5],
+['源頼朝が 幕府を ひらいたのは',6],['元（モンゴル）が せめてきた 元寇が おきたのは',6],['北条時宗が 活やくしたのは',6],['御恩と奉公の しくみが あったのは',6],['運慶が 金剛力士像を つくったのは',6],
+['足利義満が 金閣を 建てたのは',7],['足利義政が 銀閣を 建てたのは',7],['応仁の乱が おきたのは',7],['雪舟が 水墨画を えがいたのは',7],['能や 狂言が さかんに なったのは',7],
+['織田信長が 活やくしたのは',8],['豊臣秀吉が 天下を とういつしたのは',8],['太閤検地や 刀狩が おこなわれたのは',8],['千利休が 茶の湯を 大成したのは',8],['長篠の戦いで 信長が 鉄砲を つかったのは',8],
+['徳川家康が 幕府を ひらいたのは',9],['鎖国を していたのは',9],['参勤交代が あったのは',9],['ペリーが 黒船で やってきたのは',9],['歌舞伎や 浮世絵が さかえたのは',9],['寺子屋で 町人の 子が まなんでいたのは',9],['伊能忠敬が 日本地図を つくったのは',9],
+['文明開化で 洋服や れんがの 建物が ふえたのは',10],['廃藩置県が おこなわれたのは',10],['富国強兵が すすめられたのは',10],['大日本帝国憲法が できたのは',10],['日清戦争・日露戦争が おきたのは',10],['福沢諭吉が 学問のすゝめを 書いたのは',10],['新橋と 横浜の あいだに 鉄道が はしったのは',10],
+['関東大震災が おきたのは',11],['米騒動が おきたのは',11],['25才以上の 男子に 選挙権が 認められたのは',11],['ラジオ放送が はじまったのは',11],
+['太平洋戦争が おきたのは',12],['最初の 東京オリンピックが ひらかれたのは',12],['高度経済成長の ころは',12],['日本国憲法が できたのは',12],['広島と 長崎に 原爆が おとされたのは',12],['東海道新幹線が 開通したのは',12],
+['阪神・淡路大震災が おきたのは',13],['東日本大震災が おきたのは',13],['長野オリンピックが ひらかれたのは',13],['消費税が はじまったのは',13],
+['新型コロナウイルスが ひろまったのは',14],['東京オリンピックが 1年 のびて ひらかれたのは',14],['大阪・関西万博が ひらかれたのは',14],['2019年に 天皇が かわって はじまったのは',14]
+];
+const QN=10;
+function pickQs(){
+  const a=QZ.slice();for(let i=a.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[a[i],a[j]]=[a[j],a[i]]}
+  const out=[];for(const q of a){if(out.length&&out[out.length-1][1]===q[1])continue;out.push(q);if(out.length>=QN)break}
+  return out;
+}
+function shufflePad(){for(let i=NMAX-1;i>0;i--){const j=(Math.random()*(i+1))|0;[S.padOrder[i],S.padOrder[j]]=[S.padOrder[j],S.padOrder[i]]}}
+function nextQ(){
+  if(S.qi>=S.qs.length){
+    const sc=S.score,N=S.qs.length;
+    if(sc===N)finale('ぜんぶ せいかい！！','クイズ マスター',1.6,'ぜんぶ せいかい！すごーい！！');
+    else finale(sc+' / '+N+' もん せいかい！','また ちょうせんしてね',.3+sc/N,sc+'もん せいかい！すごーい！');
+    return;
+  }
+  S.cur=S.qs[S.qi];S.phase='qa';S.t=0;S.lt=0;S.lastHeard=0;S.banner=null;shufflePad();startEar();
+}
+function startQuiz(){S.qs=pickQs();S.qi=0;S.score=0;S.n=NMAX;nextQ()}
+function begin(mode){initAudio();openEar();S.mode=mode||'grow';S.n=1;S.fails=0;S.phase='title';S.timers=[];if(S.mode==='quiz')startQuiz();else startRound()}
 
 /* ---------- update ---------- */
 function update(dt){
@@ -344,7 +379,21 @@ function update(dt){
   }else if(S.phase==='fail'){
     if(S.t>3.2+(S.silent?-1:0))startRound();
   }
-  if(S.phase!=='listen')S.autoSaid=false;
+  else if(S.phase==='qa'){
+    S.lt+=dt;const heard=heardSeq(),ans=S.cur[1],quiet=S.lt-S.lastHeard;
+    if(DBG&&window.dbg&&window.dbg.auto&&S.lt>1.2&&!S.autoSaid){S.autoSaid=true;S.voiceSeq=[Math.random()<(window.dbg.err||0)?(ans+3)%NMAX:ans];S.lastHeard=S.lt}
+    if(heard.includes(ans)){
+      S.score++;S.phase='qok';S.t=0;
+      celebrate(Math.min(10,3+S.score),' ');
+    }else if((S.tapSeq.length&&!S.tapSeq.includes(ans))||(heard.length&&quiet>1.5)){
+      S.phase='qng';S.t=0;sFail();
+    }
+  }else if(S.phase==='qok'){
+    if(S.t>3.6){S.qi++;nextQ()}
+  }else if(S.phase==='qng'){
+    if(S.t>3.4){S.qi++;nextQ()}
+  }
+  if(S.phase!=='listen'&&S.phase!=='qa')S.autoSaid=false;
   // fireworks
   for(let i=S.fw.length-1;i>=0;i--){
     const f=S.fw[i];
@@ -470,13 +519,15 @@ function drawHeader(){
   else if(S.phase==='ready')t=S.mode==='all'?'さいしょから さいごまで！　せーのっ！':'せーのっ！';
   else if(S.phase==='listen')t=S.tapMode?'ボタンを じゅんばんに おしてね':(S.mode==='all'?'縄文から 令和まで いってね！':'じゅんばんに いってね！');
   else if(S.phase==='fail')t=S.msg;
+  else if(S.phase==='qa')t=S.tapMode?'クイズ '+(S.qi+1)+'/'+S.qs.length+'　ボタンで こたえてね':'クイズ '+(S.qi+1)+'/'+S.qs.length+'　いつの じだい？';
+  else if(S.phase==='qng')t='おしい！ こたえは…';
   if(!t)return;
   const sz=Math.min(W*.06,H*.09,38);
   ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='900 '+sz+'px '+FONT;ctx.lineJoin='round';ctx.lineWidth=sz*.16;ctx.strokeStyle='#fff';
   ctx.strokeText(t,W/2,H*.1);ctx.fillStyle=S.phase==='fail'?'#c2410c':'#4b2a9a';ctx.fillText(t,W/2,H*.1);
   if(S.phase==='show'){const w=Math.min(W*.5,360),p=clamp(S.t/S.showDur,0,1);roundRect(W/2-w/2,H*.1+sz*.8,w,8,4);ctx.fillStyle='rgba(75,42,154,.2)';ctx.fill();roundRect(W/2-w/2,H*.1+sz*.8,w*(1-p),8,4);ctx.fillStyle='#ffb300';ctx.fill();
     ctx.font='700 '+Math.max(11,sz*.42)+'px '+FONT;ctx.fillStyle='#6a4bb8';ctx.fillText('タップで すぐ はじめる',W/2,H*.1+sz*1.7)}
-  if(S.phase==='listen'){
+  if(S.phase==='listen'||S.phase==='qa'){
     const mx=W/2,my=H*.2,pr=1+.15*Math.sin(S.clock*8);
     if(!S.tapMode){ctx.fillStyle='#ff4d6d';ctx.beginPath();ctx.arc(16,H*.1,Math.min(8,sz*.28)*pr,0,TAU);ctx.fill()}
     ctx.font='700 '+Math.max(12,sz*.5)+'px '+FONT;ctx.fillStyle='#fff';ctx.strokeStyle='rgba(75,42,154,.8)';ctx.lineWidth=4;
@@ -495,7 +546,7 @@ function drawPad(){
     ctx.strokeText(nm,r.x+r.w/2,r.y+r.h/2);ctx.fillText(nm,r.x+r.w/2,r.y+r.h/2);
   }
 }
-function titleBtns(){const w=Math.min(250,W*.43),h=Math.min(70,H*.17);return {w,h,y:H*.745,l:{x:W/2-w-8},r:{x:W/2+8}}}
+function titleBtns(){const g=8,w=Math.min(230,(W-24-g*2)/3),h=Math.min(70,H*.17),x0=W/2-(w*3+g*2)/2;return {w,h,y:H*.745,list:[x0,x0+w+g,x0+(w+g)*2]}}
 function drawTitle(){
   const sz=Math.min(W*.09,H*.14,84);
   gold(sz,H*.2,'じだいじゅん');
@@ -505,7 +556,8 @@ function drawTitle(){
   ctx.fillText('れきしの じだいを じゅんばんに こえで いってね',W/2,H*.2+sz*1.9);
   ctx.fillText('どんどん ふえるよ。あっていたら…ゴージャス！',W/2,H*.2+sz*1.9+fs*1.6);
   const B=titleBtns(),pu=1+.04*Math.sin(S.clock*5);
-  [[B.l,'ふえていく','おぼえて ふやす',['#ffe56a','#ff9d00']],[B.r,'いきなり ぜんぶ','さいしょから さいごまで',['#9ff0ff','#2a9dff']]].forEach(([r,t1,t2,c])=>{
+  [['ふえていく','おぼえて ふやす',['#ffe56a','#ff9d00']],['いきなり ぜんぶ','はじめから おわりまで',['#9ff0ff','#2a9dff']],['クイズ','いつの じだい？',['#ffb3e6','#e0409a']]].forEach(([t1,t2,c],k)=>{
+    const r={x:B.list[k]};
     ctx.save();ctx.translate(r.x+B.w/2,B.y+B.h/2);ctx.scale(pu,pu);ctx.translate(-(r.x+B.w/2),-(B.y+B.h/2));
     const g=ctx.createLinearGradient(0,B.y,0,B.y+B.h);g.addColorStop(0,c[0]);g.addColorStop(1,c[1]);
     ctx.shadowColor=c[0];ctx.shadowBlur=26;roundRect(r.x,B.y,B.w,B.h,B.h/2.4);ctx.fillStyle=g;ctx.fill();ctx.shadowBlur=0;ctx.lineWidth=4;ctx.strokeStyle='#fff';ctx.stroke();
@@ -521,18 +573,41 @@ function drawTitle(){
     roundRect(-cw/2,-cw*.65,cw,cw*1.3,8);const g=ctx.createLinearGradient(0,-cw*.65,0,cw*.65);g.addColorStop(0,hsl(15+i*23,85,68));g.addColorStop(1,hsl(15+i*23,85,42));ctx.fillStyle=g;ctx.fill();ctx.strokeStyle='#ffd23a';ctx.lineWidth=2.5;ctx.stroke();
     ctx.font='900 '+cw*.4+'px '+FONT;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff';ctx.fillText(nm,0,0);ctx.restore()});
 }
+
+function wrapJp(t,maxw){const lines=[];let cur='';for(const ch of t){if(ctx.measureText(cur+ch).width>maxw&&cur){lines.push(cur);cur=ch}else cur+=ch}if(cur)lines.push(cur);return lines}
+function drawQuiz(){
+  if(S.phase==='over'||!S.cur)return;
+  const px=W*.05,pw=W*.9,py=H*.2,ph=H*.36;
+  const ap=easeBack(S.phase==='qa'?S.t/.4:1);
+  ctx.save();ctx.translate(W/2,py+ph/2);ctx.scale(ap,ap);ctx.translate(-W/2,-(py+ph/2));
+  ctx.shadowColor='rgba(0,0,0,.3)';ctx.shadowBlur=14;roundRect(px,py,pw,ph,22);
+  const g=ctx.createLinearGradient(0,py,0,py+ph);g.addColorStop(0,'#fffaf0');g.addColorStop(1,'#ffe6b8');ctx.fillStyle=g;ctx.fill();ctx.shadowBlur=0;ctx.lineWidth=5;ctx.strokeStyle='#ffd23a';ctx.stroke();
+  let fs=Math.min(30,H*.06,W*.062);ctx.textAlign='center';ctx.textBaseline='middle';
+  let lines;
+  for(;fs>12;fs-=1){ctx.font='900 '+fs+'px '+FONT;lines=wrapJp(S.cur[0],pw-40);if(lines.length*fs*1.35<ph*(S.phase==='qa'?.8:.5))break}
+  ctx.fillStyle='#4b2a9a';
+  const top=S.phase==='qa'?py+ph/2-(lines.length-1)*fs*.675:py+ph*.3-(lines.length-1)*fs*.675;
+  lines.forEach((l,i)=>ctx.fillText(l,W/2,top+i*fs*1.35));
+  if(S.phase==='qng'||S.phase==='qok'){
+    const nm=ERAS[S.cur[1]].n,sz=Math.min(ph*.3,W*.12);ctx.font='900 '+sz+'px '+FONT;
+    ctx.lineJoin='round';ctx.lineWidth=sz*.14;ctx.strokeStyle='rgba(60,20,0,.8)';ctx.fillStyle=hsl(15+S.cur[1]*23,90,60);
+    const y=py+ph*.74;ctx.strokeText(nm+' じだい',W/2,y);ctx.fillText(nm+' じだい',W/2,y);
+  }
+  ctx.restore();
+}
 function render(){
   ctx.save();
   if(S.shake>0)ctx.translate(R(-1,1)*S.shake*12,R(-1,1)*S.shake*12);
   drawBg();
-  if(S.phase!=='title'){
+  if(S.mode==='quiz'&&S.phase!=='title'){drawQuiz()}
+  else if(S.phase!=='title'){
     const n=S.n;
     for(let i=0;i<n;i++)drawCard(i,n);
   }
   drawParts();
   if(S.phase==='title')drawTitle();
   else{drawHeader();drawBanner()}
-  if(S.phase==='listen')drawPad();
+  if(S.phase==='listen'||S.phase==='qa')drawPad();
   if(S.phase==='over'&&S.t>7){ctx.save();ctx.textAlign='center';ctx.font='900 '+Math.min(26,W*.05)+'px '+FONT;ctx.fillStyle='#fff';ctx.globalAlpha=.6+.4*Math.sin(S.clock*5);ctx.fillText('タップで もういちど あそぶ',W/2,H*.9);ctx.restore()}
   ctx.restore();
   if(S.flash>0){ctx.fillStyle='rgba(255,250,220,'+Math.min(.85,S.flash*.7)+')';ctx.fillRect(0,0,W,H)}
@@ -544,9 +619,9 @@ function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;update(dt);re
 cv.addEventListener('pointerdown',e=>{
   initAudio();
   const x=e.clientX,y=e.clientY;
-  if(S.phase==='title'){const B=titleBtns();if(x>=B.l.x&&x<=B.l.x+B.w&&y>=B.y&&y<=B.y+B.h)begin('grow');else if(x>=B.r.x&&x<=B.r.x+B.w&&y>=B.y&&y<=B.y+B.h)begin('all');return}
+  if(S.phase==='title'){const B=titleBtns();if(y>=B.y&&y<=B.y+B.h)B.list.forEach((bx,k)=>{if(x>=bx&&x<=bx+B.w)begin(['grow','all','quiz'][k])});return}
   if(S.phase==='show'){if(S.t>.6){S.t=S.showDur}return}
-  if(S.phase==='listen'){
+  if(S.phase==='listen'||S.phase==='qa'){
     for(let i=0;i<NMAX;i++){const r=padRect(i);if(x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h){tapEra(S.padOrder[i]);return}}
     return;
   }
@@ -559,6 +634,7 @@ requestAnimationFrame(loop);
 </script>
 </body>
 </html>
+
 
 
 
