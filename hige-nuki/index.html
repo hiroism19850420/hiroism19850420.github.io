@@ -21,7 +21,7 @@ const cv=document.getElementById('c'),g=cv.getContext('2d');
 let W=1280,H=720,SC=1,OX=0,OY=0,DPR=1,PORT=false;
 let FX=640,FY=262,WS=1;const RX=240,RY=222;
 const FONT='"Mochiy Pop One","Hiragino Maru Gothic ProN","Yu Gothic",sans-serif';
-const BTN={start:{x:0,y:0,w:360,h:104,txt:'スタート'}};
+const BTN={normal:{x:0,y:0,w:300,h:104,txt:'ふつう'},hard:{x:0,y:0,w:300,h:104,txt:'むずかしい'}};
 const RB={again:{x:0,y:0,w:280,h:84,txt:'もういちど'},title:{x:0,y:0,w:280,h:84,txt:'タイトルへ'}};
 let BOX={x:0,y:0,w:900,h:600};
 function resize(){
@@ -31,7 +31,7 @@ function resize(){
   if(PORT){W=720;H=Math.round(clamp(720*h/w,1000,1560));FX=W/2;FY=Math.round(H*.40);WS=1;}
   else{H=720;W=Math.round(clamp(720*w/h,1000,1560));FX=W/2;FY=318;WS=.82;}
   SC=Math.min(w/W,h/H);OX=(w-W*SC)/2;OY=(h-H*SC)/2;
-  BTN.start.x=W/2-180;BTN.start.y=PORT?H-300:H-178;
+  BTN.normal.x=W/2-315;BTN.hard.x=W/2+15;BTN.normal.y=BTN.hard.y=PORT?H-300:H-178;
   BOX.w=Math.min(900,W-40);BOX.h=600;BOX.x=(W-BOX.w)/2;BOX.y=(H-BOX.h)/2;
   RB.again.x=W/2-300;RB.title.x=W/2+20;RB.again.y=RB.title.y=BOX.y+490;
 }
@@ -81,16 +81,27 @@ const SND={
 
 // ===== 曲と譜面 =====
 // 1人の顔 = 12拍：0-2 登場 / 2-6 おてほん（毛がはえる）/ 6-10 まねして ぬく / 10.6- たいじょう
-const BPM=118,BEAT=60/BPM,SLOT=BEAT/2;
+let BPM=118,BEAT=60/BPM,SLOT=BEAT/2,DIFF=0;
 const FACE_BEATS=12,INTRO_BEATS=8,CALL_B=2,RESP_B=6;
 // 1文字=8分音符。o=短い毛 L=長い毛(-でのばす。おしっぱなしで 1拍あとに はなす) .=なし。先頭 * = ねこが かくす
-const PAT=['o.o.o.o.','oo..oo..','o.o.L-..','L-..L-..','*o.o.o.o.','oo.oo.o.','o.oo.oo.','L-o.L-o.',
- '*oo..oo..','ooo.ooo.','oo.oL-..','L-.L-.o.','*o.oo.oo.','oooo.oo.','*oo.L-.o.','oooooooo'];
-const VARS=[0,1,0,2,1,2,0,1, 0,2,1,0,2,1,0,2];
-const SEQ=PAT.map((p,i)=>{const cover=p[0]==='*';const pat=cover?p.slice(1):p;const hairs=[];
-  for(let s=0;s<8;s++){const c=pat[s];if(c==='o'||c==='L')hairs.push({s,long:c==='L'});}
-  return {pat,cover,v:VARS[i],hairs};});
-const N=SEQ.length;
+const PATS=[
+ ['o.o.o.o.','oo..oo..','o.o.L-..','L-..L-..','*o.o.o.o.','oo.oo.o.','o.oo.oo.','L-o.L-o.',
+  '*oo..oo..','ooo.ooo.','oo.oL-..','L-.L-.o.','*o.oo.oo.','oooo.oo.','*oo.L-.o.','oooooooo'],
+ // むずかしい：はやい・うらはく・長い毛のつづけざま・ねこ多め
+ ['o.o.o.o.','.o.o.o.o','o..o..o.','L-oL-oo.','*o..o..o.','oo.o.oo.','.oo.oo.o','L-L-L-L-',
+  '*.o.o.oo.','ooooL-..','o.L-oooo','*L-oL-oo.','.ooo.ooo','oL-oL-o.','*oo.o.oo.','o.oooo.o',
+  '.L-.L-.o','*.ooo.ooo','L-oooL-o','oooooooo']
+];
+const BPMS=[118,140];
+let SEQ=[],N=0;
+function setDiff(d){
+  DIFF=d;BPM=BPMS[d];BEAT=60/BPM;SLOT=BEAT/2;
+  SEQ=PATS[d].map((p,i)=>{const cover=p[0]==='*';const pat=cover?p.slice(1):p;const hairs=[];
+    for(let s=0;s<8;s++){const c=pat[s];if(c==='o'||c==='L')hairs.push({s,long:c==='L'});}
+    return {pat,cover,v:(i*2+(i>>2))%3,hairs};});
+  N=SEQ.length;
+}
+setDiff(0);
 const CHORDS=[[48,52,55],[45,48,52],[41,45,48],[43,47,50]]; // C Am F G
 const mf=m=>440*Math.pow(2,(m-69)/12);
 const RIFF=[[0,2,4,7,4,2,4,-1, 2,4,7,9,7,4,2,-1],[7,-1,4,7,9,7,4,2, 4,-1,2,4,0,-1,-1,-1]];
@@ -105,7 +116,8 @@ function now(){return AC?AC.currentTime:performance.now()/1000;}
 function songT(){return now()-start-lat;}
 function faceStart(i){return (INTRO_BEATS+i*FACE_BEATS)*BEAT;}
 
-function startGame(){
+function startGame(d){
+  if(d!==undefined)setDiff(d);
   initAudio();AC.resume();
   lat=Math.min(.12,(AC.outputLatency||0)+(AC.baseLatency||0));
   start=AC.currentTime+.35;mode='play';
@@ -432,9 +444,10 @@ function drawTitle(){
   g.restore();
   g.save();g.textAlign='center';const ts=Math.min(96,W/8.6);
   g.translate(W/2,PORT?FY-RY-80:96);g.rotate(Math.sin(t*2)*.02);outlineText('パパの ひげ ぬき',0,0,ts|0,'#ff5a7a',18);g.restore();
-  drawBtn(BTN.start,'#ff5a7a',true);
+  drawBtn(BTN.normal,'#ff5a7a',true);drawBtn(BTN.hard,'#7a3dd8',false);
+  g.save();g.textAlign='center';g.font='20px '+FONT;g.fillStyle='#7a3dd8';g.fillText('はやい・うらはく・ねこ 多め',BTN.hard.x+BTN.hard.w/2,BTN.hard.y-14);g.restore();
   g.save();g.textAlign='center';g.font='22px '+FONT;g.fillStyle='#7a5a6a';
-  if(PORT){g.fillText('おてほんを きいて、おなじ リズムで タップ！',W/2,BTN.start.y+BTN.start.h+50);g.fillText('ながい毛は おしっぱなしで 1拍まって はなす',W/2,BTN.start.y+BTN.start.h+86);}
+  if(PORT){g.fillText('おてほんを きいて、おなじ リズムで タップ！',W/2,BTN.normal.y+BTN.normal.h+50);g.fillText('ながい毛は おしっぱなしで 1拍まって はなす',W/2,BTN.normal.y+BTN.normal.h+86);}
   else g.fillText('おてほんを きいて、おなじ リズムで タップ！（PCは クリック か スペースキー）',W/2,H-28);
   g.restore();
 }
@@ -451,6 +464,7 @@ function drawResult(){
   g.save();g.textAlign='center';
   g.fillStyle='#fff';g.beginPath();g.roundRect(BOX.x,BOX.y,BOX.w,BOX.h,40);g.fill();
   g.font='34px '+FONT;g.fillStyle='#7a5a6a';g.fillText('ひげ チェック',X,Y+70);
+  g.font='22px '+FONT;g.fillStyle=DIFF?'#7a3dd8':'#ff5a7a';g.fillText(DIFF?'【むずかしい】':'【ふつう】',X,Y+104);
   g.font=(BOX.w<700?25:28)+'px '+FONT;g.fillStyle='#3b2a2a';
   cm.forEach((s,i)=>{if(k>.4+i*.5)g.fillText(s,X,Y+140+i*46);});
   if(k>.4){g.font='24px '+FONT;g.fillStyle='#7a5a6a';g.fillText('ぬいた毛 '+hit+' / '+tot+'　（ピッ！'+gr+'）',X,Y+310);}
@@ -466,7 +480,7 @@ function toLocal(e){return {x:(e.clientX-OX)/SC,y:(e.clientY-OY)/SC};}
 function tryFull(){if(!DBG&&matchMedia('(pointer:coarse)').matches&&document.documentElement.requestFullscreen&&!document.fullscreenElement){document.documentElement.requestFullscreen().catch(()=>{});}}
 cv.addEventListener('pointerdown',e=>{e.preventDefault();initAudio();if(AC.state!=='running')AC.resume();
   const p=toLocal(e);
-  if(mode==='title'){if(hit(BTN.start,p.x,p.y)){tryFull();startGame();}return;}
+  if(mode==='title'){if(hit(BTN.normal,p.x,p.y)){tryFull();startGame(0);}else if(hit(BTN.hard,p.x,p.y)){tryFull();startGame(1);}return;}
   if(mode==='result'){if(titleT-resultAt<2.6)return;if(hit(RB.again,p.x,p.y))startGame();else if(hit(RB.title,p.x,p.y))mode='title';return;}
   downs++;try{cv.setPointerCapture(e.pointerId);}catch(_){}
   press();},{passive:false});
@@ -477,7 +491,7 @@ document.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
 document.addEventListener('gesturestart',e=>e.preventDefault());
 addEventListener('keydown',e=>{if(e.repeat||keyDown[e.code])return;
   if(e.code==='Space'||e.code.startsWith('Arrow'))e.preventDefault();
-  if(mode==='title'){if(e.code==='Space'||e.code==='Enter')startGame();return;}
+  if(mode==='title'){if(e.code==='Space'||e.code==='Enter'||e.code==='Digit1')startGame(0);else if(e.code==='Digit2'||e.code==='KeyH')startGame(1);return;}
   if(mode==='result'){if(titleT-resultAt>2.6&&(e.code==='Space'||e.code==='Enter'))startGame();if(e.code==='Escape')mode='title';return;}
   if(e.code==='Escape'){mode='title';return;}
   if(e.ctrlKey||e.metaKey||e.altKey)return;
@@ -485,7 +499,7 @@ addEventListener('keydown',e=>{if(e.repeat||keyDown[e.code])return;
 addEventListener('keyup',e=>{if(!keyDown[e.code])return;delete keyDown[e.code];if(Object.keys(keyDown).length===0)release();});
 addEventListener('blur',()=>{keyDown={};downs=0;release();});
 
-if(DBG){window.dbg={start:()=>startGame(),auto:(v)=>{dbgAuto=v!==false;},skip:(i)=>{start-=faceStart(i)-songT();evi=evq.findIndex(e=>e.t>now()-start);if(evi<0)evi=evq.length;},state:()=>({mode,t:songT(),stats})};}
+if(DBG){window.dbg={start:(d)=>startGame(d||0),auto:(v)=>{dbgAuto=v!==false;},skip:(i)=>{start-=faceStart(i)-songT();evi=evq.findIndex(e=>e.t>now()-start);if(evi<0)evi=evq.length;},state:()=>({mode,t:songT(),stats})};}
 requestAnimationFrame(frame);
 </script>
 </body>
