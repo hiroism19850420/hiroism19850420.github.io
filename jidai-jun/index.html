@@ -277,10 +277,11 @@ function finale(){
 
 /* ---------- game flow ---------- */
 function startRound(){
-  const n=S.n;S.phase='show';S.t=0;S.banner=null;
+  if(S.mode==='all')S.n=NMAX;const n=S.n;S.phase='show';S.t=0;S.banner=null;
   for(let i=0;i<NMAX;i++){S.flipT[i]=i<n?1:0;S.flip[i]=0}
   S.showDur=Math.min(11,1.6+.55*n+S.fails*1.6);
   S.heardText='';S.msg='';
+  if(S.mode==='all'){S.phase='ready';for(let i=0;i<NMAX;i++){S.flipT[i]=0;S.flip[i]=0}}
 }
 function startListen(){for(let i=NMAX-1;i>0;i--){const j=(Math.random()*(i+1))|0;[S.padOrder[i],S.padOrder[j]]=[S.padOrder[j],S.padOrder[i]]}
   S.phase='listen';S.t=0;S.lt=0;S.lastHeard=0;S.tick=0;sBeep();startEar()}
@@ -302,7 +303,7 @@ function tapEra(id){
   if(S.phase!=='listen')return;
   S.tapSeq.push(id);S.lastHeard=S.lt;
 }
-function begin(){initAudio();openEar();S.n=1;S.fails=0;S.phase='title';S.timers=[];startRound()}
+function begin(mode){initAudio();openEar();S.mode=mode||'grow';S.n=1;S.fails=0;S.phase='title';S.timers=[];startRound()}
 
 /* ---------- update ---------- */
 function update(dt){
@@ -466,8 +467,8 @@ function drawBanner(){
 function drawHeader(){
   let t='';
   if(S.phase==='show')t='おぼえてね！　'+S.n+'こ';
-  else if(S.phase==='ready')t='せーのっ！';
-  else if(S.phase==='listen')t=S.tapMode?'ボタンを じゅんばんに おしてね':'じゅんばんに いってね！';
+  else if(S.phase==='ready')t=S.mode==='all'?'さいしょから さいごまで！　せーのっ！':'せーのっ！';
+  else if(S.phase==='listen')t=S.tapMode?'ボタンを じゅんばんに おしてね':(S.mode==='all'?'縄文から 令和まで いってね！':'じゅんばんに いってね！');
   else if(S.phase==='fail')t=S.msg;
   if(!t)return;
   const sz=Math.min(W*.06,H*.09,38);
@@ -494,6 +495,7 @@ function drawPad(){
     ctx.strokeText(nm,r.x+r.w/2,r.y+r.h/2);ctx.fillText(nm,r.x+r.w/2,r.y+r.h/2);
   }
 }
+function titleBtns(){const w=Math.min(250,W*.43),h=Math.min(70,H*.17);return {w,h,y:H*.745,l:{x:W/2-w-8},r:{x:W/2+8}}}
 function drawTitle(){
   const sz=Math.min(W*.09,H*.14,84);
   gold(sz,H*.2,'じだいじゅん');
@@ -502,16 +504,19 @@ function drawTitle(){
   const fs=Math.max(13,Math.min(W*.032,H*.05,22));ctx.font='700 '+fs+'px '+FONT;
   ctx.fillText('れきしの じだいを じゅんばんに こえで いってね',W/2,H*.2+sz*1.9);
   ctx.fillText('どんどん ふえるよ。あっていたら…ゴージャス！',W/2,H*.2+sz*1.9+fs*1.6);
-  const bw=Math.min(300,W*.6),bh=Math.min(66,H*.14),bx=W/2-bw/2,by=H*.745,pu=1+.05*Math.sin(S.clock*5);
-  ctx.translate(W/2,by+bh/2);ctx.scale(pu,pu);ctx.translate(-W/2,-(by+bh/2));
-  const g=ctx.createLinearGradient(0,by,0,by+bh);g.addColorStop(0,'#ffe56a');g.addColorStop(1,'#ff9d00');
-  ctx.shadowColor='#ffd23a';ctx.shadowBlur=30;roundRect(bx,by,bw,bh,bh/2);ctx.fillStyle=g;ctx.fill();ctx.shadowBlur=0;ctx.lineWidth=4;ctx.strokeStyle='#fff';ctx.stroke();
-  ctx.font='900 '+bh*.5+'px '+FONT;ctx.fillStyle='#6a2a00';ctx.fillText('はじめる',W/2,by+bh/2+2);
+  const B=titleBtns(),pu=1+.04*Math.sin(S.clock*5);
+  [[B.l,'ふえていく','おぼえて ふやす',['#ffe56a','#ff9d00']],[B.r,'いきなり ぜんぶ','さいしょから さいごまで',['#9ff0ff','#2a9dff']]].forEach(([r,t1,t2,c])=>{
+    ctx.save();ctx.translate(r.x+B.w/2,B.y+B.h/2);ctx.scale(pu,pu);ctx.translate(-(r.x+B.w/2),-(B.y+B.h/2));
+    const g=ctx.createLinearGradient(0,B.y,0,B.y+B.h);g.addColorStop(0,c[0]);g.addColorStop(1,c[1]);
+    ctx.shadowColor=c[0];ctx.shadowBlur=26;roundRect(r.x,B.y,B.w,B.h,B.h/2.4);ctx.fillStyle=g;ctx.fill();ctx.shadowBlur=0;ctx.lineWidth=4;ctx.strokeStyle='#fff';ctx.stroke();
+    ctx.fillStyle='#3a1a00';ctx.font='900 '+Math.min(B.h*.36,B.w/(t1.length+1))+'px '+FONT;ctx.fillText(t1,r.x+B.w/2,B.y+B.h*.4);
+    ctx.font='700 '+Math.min(B.h*.2,B.w/(t2.length+1))+'px '+FONT;ctx.fillText(t2,r.x+B.w/2,B.y+B.h*.74);ctx.restore();
+  });
   ctx.restore();
   ctx.save();ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.75)';ctx.font='500 '+Math.max(11,fs*.75)+'px '+FONT;
-  ctx.fillText(SR?'マイクを つかうよ（きょかを おねがいします）':'このブラウザは マイクが つかえないので ボタンで こたえます',W/2,H*.745+bh+fs*1.3);ctx.restore();
+  ctx.fillText(SR?'マイクを つかうよ（きょかを おねがいします）':'このブラウザは マイクが つかえないので ボタンで こたえます',W/2,H*.745+B.h+fs*1.3);ctx.restore();
   // demo cards
-  const names=['縄文','弥生','古墳','…'];
+  const names=[];
   names.forEach((nm,i)=>{const cw=Math.min(50,W*.11),x=W/2+(i-1.5)*(cw+12),y=H*.655;ctx.save();ctx.translate(x,y+Math.sin(S.clock*2+i)*4);
     roundRect(-cw/2,-cw*.65,cw,cw*1.3,8);const g=ctx.createLinearGradient(0,-cw*.65,0,cw*.65);g.addColorStop(0,hsl(15+i*23,85,68));g.addColorStop(1,hsl(15+i*23,85,42));ctx.fillStyle=g;ctx.fill();ctx.strokeStyle='#ffd23a';ctx.lineWidth=2.5;ctx.stroke();
     ctx.font='900 '+cw*.4+'px '+FONT;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff';ctx.fillText(nm,0,0);ctx.restore()});
@@ -539,7 +544,7 @@ function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;update(dt);re
 cv.addEventListener('pointerdown',e=>{
   initAudio();
   const x=e.clientX,y=e.clientY;
-  if(S.phase==='title'){begin();return}
+  if(S.phase==='title'){const B=titleBtns();if(x>=B.l.x&&x<=B.l.x+B.w&&y>=B.y&&y<=B.y+B.h)begin('grow');else if(x>=B.r.x&&x<=B.r.x+B.w&&y>=B.y&&y<=B.y+B.h)begin('all');return}
   if(S.phase==='show'){if(S.t>.6){S.t=S.showDur}return}
   if(S.phase==='listen'){
     for(let i=0;i<NMAX;i++){const r=padRect(i);if(x>=r.x&&x<=r.x+r.w&&y>=r.y&&y<=r.y+r.h){tapEra(S.padOrder[i]);return}}
@@ -554,5 +559,6 @@ requestAnimationFrame(loop);
 </script>
 </body>
 </html>
+
 
 
