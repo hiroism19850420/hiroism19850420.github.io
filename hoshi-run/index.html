@@ -979,7 +979,7 @@ function bossInput(type, side) {
 }
 function bossOk(n, grade) {
   n.st = 'ok'; G.ok++; G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo); G.kcal += .3; comboUI();
-  G.bj = { text: grade, t: .7 };
+  G.bj = { text: grade, t: .5, side: 'LPfF'.includes(n.k) ? -1 : 'RQgG'.includes(n.k) ? 1 : 0 };
   const p = new THREE.Vector3(); n.o.getWorldPosition(p);
   if (LANEK.includes(n.k)) {
     PADI[n.k].forEach((pi, j) => { const pad = G.pads[pi]; pad.material.color.set(pi < 2 ? NCOL.f : NCOL.g); pad.material.opacity = 1; burst(G.arenaZ != null ? PADX[pi] : p.x, .4, G.arenaZ + PADZ, new THREE.Color(pi < 2 ? NCOL.f : NCOL.g).getHex(), 18, 3); });
@@ -990,9 +990,11 @@ function bossOk(n, grade) {
     sfx('hit'); G.shake = .2; // 箱は のこして、長さの ぶん 光らせる（ボス戦の 文字は アッパーだけ。動画と 同じく 画面を すっきり）
   } else {
     const col = new THREE.Color(NCOL[n.k] || NCOL.B).getHex();
-    if (n.o.children.length > 1 && PAIRK.includes(n.k)) n.o.children.forEach(c => { c.getWorldPosition(_v); shatter(_v.x, _v.y, _v.z, col, 16, .5); burst(_v.x, _v.y, _v.z, col, 30, 5); });
-    else { shatter(p.x, p.y, p.z, col, 18, .5); burst(p.x, p.y, p.z, col, 36, 5); }
-    n.o.visible = false; sfx('hit'); G.shake = .3;
+    // 次の 箱が 見えるように、こわれた かけらは 少なく・小さく・外がわへ とばす
+    const pop = q => { const sx = q.x < -.05 ? -1 : q.x > .05 ? 1 : (Math.random() < .5 ? -1 : 1); shatterOut(q.x, q.y, q.z, col, 6, sx); burst(q.x, q.y, q.z, col, 12, 2.5); };
+    if (n.o.children.length > 1 && PAIRK.includes(n.k)) n.o.children.forEach(c => { c.getWorldPosition(_v); pop(_v); });
+    else pop(p);
+    n.o.visible = false; sfx('hit'); G.shake = .12;
     G.streaks.push({ col: NCOL[n.k] || NCOL.B, t: .35, dir: n.k === 'L' || n.k === 'P' ? -1 : n.k === 'R' || n.k === 'Q' ? 1 : 0 });
     if (n.k === 'U') giongo('ドッカーン！', 'punch');
     const b = G.boss; if (b) b.userData.hitT = .35;
@@ -1101,6 +1103,12 @@ function shatter(x, y, z, col, n = 30, size = 1) {
     FXG.add(m); SHARDS.push({ m, v: new THREE.Vector3(rr(-7, 7), rr(2, 10), rr(-4, 8)), r: new THREE.Vector3(rr(-9, 9), rr(-9, 9), rr(-9, 9)), l: rr(.8, 1.5) });
   }
 }
+function shatterOut(x, y, z, col, n, sx) { // ボス戦用：横へ にげて、カメラへ 向かってこない
+  for (let i = 0; i < n; i++) {
+    const m = mesh(G_TET, M(i % 3 ? col : 0xffffff), x, y, z, rr(.06, .14));
+    FXG.add(m); SHARDS.push({ m, v: new THREE.Vector3(sx * rr(4, 9), rr(-1, 4), rr(-2, 1)), r: new THREE.Vector3(rr(-9, 9), rr(-9, 9), rr(-9, 9)), l: rr(.3, .5) });
+  }
+}
 function stepShards(dt) {
   SHARDS = SHARDS.filter(s => { s.l -= dt; if (s.l <= 0) { FXG.remove(s.m); return false; } s.v.y -= 14 * dt; s.m.position.addScaledVector(s.v, dt); s.m.rotation.x += s.r.x * dt; s.m.rotation.y += s.r.y * dt; if (s.l < .3) s.m.scale.multiplyScalar(.9); return true; });
 }
@@ -1157,10 +1165,11 @@ function drawBossFx(dt, w, h) {
   G.streaks = (G.streaks || []).filter(s => {
     s.t -= dt; if (s.t <= 0) return false; const a = s.t / .35;
     c.save(); c.globalAlpha = a; c.strokeStyle = s.col; c.shadowColor = s.col; c.shadowBlur = 30; c.lineCap = 'round';
-    for (let i = 0; i < 3; i++) {
-      c.lineWidth = (14 - i * 4) * (w / 1400); const off = (i - 1) * h * .05;
-      if (s.dir) { const x0 = w / 2 - s.dir * w * .05, y0 = h * .48 + off; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 - s.dir * w * .55, y0 + h * .45); c.moveTo(x0, y0); c.lineTo(x0 + s.dir * w * .5, y0 - h * .2); c.stroke(); }
-      else { c.beginPath(); c.moveTo(0, h * .75 + off); c.lineTo(w, h * .25 + off); c.moveTo(0, h * .25 + off); c.lineTo(w, h * .75 + off); c.stroke(); }
+    // 次の 箱は まんなかの 道を 来るので、すじは 画面の はし（打った がわ）だけに 出す
+    const sides = s.dir ? [s.dir] : [-1, 1];
+    for (const d of sides) for (let i = 0; i < 3; i++) {
+      c.lineWidth = (12 - i * 3) * (w / 1400); const y0 = h * (.42 + i * .1), ex = d < 0 ? 0 : w, ix = w / 2 + d * w * (.3 + (1 - a) * .06);
+      c.beginPath(); c.moveTo(ix, y0); c.lineTo(ex, y0 + h * .1 * (i - 1)); c.stroke();
     }
     c.restore(); return true;
   });
@@ -1172,8 +1181,9 @@ function drawBossFx(dt, w, h) {
   }
   // GOOD / GREAT / SUPERB
   if (G.bj) {
-    const t = G.bj.text, s = 1 + Math.max(0, G.bj.t - .5) * 2;
-    c.save(); c.translate(w / 2, h * .3); c.scale(s, s); c.font = `900 ${Math.round(h * .065)}px 'M PLUS Rounded 1c'`; c.textAlign = 'center'; c.textBaseline = 'middle';
+    const t = G.bj.text, s = 1 + Math.max(0, G.bj.t - .35) * 2.5;
+    const jx = G.bj.side < 0 ? w * .16 : G.bj.side > 0 ? w * .84 : w * .5, jy = G.bj.side ? h * .5 : h * .14;
+    c.save(); c.translate(jx, jy); c.scale(s, s); c.font = `900 ${Math.round(h * .05)}px 'M PLUS Rounded 1c'`; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.globalAlpha = Math.min(1, G.bj.t * 3); c.lineWidth = h * .012; c.strokeStyle = '#1d1640'; c.strokeText(t, 0, 0);
     c.fillStyle = t === 'SUPERB' ? '#ffd54a' : t === 'GREAT' ? '#7dffb0' : t === 'GOOD' ? '#7fe0ff' : '#c8c8d8'; c.fillText(t, 0, 0); c.restore();
   }
