@@ -868,6 +868,12 @@ function noteCat(k) { return k === 'f' || k === 'g' ? 'ashi' : k === 'B' ? 'ryot
 function startBossFight(w) {
   G.sub = 'boss'; G.v = 0; const az = -G.s; G.arenaZ = az; G.bossDone = 0; G.bossT = G.tau;
   flash(.9); sfx('boom'); G.shake = .45;
+  // 道の 上に かかる けしき（アーチなど）は ボス戦の あいだ かくす
+  G.hidden = []; const bx = new THREE.Box3(), keep = new Set([G.boss, ...G.pals.map(p => p.o)]);
+  for (const c of W.children) {
+    if (keep.has(c) || !c.visible) continue; bx.setFromObject(c);
+    if (bx.max.y > 1 && bx.max.z > az - 32 && bx.min.z < az + 4 && bx.min.x < 3.6 && bx.max.x > -3.6) { c.visible = false; G.hidden.push(c); }
+  }
   const A = new THREE.Group(); A.position.z = az; W.add(A); G.arena = A;
   // くらい 道
   const lane = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 27), B(0xffffff, { map: TX_LANE, transparent: true, depthWrite: false }));
@@ -1007,6 +1013,7 @@ function animBossFight(dt) {
 }
 function exitBossFight() {
   if (G.arena) W.remove(G.arena); G.arena = null; G.bn = []; G.pads = [];
+  (G.hidden || []).forEach(c => c.visible = true); G.hidden = [];
   const w = WORLDS[G.wi]; G.sub = 'exit'; G.v = 0;
   G.gate = makeGate(ACCENT[w.key]); G.gateZ = -G.s - 34; G.gate.position.z = G.gateZ; W.add(G.gate);
   G.pals.forEach(p => { p.o.rotation.set(0, Math.PI, 0); p.o.scale.setScalar(1); p.y = 0; p.vy = 0; });
