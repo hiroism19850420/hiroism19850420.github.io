@@ -225,8 +225,9 @@ for (const t of ['jump', 'duck', 'left', 'right', 'clap', 'punch', 'banzai', 'fi
   const cv = document.createElement('canvas'); cv.width = cv.height = 128; drawPicto(cv.getContext('2d'), t, 128); PIC[t] = cv;
 }
 // ボス戦の 箱と 足の 色（L=ひだりて R=みぎて B=りょうて U=アッパー f=ひだりあし g=みぎあし）
-const NCOL = { L: '#3aa8ff', R: '#ff3d55', B: '#ffd23a', U: '#4dff8a', f: '#3aa8ff', g: '#ff3d55', H: '#ff5a3a' };
-const NLAB = { L: 'ひだりパンチ！', R: 'みぎパンチ！', B: 'りょうてパンチ！', U: 'アッパー！', f: 'あしぶみ！', g: 'あしぶみ！', H: 'しゃがんで！' };
+const NCOL = { L: '#3aa8ff', R: '#ff3d55', B: '#ffd23a', U: '#4dff8a', f: '#3aa8ff', g: '#ff3d55', F: '#3aa8ff', G: '#ff3d55', H: '#ff5a3a' };
+const NLAB = { L: 'ひだりパンチ！', R: 'みぎパンチ！', W: 'りょうて ひらいて！', N: 'りょうて まえ！', P: 'りょうて ひだりへ！', Q: 'りょうて みぎへ！', w: 'りょうて ひらいて キープ！', U: 'アッパー！',
+  f: 'ひだりあし！', g: 'みぎあし！', F: 'ひだりあし おおまた！', G: 'みぎあし おおまた！', h: 'あしぶみ れんだ！', o: 'おおまたで キープ！', H: 'しゃがんで！' };
 const LABEL = { jump: ['ジャンプ！', 'JUMP!'], duck: ['しゃがんで！', 'DUCK!'], left: ['ひだりへ！', 'LEFT!'], right: ['みぎへ！', 'RIGHT!'], clap: ['はくしゅ！', 'CLAP!'], punch: ['ワンツー！', 'ONE TWO!'], banzai: ['ばんざい！', 'HANDS UP!'] };
 const GIONGO = { jump: ['ピョーン！', 'ポーン！', 'ビョン！'], duck: ['スッ！', 'シュバッ！'], left: ['ヒュンッ！', 'サッ！'], right: ['ヒュンッ！', 'サッ！'], clap: ['パァン！', 'パチーン！'], punch: ['ドカッ！', 'バキィッ！', 'ズドン！'], banzai: ['キラーン！', 'わーい！'] };
 
@@ -336,17 +337,21 @@ function sfx(k) {
 // ================= ステージの ようす =================
 const V = 13; // 走る 速さ（m/s）
 const WORLDS = [
-  { key: 'meadow', name: 'ぽかぽか そうげん', vo: 'w1', runEnd: 58, boss: null,
-    ev: [[4, 'jump'], [8, 'jump'], [12, 'duck'], [16, 'left'], [20, 'right'], [24, 'clap'], [28, 'jump'], [32, 'duck'], [36, 'punch'], [40, 'banzai'], [44, 'left'], [47.5, 'jump'], [51, 'right'], [54.5, 'clap']] },
-  { key: 'circus', name: 'きらきら サーカス', vo: 'w2', runEnd: 51,
-    ev: [[3.5, 'jump'], [7, 'clap'], [10.5, 'duck'], [14, 'right'], [17.5, 'punch'], [21, 'jump'], [24.5, 'banzai'], [28, 'left'], [31.5, 'clap'], [35, 'duck'], [38.5, 'punch'], [42, 'jump'], [45, 'right'], [48, 'clap']],
-    boss: { name: 'ボヨヨン・ピエロ', beat: .5, chart: 'L . R . L . R . L R L R . . . . f g f g f g f g . . . . B . . . B . . . H . . . L . R . L R . . f g f g f g f g . . B . . . U' } },
-  { key: 'lava', name: 'マグマの おしろ', vo: 'w3', runEnd: 53,
-    ev: [[3.5, 'jump'], [6.7, 'duck'], [9.9, 'left'], [13.1, 'jump'], [16.3, 'punch'], [19.5, 'right'], [22.7, 'duck'], [25.9, 'clap'], [29.1, 'jump'], [32.3, 'left'], [35.5, 'banzai'], [38.7, 'punch'], [41.9, 'duck'], [45.1, 'right'], [48.3, 'jump'], [51, 'clap']],
-    boss: { name: 'マグマゴーレム マグドン', beat: .5, chart: 'L . R . L R . . B . . . f g f g f g f g . . H . . . L R L R B . . . f g f g f g f g . . L . R . H . . . L R L R B . B . . . U' } },
-  { key: 'library', name: 'ほしの としょかん', vo: 'w4', runEnd: 52,
+  // ボス戦の 譜面は 動画（mariocirbyrun.mp4）から 読みとった 時刻（秒）。base＝道が 出た 時刻。
+  // L/R＝左手/右手パンチ W＝両手を ひらいて N＝両手を まえ P/Q＝両手で 左/右 U＝アッパー
+  // f/g＝左足/右足（内がわ） F/G＝左足/右足（外がわ・おおまた） h＝内がわ 両足 キープ o＝外がわ 両足 キープ w＝両手 ひらいて キープ（数字＝長さ） H＝しゃがむ
+  { key: 'meadow', name: 'ぽかぽか そうげん', vo: 'w1', runEnd: 58,
+    ev: [[4, 'jump'], [8, 'jump'], [12, 'duck'], [16, 'left'], [20, 'right'], [24, 'clap'], [28, 'jump'], [32, 'duck'], [36, 'punch'], [40, 'banzai'], [44, 'left'], [47.5, 'jump'], [51, 'right'], [54.5, 'clap']],
+    boss: { name: 'どんぐり大王 ドングラン', base: 140.7, chart: '147.13L 147.6R 148.27L 148.72R 148.98L 149.45R 150.05L 150.2W 150.65N 151.15W 151.6N 153.3f 153.75g 154.2f 154.65g 155.1f 155.55f 155.55g 156.0f 156.0g 156.95R 157.45L 157.7R 158.2L 158.85R 161.0H 162.0f 162.45g 162.95f 163.4g 163.9f 164.35g 164.8f 165.25f 165.25g 165.8L 166.25R 166.6L 167.05W 167.5N 168.0W 168.45N 169.85f 170.3g 170.8f 171.25g 171.7f 172.15g 172.65F 172.65G 172.85R 173.45L 174.15R 174.55L 174.75R 175.45L 175.95R 176.45L 176.55R 177.05L 177.5U' } },
+  { key: 'library', name: 'ほしの としょかん', vo: 'w2', runEnd: 52,
     ev: [[3.5, 'jump'], [6.6, 'clap'], [9.7, 'punch'], [12.8, 'duck'], [15.9, 'right'], [19, 'jump'], [22.1, 'banzai'], [25.2, 'left'], [28.3, 'punch'], [31.4, 'duck'], [34.5, 'clap'], [37.6, 'jump'], [40.7, 'right'], [43.8, 'punch'], [46.9, 'left'], [50, 'jump']],
-    boss: { name: 'まほうの ずかん ブックン', beat: .5, chart: 'L . R . L R . . f g f g f g f g . . B . . . H . . . L R . L R . . f g f g f g f g f g f g . . L . R . B . . . H . . . L R L R L R B . . . . U' } }
+    boss: { name: 'まほうの ずかん ブックン', base: 272.0, chart: '278.3L 278.7R 279.2L 279.5W 279.95N 280.4W 280.8N 281.2W 281.65N 282.05W 282.45N 283.6f 284.05g 284.45f 284.9g 285.3f 285.75g 286.15f 286.6g 287.0f 287.45g 287.85f 287.85g 288.9H 289.5W 289.95N 290.4W 290.8N 291.25W 291.65N 292.05W 292.45N 293.75F 294.2G 294.6F 295.05G 295.45F 295.9G 296.25F 296.65G 297.05F 297.5G 297.9F 297.9G 298.4L 298.6R 299.0L 299.55P 300.0Q 300.45P 300.85Q 301.3P 301.7Q 302.1P 302.55Q 303.8f 304.25g 304.6F 304.6G 305.05f 305.05g 305.5R 306.0L 306.15U' } },
+  { key: 'circus', name: 'きらきら サーカス', vo: 'w3', runEnd: 51,
+    ev: [[3.5, 'jump'], [7, 'clap'], [10.5, 'duck'], [14, 'right'], [17.5, 'punch'], [21, 'jump'], [24.5, 'banzai'], [28, 'left'], [31.5, 'clap'], [35, 'duck'], [38.5, 'punch'], [42, 'jump'], [45, 'right'], [48, 'clap']],
+    boss: { name: 'ボヨヨン・ピエロ', base: 404.5, chart: '410.0W 410.45N 410.9W 411.35N 411.8W 412.2N 412.65W 413.1N 413.5W 413.95N 414.35W 414.8N 416.1H 417.15f 417.6g 418.0f 418.45F 418.45G 418.8h1.7 420.45Q 420.95Q 421.35P 421.6P 421.95Q 422.45Q 422.95P 424.35F 424.75G 425.15F 425.55G 425.95F 425.95G 426.35f 426.35g 426.95L 427.25R 427.6L 427.75W 428.15N 428.55W 429.0N 430.35F 430.75G 431.15f 431.55g 431.95F 432.35f 432.35g 432.75F 432.75G 433.55f 434.3W 434.7N 435.1W 435.5N 436.75f 437.15g 437.55f 437.95g 438.35f 438.75f 438.75g 439.1f 439.1g 439.55L 439.95R 440.3L 440.55W 440.95N 441.35W 441.75N 442.15W 442.55N 442.95W 443.4N 444.8F 445.2G 445.6F 446.0G 446.4F 446.8G 447.2F 447.6G 448.0F 448.4G 448.75f 448.75g 449.5H 449.9U' } },
+  { key: 'lava', name: 'マグマの おしろ', vo: 'w4', runEnd: 53,
+    ev: [[3.5, 'jump'], [6.7, 'duck'], [9.9, 'left'], [13.1, 'jump'], [16.3, 'punch'], [19.5, 'right'], [22.7, 'duck'], [25.9, 'clap'], [29.1, 'jump'], [32.3, 'left'], [35.5, 'banzai'], [38.7, 'punch'], [41.9, 'duck'], [45.1, 'right'], [48.3, 'jump'], [51, 'clap']],
+    boss: { name: 'マグマゴーレム マグドン', base: 594.4, chart: '599.0o1.5 600.6L 601.0R 601.3L 601.75W 602.15N 602.55W 602.95N 603.4W 603.75N 604.2W 604.55N 606.0H 606.9f 607.3g 607.7f 608.1g 608.5f 608.85g 609.3F 609.3G 609.7f 609.7g 610.2L 610.6R 610.95L 611.45W 611.85N 612.3W 612.7N 613.75F 614.15G 614.5F 614.95G 615.35F 615.75f 615.75g 616.1F 616.1G 616.9f 617.85P 618.25Q 618.65P 619.05Q 619.45P 619.85Q 620.25P 620.65Q 621.05P 621.45Q 621.85P 622.25Q 623.3F 623.75G 624.1f 624.5h1.2 626.3o1.2 628.0H 628.95W 629.35N 629.75W 630.15N 630.6W 631.3F 631.75G 632.1F 632.5G 632.9F 633.3G 633.7f 633.7g 634.2L 634.55R 634.9L 635.4W 635.8N 636.2W 636.6N 637.0w1.2 638.6R 638.95L 639.35R 639.75L 640.0U' } }
 ];
 const ACCENT = { night: 0xc49bff, meadow: 0xffe14a, circus: 0xff4f8b, lava: 0xff7a1a, library: 0x8fd3ff };
 
@@ -639,7 +644,16 @@ function makeObstacle(key, type, dir) {
 // ---- ボス ----
 function makeBoss(key) {
   const g = new THREE.Group(); let parts = {};
-  if (key === 'circus') {
+  if (key === 'meadow') {
+    // どんぐり大王：まるい どんぐりに ぼうしと 王かん、ひげ
+    const body = mesh(G_SPH, M(0xb8743a), 0, 2.3, 0, 2.0, 2.3, 2.0);
+    const cap = grp(mesh(G_SPH, M(0x6a4020), 0, 3.6, 0, 2.25, 1.15, 2.25), mesh(G_CYL, M(0x5a3418), 0, 4.75, 0, .2, .6, .2));
+    const crown = grp(mesh(G_CYL, M(0xffcf3a), 0, 4.75, 0, .9, .45, .9)); for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; crown.add(mesh(G_CONE, M(0xffcf3a), Math.cos(a) * .75, 5.2, Math.sin(a) * .75, .2, .5, .2)); } crown.add(mesh(G_SPH, B(0xff4f6a), 0, 4.8, .9, .16));
+    const face = grp(eye(-.6, 2.75, 1.75, 3.6), eye(.6, 2.75, 1.75, 3.6), mesh(G_SPH, M(0x3a2010), -.45, 2.05, 1.85, .45, .16, .14), mesh(G_SPH, M(0x3a2010), .45, 2.05, 1.85, .45, .16, .14), mesh(G_SPH, B(0xff9a8a), -1.15, 2.3, 1.55, .28, .18, .1), mesh(G_SPH, B(0xff9a8a), 1.15, 2.3, 1.55, .28, .18, .1));
+    const hL = mesh(G_SPH, M(0xd8955a), -2.5, 2.2, .5, .55), hR = mesh(G_SPH, M(0xd8955a), 2.5, 2.2, .5, .55);
+    const legs = grp(mesh(G_SPH, M(0x6a4020), -.7, .3, .3, .55, .35, .7), mesh(G_SPH, M(0x6a4020), .7, .3, .3, .55, .35, .7));
+    g.add(body, cap, crown, face, hL, hR, legs); parts = { body, hL, hR, col: 0xc07a3a };
+  } else if (key === 'circus') {
     const body = mesh(G_SPH, M(0xffffff, { map: TX_STRIPE }), 0, 2.4, 0, 2.3);
     const face = grp(eye(-.6, 2.95, 1.8, 3.6), eye(.6, 2.95, 1.8, 3.6), mesh(G_SPH, B(0xff2a3a), 0, 2.45, 2.2, .3), mesh(G_SPH, B(0xff8a9a), -1.2, 2.3, 1.8, .3, .2, .1), mesh(G_SPH, B(0xff8a9a), 1.2, 2.3, 1.8, .3, .2, .1));
     const mouth = new THREE.Mesh(new THREE.TorusGeometry(.6, .12, 8, 20, Math.PI), B(0x5a0a1a)); mouth.position.set(0, 2, 2.15); mouth.rotation.z = Math.PI; face.add(mouth);
@@ -862,9 +876,20 @@ const TX_LANE = ctex(256, 1024, (c, w, h) => {
 });
 const TX_PAD = ctex(256, 200, (c, w, h) => { c.shadowColor = '#bff0ff'; c.shadowBlur = 16; c.strokeStyle = '#fff'; c.lineWidth = 10; c.beginPath(); c.roundRect(14, 14, w - 28, h - 28, 18); c.stroke(); });
 const PADX = [-1.65, -.55, .55, 1.65], PADZ = -4.6, HITZ = -3.7, FARZ = -24;
-const LEAD = { L: 1.7, R: 1.7, B: 1.8, U: 2.0, f: 2.2, g: 2.2, H: 1.9 };
-const LATE = { L: .5, R: .5, B: .5, U: .7, f: .5, g: .5, H: .3 };
-function noteCat(k) { return k === 'f' || k === 'g' ? 'ashi' : k === 'B' ? 'ryote' : k === 'U' ? 'upper' : k === 'H' ? 'duck' : 'punch'; }
+const LANEK = 'fgFGho', PAIRK = 'WNPQw';
+const LEAD = { L: 1.7, R: 1.7, W: 1.8, N: 1.8, P: 1.8, Q: 1.8, w: 1.8, U: 2.0, f: 2.2, g: 2.2, F: 2.2, G: 2.2, h: 2.2, o: 2.2, H: 1.9 };
+const LATE = { L: .5, R: .5, W: .5, N: .5, P: .5, Q: .5, w: .5, U: .7, f: .5, g: .5, F: .5, G: .5, h: .5, o: .5, H: .3 };
+const FOOTX = { f: PADX[1], g: PADX[2], F: PADX[0], G: PADX[3] }, PADI = { f: [1], g: [2], F: [0], G: [3], h: [1, 2], o: [0, 3] };
+const PAIRX = { W: [-1.2, 1.2], w: [-1.2, 1.2], N: [-.42, .42], P: [-1.3, -.6], Q: [.6, 1.3] };
+function noteCat(k) { return LANEK.includes(k) ? 'ashi' : PAIRK.includes(k) ? 'ryote' : k === 'U' ? 'upper' : k === 'H' ? 'duck' : 'punch'; }
+// 譜面：「時刻＋記号（＋長さ）」。動画で 道に うつる 時刻なので、足は +0.2秒、箱は +0.75秒 で 当たる
+function parseChart(boss) {
+  return boss.chart.trim().split(/\s+/).map(s => {
+    const m = s.match(/^([\d.]+)([A-Za-z])([\d.]*)$/), k = m[2];
+    return { k, rel: +m[1] + (LANEK.includes(k) || k === 'H' ? .2 : .75) - boss.base, dur: +m[3] || 0 };
+  });
+}
+function footTile(k, len = .76) { const tk = k === 'f' || k === 'F' ? 'f' : 'g', top = new THREE.MeshBasicMaterial({ map: footTex(tk) }), side = B(tk === 'f' ? 0x1660c0 : 0xb81e36); const m = new THREE.Mesh(G_BOX, [side, side, top, side, side, side]); m.scale.set(.95, .16, len); return m; }
 function startBossFight(w) {
   G.sub = 'boss'; G.v = 0; const az = -G.s; G.arenaZ = az; G.bossDone = 0; G.bossT = G.tau;
   flash(.9); sfx('boom'); G.shake = .45;
@@ -890,13 +915,17 @@ function startBossFight(w) {
     const rim = mesh(G_TOR, B(0xbff0ff), s * 3.3, .5, -6.5, .95); rim.rotation.x = Math.PI / 2; A.add(rim);
   }
   // 箱・足・ハンマー
-  const tokens = w.boss.chart.trim().split(/\s+/), beat = w.boss.beat || .5, t0 = G.tau + 3.6;
   G.bn = [];
-  tokens.forEach((k, i) => {
-    if (k === '.') return; const n = { k, t: t0 + i * beat, st: 'wait', o: null };
+  parseChart(w.boss).forEach(({ k, rel, dur }) => {
+    const n = { k, t: G.tau + rel, dur, st: 'wait', o: null };
     if ('LRU'.includes(k)) { n.o = boxMesh(k, k === 'U' ? .9 : .66); }
-    else if (k === 'B') { n.o = grp(boxMesh('B', .82), boxMesh('B', .82)); n.o.children[0].position.x = -1.2; n.o.children[1].position.x = 1.2; }
-    else if (k === 'f' || k === 'g') { const top = new THREE.MeshBasicMaterial({ map: footTex(k) }), side = B(k === 'f' ? 0x1660c0 : 0xb81e36); n.o = new THREE.Mesh(G_BOX, [side, side, top, side, side, side]); n.o.scale.set(.95, .16, .76); }
+    else if (PAIRK.includes(k)) { const s = k === 'W' || k === 'w' ? .82 : .7; n.o = grp(boxMesh('B', s), boxMesh('B', s)); n.o.children[0].position.x = PAIRX[k][0]; n.o.children[1].position.x = PAIRX[k][1]; }
+    else if ('fgFG'.includes(k)) { n.o = footTile(k); }
+    else if (k === 'h' || k === 'o') {
+      // 長い 足マーク（キープ）：前の はしが マスに ついた ときが はじまり
+      const len = dur * (PADZ - FARZ) / LEAD[k]; n.o = new THREE.Group();
+      PADI[k].forEach((pi, j) => { const t = footTile(j ? 'g' : 'f', len); t.position.set(PADX[pi], 0, -len / 2); n.o.add(t); });
+    }
     else if (k === 'H') { const h = new THREE.Group(), roll = grp(mesh(G_CYL, M(0xd8333f), 0, 0, 0, .42, 3.2, .42), mesh(G_CYL, M(0xffcf4a), 0, 1.2, 0, .45, .14, .45), mesh(G_CYL, M(0xffcf4a), 0, -1.2, 0, .45, .14, .45), mesh(G_CYL, M(0x7a4a2a), 0, 1.9, 0, .1, .6, .1), mesh(G_CYL, M(0x7a4a2a), 0, -1.9, 0, .1, .6, .1)); roll.rotation.z = Math.PI / 2; h.add(roll); n.o = h; n.roll = roll; }
     n.o.visible = false; A.add(n.o); G.bn.push(n);
   });
@@ -917,9 +946,10 @@ function boxMesh(k, s) {
 function notePos(n, k, v) {
   // k=0（とおく）→ 1（はんていの 場所）
   const L = n.k;
-  if (L === 'f' || L === 'g') { v.set(L === 'f' ? PADX[1] : PADX[2], .14, lerp(FARZ, PADZ, k)); return; }
+  if (LANEK.includes(L)) { v.set(FOOTX[L] || 0, .14, lerp(FARZ, PADZ, k)); return; }
   if (L === 'H') { v.set(0, lerp(3.6, 2.35, Math.min(1, k * 1.4)), lerp(FARZ + 1, -.6, k)); return; }
   const x = L === 'L' ? -.75 : L === 'R' ? .75 : 0, y = L === 'U' ? 2.3 : 2.1;
+  if (L === 'w' && n.st === 'ok') k = Math.min(k, 1);
   const kk = Math.pow(clamp(k, 0, 1.4), 1.25);
   v.set(lerp(x * .2, x, kk), lerp(3.4, y, kk) + Math.sin(k * Math.PI) * .6, lerp(FARZ + 1, HITZ, kk));
 }
@@ -938,22 +968,26 @@ function bossOk(n, grade) {
   n.st = 'ok'; G.ok++; G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo); G.kcal += .3; comboUI();
   G.bj = { text: grade, t: .7 };
   const p = new THREE.Vector3(); n.o.getWorldPosition(p);
-  if (n.k === 'f' || n.k === 'g') {
-    const pad = G.pads[n.k === 'f' ? 1 : 2]; pad.material.color.set(NCOL[n.k]); pad.material.opacity = 1;
-    burst(p.x, .4, p.z, new THREE.Color(NCOL[n.k]).getHex(), 18, 3); n.o.visible = false;
+  if (LANEK.includes(n.k)) {
+    PADI[n.k].forEach((pi, j) => { const pad = G.pads[pi]; pad.material.color.set(pi < 2 ? NCOL.f : NCOL.g); pad.material.opacity = 1; burst(G.arenaZ != null ? PADX[pi] : p.x, .4, G.arenaZ + PADZ, new THREE.Color(pi < 2 ? NCOL.f : NCOL.g).getHex(), 18, 3); });
+    if (n.k !== 'h' && n.k !== 'o') n.o.visible = false;
   } else if (n.k === 'H') {
-    giongo('ヒョイッ！', 'duck');
+    sfx('duck');
+  } else if (n.k === 'w') {
+    sfx('hit'); G.shake = .2; // 箱は のこして、長さの ぶん 光らせる（ボス戦の 文字は アッパーだけ。動画と 同じく 画面を すっきり）
   } else {
-    const col = new THREE.Color(NCOL[n.k]).getHex();
-    if (n.k === 'B') n.o.children.forEach(c => { c.getWorldPosition(_v); shatter(_v.x, _v.y, _v.z, col, 16, .5); burst(_v.x, _v.y, _v.z, col, 30, 5); });
+    const col = new THREE.Color(NCOL[n.k] || NCOL.B).getHex();
+    if (n.o.children.length > 1 && PAIRK.includes(n.k)) n.o.children.forEach(c => { c.getWorldPosition(_v); shatter(_v.x, _v.y, _v.z, col, 16, .5); burst(_v.x, _v.y, _v.z, col, 30, 5); });
     else { shatter(p.x, p.y, p.z, col, 18, .5); burst(p.x, p.y, p.z, col, 36, 5); }
     n.o.visible = false; sfx('hit'); G.shake = .3;
-    G.streaks.push({ col: NCOL[n.k], t: .35, dir: n.k === 'L' ? -1 : n.k === 'R' ? 1 : 0 });
-    giongo(n.k === 'U' ? 'ドッカーン！' : pick(GIONGO.punch), 'punch');
+    G.streaks.push({ col: NCOL[n.k] || NCOL.B, t: .35, dir: n.k === 'L' || n.k === 'P' ? -1 : n.k === 'R' || n.k === 'Q' ? 1 : 0 });
+    if (n.k === 'U') giongo('ドッカーン！', 'punch');
     const b = G.boss; if (b) b.userData.hitT = .35;
   }
   if (n.k !== 'H') { G.bossHp = Math.max(0, G.bossHp - 1); if (n.k === 'U') { G.bossHp = 0; G.beam = 1; flash(.6); G.shake = .8; } hpUI(); }
   if (G.combo > 0 && G.combo % 10 === 0) setTimeout(() => voice('great'), 200);
+  // 同じ 時刻の もの（両足 など）は いっしょに 当たり
+  for (const o of G.bn) if (o.st === 'wait' && o.k !== 'H' && Math.abs(o.t - n.t) < .06) bossOk(o, grade);
 }
 function bossMiss(n) {
   n.st = 'ng'; G.combo = 0; comboUI(); G.bj = { text: 'MISS', t: .5 };
@@ -961,7 +995,7 @@ function bossMiss(n) {
 }
 function updateBossFight(dt) {
   const tt = G.tau, w = WORLDS[G.wi];
-  if (!G.saidHit && tt - G.bossT > 1.7) { G.saidHit = 1; bigText('HIT IT!'); voice('hitit', true); }
+  if (!G.saidHit && tt - G.bossT > 1.0) { G.saidHit = 1; bigText('HIT IT!'); voice('hitit', true); }
   for (const n of G.bn) {
     // しゃがむ
     if (n.k === 'H' && n.st === 'wait' && tt > n.t - .3 && (held('duck') || (ACT.last.duck != null && ACT.last.duck > n.t - 1.3))) bossOk(n, 'SUPERB');
@@ -969,25 +1003,35 @@ function updateBossFight(dt) {
     if (n.st === 'wait' && tt > n.t - .1 && ACT.move != null && ACT.move > tt - .7) bossOk(n, 'GOOD');
     if (n.st === 'wait' && tt > n.t + LATE[n.k]) bossMiss(n);
     if (AUTO && n.st === 'wait' && !n.a && tt > n.t - (n.k === 'H' ? .5 : .03)) {
-      n.a = 1; const A = { L: ['punch', 0], R: ['punch', 1], B: ['punch', 0], U: ['upper'], f: ['step', 0], g: ['step', 1], H: ['duck'] }[n.k]; fire(A[0], A[1]); if (n.k === 'B') fire('punch', 1);
+      n.a = 1; const A = n.k === 'L' ? ['punch', 0] : n.k === 'R' ? ['punch', 1] : n.k === 'U' ? ['upper'] : n.k === 'H' ? ['duck'] : PAIRK.includes(n.k) ? ['punch', 0] : ['step', 'gG'.includes(n.k) ? 1 : 0]; fire(A[0], A[1]);
     }
     // うごき
-    const k = 1 - (n.t - tt) / LEAD[n.k];
+    const k = 1 - (n.t - tt) / LEAD[n.k], kEnd = 1 + n.dur / LEAD[n.k];
     if (k < 0) { n.o.visible = false; continue; }
-    if (!n.spawned) { n.spawned = 1; if (G.boss) G.boss.userData.throwT = .4; if (n.k !== 'f' && n.k !== 'g') sfx('zap'); }
-    if (n.st === 'ok' && n.k !== 'H') { n.o.visible = false; continue; }
+    if (!n.spawned) { n.spawned = 1; if (G.boss) G.boss.userData.throwT = .4; if (!LANEK.includes(n.k)) sfx('zap'); }
+    // キープ中：マスを 光らせつづける／箱を 光らせる
+    const holding = n.st === 'ok' && n.dur && tt < n.t + n.dur;
+    if (holding) {
+      if (PADI[n.k]) PADI[n.k].forEach(pi => { G.pads[pi].material.opacity = 1; });
+      if (Math.random() < dt * 14) { n.o.getWorldPosition(_v); burst((PADI[n.k] ? PADX[PADI[n.k][Math.random() < .5 ? 0 : 1]] : rr(-1.3, 1.3)), PADI[n.k] ? .4 : 2.1, G.arenaZ + (PADI[n.k] ? PADZ : HITZ), new THREE.Color(n.k === 'w' ? NCOL.B : pick([NCOL.f, NCOL.g])).getHex(), 6, 3); }
+      G.kcal += dt * .2; if (n.k === 'w') n.o.scale.setScalar(1 + Math.sin(tt * 20) * .05);
+    }
+    if (n.st === 'ok' && n.k === 'w' && !holding && n.o.visible) { n.o.children.forEach(c => { c.getWorldPosition(_v); shatter(_v.x, _v.y, _v.z, new THREE.Color(NCOL.B).getHex(), 16, .5); }); n.o.visible = false; sfx('hit'); }
+    if (n.st === 'ok' && n.k !== 'H' && !n.dur) { n.o.visible = false; continue; }
+    if (n.st === 'ok' && n.k === 'w' && !holding) continue;
     notePos(n, k, _v); n.o.position.copy(_v);
-    n.o.visible = k < (n.k === 'f' || n.k === 'g' ? 1.25 : 1.45);
-    if (n.st === 'ng' && n.k !== 'H') n.o.visible = k < 1.2;
+    n.o.visible = k < (LANEK.includes(n.k) ? (n.dur ? kEnd + .1 : 1.25) : n.dur ? 9 : 1.45);
+    if (n.st === 'ng' && n.k !== 'H') n.o.visible = k < (n.dur ? kEnd : 1.2);
     if (n.roll) n.roll.rotation.x = -tt * 9;
-    if ('LRUB'.includes(n.k)) { n.o.rotation.set(Math.sin(tt * 3 + n.t) * .12, Math.sin(tt * 2 + n.t) * .15, 0); }
+    if ('LRU'.includes(n.k) || PAIRK.includes(n.k)) { n.o.rotation.set(Math.sin(tt * 3 + n.t) * .12, Math.sin(tt * 2 + n.t) * .15, 0); }
   }
   // つぎの 合図（声と 下の もじ）
   const nx = G.bn.find(n => n.st === 'wait');
   if (nx) {
     const cat = noteCat(nx.k);
     if (nx !== G.cued && cat !== G.lastCat && nx.t - tt < 1.7) { G.cued = nx; G.lastCat = cat; voice(cat === 'punch' ? (nx.k === 'R' ? 'rpunch' : 'lpunch') : cat, true); }
-    const lead = nx.t - tt; $('bottom').textContent = lead < 2.2 ? (lead < .6 ? 'いま！ ' : '') + NLAB[nx.k] : ''; $('bottom').classList.toggle('now', lead < .6);
+    const both = G.bn.some(o => o !== nx && o.st === 'wait' && LANEK.includes(o.k) && Math.abs(o.t - nx.t) < .06);
+    const lead = nx.t - tt; $('bottom').textContent = lead < 2.2 ? (lead < .6 ? 'いま！ ' : '') + (both ? (nx.k === 'F' || nx.k === 'G' ? 'りょうあし おおまた！' : 'りょうあし！') : NLAB[nx.k]) : ''; $('bottom').classList.toggle('now', lead < .6);
   } else { $('bottom').textContent = ''; }
   G.pads.forEach(p => { p.material.opacity = Math.max(0, p.material.opacity - dt * 3); });
   if (G.bj) { G.bj.t -= dt; if (G.bj.t <= 0) G.bj = null; }
@@ -1151,7 +1195,7 @@ function updatePrompt() {
 }
 function progUI() {
   let f = 0;
-  if (G.phase === 'play') { const w = WORLDS[G.wi], end = w.boss ? w.runEnd + 4.2 + w.boss.chart.trim().split(/\s+/).length * (w.boss.beat || .5) + 6 : w.runEnd + 2.6; f = (G.wi + clamp(G.tau / end, 0, 1)) / WORLDS.length; }
+  if (G.phase === 'play') { const w = WORLDS[G.wi], end = w.boss ? w.runEnd + .6 + (w.boss.len || (w.boss.len = Math.max(...parseChart(w.boss).map(n => n.rel + n.dur)))) + 4 : w.runEnd + 2.6; f = (G.wi + clamp(G.tau / end, 0, 1)) / WORLDS.length; }
   else if (G.phase === 'finale' || G.phase === 'result') f = 1;
   $('progFill').style.width = (f * 100) + '%'; $('progMark').style.left = (f * 100) + '%';
 }
@@ -1440,7 +1484,7 @@ function startFinale() {
   for (let i = 0; i < 40; i++) { const s = new THREE.Mesh(new THREE.ShapeGeometry(starShape(.3, .12)), B(pick([0xffe14a, 0x9fd8ff, 0xff9be0]), { side: THREE.DoubleSide })); s.position.set(rr(-14, 14), rr(4, 12), rr(-22, -6)); W.add(s); addAnim(s, t => { s.rotation.y = t * 2 + i; s.position.y += Math.sin(t * 2 + i) * .005; }); }
   addPals(0); G.pals[0].o.position.set(-1.6, 0, -5); G.pals[1].o.position.set(1.6, 0, -5);
   // なかよくなった ボスたち
-  const bs = ['circus', 'lava', 'library'].map((k, i) => { const b = makeBoss(k); b.scale.setScalar(.55); b.position.set((i - 1) * 4.5, 0, -12); W.add(b); return b; });
+  const bs = ['meadow', 'library', 'circus', 'lava'].map((k, i) => { const b = makeBoss(k); b.scale.setScalar(.5); b.position.set((i - 1.5) * 3.8, 0, -12); W.add(b); return b; });
   G.finBoss = bs;
   camera.position.set(0, 1.9, 3); camera.rotation.set(0, 0, 0); camera.lookAt(0, 1.8, -8);
   G.finale = { notes: FIN_TYPES.map((type, i) => ({ type, t: 4 + i * 1.3, st: 'wait' })), judge: null, judgeT: 0 };
