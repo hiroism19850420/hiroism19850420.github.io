@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <title>ほしのゲート ぜんしんラン！</title>
+<script src="slave.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800;900&display=swap" rel="stylesheet">
 <style>
@@ -74,6 +75,7 @@ canvas#fx{pointer-events:none}
 .btn{font-family:inherit;font-weight:900;font-size:clamp(17px,2.8vw,24px);color:var(--ink);background:linear-gradient(#fff3a8,#ffcf3a);border:0;border-radius:999px;padding:14px 28px;box-shadow:0 6px 0 #b4791a,0 10px 20px #0006;cursor:pointer}
 .btn.b2{background:linear-gradient(#d9f3ff,#7fd0ff);box-shadow:0 6px 0 #2d7fb3,0 10px 20px #0006}
 .btn:active{transform:translateY(4px);box-shadow:0 2px 0 #b4791a}
+.btn.b3{background:linear-gradient(#ffd6ee,#ff8ac8);box-shadow:0 6px 0 #b3407e,0 10px 20px #0006}
 .note{font-size:13px!important;opacity:.75!important;margin-top:16px!important}
 #calib{background:#000}
 #silh{width:min(70vw,60vh);height:min(70vw,60vh)}
@@ -116,6 +118,7 @@ canvas#fx{pointer-events:none}
     <button class="btn" id="bCam">📷 カメラで あそぶ</button>
     <button class="btn b2" id="bKey">👆 ボタンで あそぶ</button>
   </div>
+  <div class="btns" style="margin-top:12px"><button class="btn b3" id="bTwo">👥 ふたりで あそぶ（カメラ）</button></div>
   <p class="note">カメラは スマホを よこにおき、2〜3m はなれて 全身が うつるように。<br>キーボード：↑ジャンプ ↓しゃがむ ←→よける C はくしゅ Z X パンチ B ばんざい<br>ボス戦：Z ひだりパンチ X みぎパンチ ←→ あしぶみ ↑ アッパー</p>
   <div id="rot"></div>
 </div>
@@ -157,7 +160,10 @@ const isPhone = /iPhone|Android|iPad/i.test(navigator.userAgent);
 
 // ================= 3D の 準備 =================
 const renderer = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, isPhone ? 1.5 : 2));
+renderer.setPixelRatio(window.SLAVE ? 1 : Math.min(devicePixelRatio, isPhone ? 1.5 : 2)); // ふたりのときは 2つ うごくので かるく
+// ふたりで あそぶ：lv が 数字なら その ステージ（と ボス）だけ
+const ONLY = window.SLAVE && SLAVE.lv && SLAVE.lv !== 'all' ? +SLAVE.lv : null;
+const firstWorld = () => ONLY != null ? ONLY : Q.has('w') ? +Q.get('w') : 0;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(68, 1, 0.1, 175);
 const hemi = new THREE.HemisphereLight(0xffffff, 0x556070, 1.5); scene.add(hemi);
@@ -1341,7 +1347,7 @@ function startPlay(wi) {
   playSong(w.key); flash(1); sfx('gate');
   $('bossbar').classList.add('hide'); $('bossbar').classList.remove('fight'); $('bottom').classList.remove('small'); G.arena = null; G.bn = []; setPad('run');
 }
-function nextWorld() { if (G.wi + 1 < WORLDS.length) startPlay(G.wi + 1); else startFinale(); }
+function nextWorld() { if (ONLY != null) { G.phase = 'done'; flash(1); sfx('banzai'); bigText('ゴール！'); setTimeout(showResult, 1500); return; } if (G.wi + 1 < WORLDS.length) startPlay(G.wi + 1); else startFinale(); }
 function updatePlay(dt) {
   const w = WORLDS[G.wi];
   G.tau += dt;
@@ -1470,7 +1476,7 @@ function updateCount(dt) {
     G.runIn += dt; const cz = camera.position.z - dt * V * clamp(G.runIn, 0, 1);
     camera.position.z = cz; camera.lookAt(0, 2.2, G.gate.position.z);
     G.pals.forEach(p => { p.o.position.z -= dt * V * 1.1; p.o.position.y = Math.abs(Math.sin(G.time * 13)) * .15; });
-    if (cz < G.gate.position.z + 1) { G.total = 0; startPlay(Q.has('w') ? +Q.get('w') : 0); }
+    if (cz < G.gate.position.z + 1) { G.total = 0; startPlay(firstWorld()); if (window.SLAVE) SLAVE.started(); }
   }
 }
 
@@ -1554,6 +1560,7 @@ function showResult() {
   $('rK').textContent = G.kcal.toFixed(1); $('rOk').textContent = `${G.ok}/${G.total}`; $('rC').textContent = G.maxCombo;
   const r = G.ok / Math.max(1, G.total); $('rank').textContent = r > .9 ? '★★★ ほしの ランナー！' : r > .7 ? '★★☆ すごい ランナー！' : r > .4 ? '★☆☆ ナイス ランナー！' : '☆ また はしろう！';
   voice('fin', true);
+  if (window.SLAVE) { $('bAgain').style.display = $('bTop').style.display = 'none'; SLAVE.report({ score: Math.round(G.kcal * 10) / 10, higher: true, text: `${G.kcal.toFixed(1)} kcal<br><small>せいこう ${G.ok}/${G.total}</small>` }); }
 }
 
 // ================= ボタン・キー =================
@@ -1592,11 +1599,14 @@ async function begin(mode) {
   if (Q.has('skip')) { $('hud').classList.remove('hide'); buildIntro(); countdownSkip(); return; }
   startIntro();
 }
-function countdownSkip() { G.total = 0; if (Q.get('w') === 'f') startFinale(); else startPlay(Q.has('w') ? +Q.get('w') : 0); }
+function countdownSkip() { G.total = 0; if (Q.get('w') === 'f') startFinale(); else startPlay(firstWorld()); }
 $('bCam').onclick = () => begin('cam');
 $('bKey').onclick = () => begin('key');
 $('bCalibSkip').onclick = () => { G.mode = 'key'; $('calib').classList.add('hide'); $('pad').classList.toggle('hide', !isTouch); countdown(); };
 $('bAgain').onclick = () => begin(G.mode);
+$('bTwo').onclick = () => { location.href = 'two.html'; };
+// ふたりの ときは タイトルを とばして カメラで すぐ はじめる（T ポーズで じゅんび）
+if (window.SLAVE) { $('kcal').style.cssText = 'top:calc(max(10px,env(safe-area-inset-top)) + 24px);bottom:auto;left:14px;transform:none'; $('title').classList.add('hide'); $('bCalibSkip').style.display = 'none'; setTimeout(() => begin('cam'), 600); }
 $('bTop').onclick = () => { $('result').classList.add('hide'); $('title').classList.remove('hide'); G.phase = 'title'; buildIntro(); playSong('night'); };
 
 // ================= まいフレーム =================

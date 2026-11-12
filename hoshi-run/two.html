@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>ふたりで あそぶ｜ほしのゲート ぜんしんラン！</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0b1630;color:#fff;font-family:"Hiragino Maru Gothic ProN","BIZ UDPGothic","Yu Gothic UI",sans-serif;-webkit-user-select:none;user-select:none}
+  #cam{position:fixed;width:1px;height:1px;opacity:0;pointer-events:none}
+  .panel{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;box-sizing:border-box;background:#0b1630;text-align:center;z-index:20}
+  .panel.hide{display:none}
+  h1{margin:0;font-size:clamp(24px,6vw,44px);line-height:1.25;color:#ffe35a;text-shadow:0 3px 0 #b3541e}
+  .how{font-size:clamp(14px,3.4vw,20px);background:#fff2;border-radius:14px;padding:12px 18px;max-width:560px;line-height:1.7}
+  .who{display:flex;gap:18px;font-size:clamp(16px,4vw,26px);font-weight:800}
+  .who span{padding:6px 18px;border-radius:999px;border:3px solid #fff}
+  .who .a{background:#1fa7c9}.who .b{background:#e04a9b}
+  button{font:inherit;font-weight:800;font-size:clamp(16px,4vw,22px);color:#23306b;background:#ffe35a;border:0;border-radius:999px;padding:14px 28px;box-shadow:0 5px 0 #b98a12;cursor:pointer}
+  button:active{transform:translateY(3px);box-shadow:0 2px 0 #b98a12}
+  button.sub{background:#cfe0ff;box-shadow:0 5px 0 #7a8fc4;font-size:clamp(13px,3.2vw,17px);padding:10px 20px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .lv{background:#fff;box-shadow:0 4px 0 #8a93b8;font-size:clamp(13px,3.2vw,17px);padding:10px 16px}
+  .lv.on{background:#8ff0ff;box-shadow:0 4px 0 #3c9fb3}
+  #msg{min-height:1.5em;font-size:clamp(13px,3.2vw,17px);color:#ffd0d0;max-width:560px}
+  #games{position:fixed;inset:0;display:none}
+  #games iframe{position:absolute;top:0;bottom:0;width:50%;height:100%;border:0;background:#1b2550}
+  #fa{left:0}#fb{right:0}
+  #bar{position:absolute;left:50%;top:0;bottom:0;width:4px;margin-left:-2px;background:#fff;z-index:5;box-shadow:0 0 8px #0008}
+  #tools{position:fixed;left:50%;bottom:46px;transform:translateX(-50%);z-index:30;display:none}
+  #tools button{padding:4px 14px;font-size:14px;box-shadow:none;border:2px solid #fff;background:#0b1630cc;color:#fff}
+  #win{font-size:clamp(30px,8vw,64px);font-weight:900;color:#ffe35a;text-shadow:0 4px 0 #b3541e}
+  #scores{display:flex;gap:30px;font-size:clamp(18px,4.5vw,30px);font-weight:800}
+  #scores div{padding:10px 22px;border-radius:16px;border:3px solid #fff}
+  #scores .a{background:#1fa7c9}#scores .b{background:#e04a9b}
+  #over{background:#0b1630dd}
+  #clock{position:fixed;left:50%;top:8px;transform:translateX(-50%);z-index:30;padding:4px 22px;border-radius:999px;background:#0b1630cc;border:3px solid #fff;font-size:26px;font-weight:900;display:none}
+  #wait{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:25;background:#0b1630dd;padding:14px 26px;border-radius:16px;font-size:20px;font-weight:800;display:none}
+</style>
+</head>
+<body>
+<video id="cam" playsinline muted></video>
+
+<div id="gate" class="panel">
+  <h1>ふたりで あそぶ<br><small id="gname" style="font-size:.6em;color:#fff"></small></h1>
+  <div class="who"><span class="a">左 ＝ 1P</span><span class="b">右 ＝ 2P</span></div>
+  <div class="how" id="how">カメラの まえに ふたり ならんで 立ちます。<br>画面の <b>左がわ</b>に 立つ人が 1P、<b>右がわ</b>に 立つ人が 2P。<br>ぜんしんが うつる ところまで はなれて、まんなかを あけてね。<br>おなじ ことが 2人に おこるので、どちらが うまく できたか くらべよう！</div>
+  <div class="row" id="levels"></div>
+  <button id="bCam">📷 カメラで ふたりで あそぶ</button>
+  <button id="bBack" class="sub">もどる</button>
+  <div id="msg"></div>
+</div>
+
+<div id="games">
+  <iframe id="fa" allow="autoplay"></iframe>
+  <iframe id="fb" allow="autoplay"></iframe>
+  <div id="bar"></div>
+</div>
+<div id="tools"><button id="bQuit">やめる</button></div>
+<div id="clock"></div>
+<div id="wait"></div>
+
+<div id="over" class="panel hide">
+  <div id="win"></div>
+  <div id="scores"><div class="a" id="sa"></div><div class="b" id="sb"></div></div>
+  <button id="bAgain">もういちど</button>
+  <button id="bBack2" class="sub">タイトルへ</button>
+</div>
+
+<script>
+const CFG = {"game": "index.html", "title": "ほしのゲート ぜんしんラン！", "levels": [["0", "ステージ1 そうげん"], ["1", "ステージ2 としょかん"], ["2", "ステージ3 サーカス"], ["3", "ステージ4 マグマ"], ["all", "ぜんぶ（4ステージ・やく6ぷん）"]], "lv": "0", "note": "おなじ コースを ふたりで 走って、ボスと たたかおう。たくさん うごいて カロリーが おおい人の かち！", "limit": 0};
+document.getElementById('gname').textContent = CFG.title;
+const $ = id => document.getElementById(id);
+if (CFG.note) $('how').innerHTML += '<br>' + CFG.note;
+let lv = CFG.lv;
+if (CFG.levels.length) {
+  $('levels').innerHTML = CFG.levels.map(([id, name]) => `<button class="lv${id === lv ? ' on' : ''}" data-lv="${id}">${name}</button>`).join('');
+  document.querySelectorAll('.lv').forEach(b => b.onclick = () => { lv = b.dataset.lv; document.querySelectorAll('.lv').forEach(o => o.classList.toggle('on', o === b)); });
+}
+const video = $('cam');
+let stream = null, hc = null, running = false;
+window.__twoStreams = null;
+function drawHalves() {
+  if (!running) return;
+  requestAnimationFrame(drawHalves);
+  if (video.readyState < 2) return;
+  const hw = hc[0].width, vh = hc[0].height;
+  // 鏡うつしの 画面の左（1P） ＝ カメラ映像の 右半分
+  hc[0].getContext('2d').drawImage(video, hw, 0, hw, vh, 0, 0, hw, vh);
+  hc[1].getContext('2d').drawImage(video, 0, 0, hw, vh, 0, 0, hw, vh);
+}
+async function startCam() {
+  const msg = $('msg');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { msg.textContent = 'この ひらきかたでは カメラを つかえません。https か localhost で ひらいてください。'; return; }
+  msg.textContent = 'カメラを じゅんび中…';
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false }); }
+  catch (e) { msg.textContent = 'カメラを つかえませんでした。ブラウザで カメラを きょかしてください。'; return; }
+  video.srcObject = stream; await video.play();
+  await new Promise(r => { if (video.videoWidth) r(); else video.onloadedmetadata = () => r(); });
+  const hw = Math.floor(video.videoWidth / 2), vh = video.videoHeight;
+  hc = [0, 1].map(() => { const c = document.createElement('canvas'); c.width = hw; c.height = vh; return c; });
+  running = true; drawHalves();
+  window.__twoStreams = hc.map(c => c.captureStream(30));
+  msg.textContent = '';
+  launch();
+}
+let seed = 1, reports = [null, null];
+function launch() {
+  seed = (Math.random() * 1e6 | 0) + 1; reports = [null, null]; started = [false, false]; if (tm) { clearInterval(tm); tm = null; } $('clock').style.display = 'none';
+  $('gate').classList.add('hide'); $('over').classList.add('hide');
+  $('games').style.display = 'block'; $('tools').style.display = 'block';
+  const u = i => `${CFG.game}?slave=${i}&seed=${seed}` + (lv ? `&lv=${encodeURIComponent(lv)}` : '');
+  $('fa').src = u(0); $('fb').src = u(1);
+  $('wait').style.display = 'none';
+}
+let started = [false, false], tm = null;
+function startClock() {
+  if (!CFG.limit || tm) return;
+  let left = CFG.limit; $('clock').style.display = 'block'; $('clock').textContent = 'のこり ' + left + ' びょう';
+  tm = setInterval(() => {
+    left--; $('clock').textContent = left > 0 ? 'のこり ' + left + ' びょう' : 'しゅうりょう！';
+    if (left <= 0) { clearInterval(tm); [$('fa'), $('fb')].forEach(f => { try { f.contentWindow.postMessage({ type: 'twoEnd' }, '*'); } catch (e) {} }); }
+  }, 1000);
+}
+addEventListener('message', e => {
+  const d = e.data;
+  if (d && d.type === 'twoStart') { started[d.idx] = true; if (started[0] && started[1]) startClock(); return; }
+  if (!d || d.type !== 'twoReport') return;
+  reports[d.idx] = d;
+  if (reports[0] && reports[1]) setTimeout(showOver, 2500);
+  else { $('wait').textContent = `${d.idx + 1}P は おわったよ。もうひとりを まっています…`; $('wait').style.display = 'block'; }
+});
+function showOver() {
+  $('wait').style.display = 'none';
+  const [a, b] = reports, hi = a.higher !== false;
+  const va = a.score, vb = b.score;
+  let t = 'ひきわけ！';
+  if (va !== vb) t = ((va > vb) === hi ? '1P' : '2P') + ' の かち！';
+  $('win').textContent = t;
+  $('sa').innerHTML = `1P<br>${a.text != null ? a.text : a.score}`; $('sb').innerHTML = `2P<br>${b.text != null ? b.text : b.score}`;
+  $('over').classList.remove('hide');
+}
+function stop() {
+  running = false; $('fa').src = 'about:blank'; $('fb').src = 'about:blank';
+  $('games').style.display = 'none'; $('tools').style.display = 'none'; $('clock').style.display = 'none'; if (tm) { clearInterval(tm); tm = null; } $('over').classList.add('hide'); $('wait').style.display = 'none';
+}
+$('bCam').onclick = startCam;
+$('bBack').onclick = () => { location.href = CFG.game; };
+$('bBack2').onclick = () => { if (stream) stream.getTracks().forEach(t => t.stop()); location.href = CFG.game; };
+$('bQuit').onclick = () => { if (stream) stream.getTracks().forEach(t => t.stop()); location.href = CFG.game; };
+$('bAgain').onclick = () => { running = true; drawHalves(); launch(); };
+</script>
+</body>
+</html>
