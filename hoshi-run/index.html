@@ -30,6 +30,7 @@ canvas#fx{pointer-events:none}
 #bottom{position:absolute;left:0;right:0;bottom:max(46px,calc(env(safe-area-inset-bottom) + 40px));text-align:center;font-weight:900;font-size:clamp(28px,6.4vw,64px);letter-spacing:.02em;
   color:#fff;-webkit-text-stroke:3px var(--ink);paint-order:stroke fill;text-shadow:0 5px 0 var(--ink),0 0 20px rgba(0,0,0,.4);transition:transform .15s}
 #bottom.now{color:var(--gold);transform:scale(1.08)}
+#bottom.small{font-size:clamp(22px,4.2vw,44px);bottom:max(30px,calc(env(safe-area-inset-bottom) + 26px))}
 #kcal{position:absolute;left:50%;transform:translateX(-50%);bottom:max(10px,env(safe-area-inset-bottom));font-weight:900;font-size:15px;text-shadow:0 2px 0 var(--ink),0 0 8px #000;opacity:.95}
 #kcal b{font-size:24px}
 #combo{position:absolute;right:16px;top:calc(max(10px,env(safe-area-inset-top)) + 26px);text-align:center;font-weight:900;line-height:1;opacity:0;transition:opacity .2s}
@@ -38,6 +39,8 @@ canvas#fx{pointer-events:none}
 #combo.pop b{animation:cpop .25s}
 @keyframes cpop{0%{transform:scale(1.5)}100%{transform:scale(1)}}
 #bossbar{position:absolute;top:calc(max(10px,env(safe-area-inset-top)) + 172px);left:50%;transform:translateX(-50%);width:min(56vw,460px);text-align:center;font-weight:900;font-size:14px;text-shadow:0 2px 0 var(--ink)}
+#bossbar.fight{top:calc(max(10px,env(safe-area-inset-top)) + 30px)}
+#pad button.cL{background:rgba(30,110,220,.75)}#pad button.cR{background:rgba(220,40,70,.75)}#pad button.cU{background:rgba(30,170,90,.75)}
 #bossHp{height:14px;margin-top:4px;border-radius:8px;background:rgba(20,0,20,.6);box-shadow:0 0 0 2px #fff;overflow:hidden}
 #bossHp i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ff3d6e,#ffb03d);transition:width .3s}
 #banner{position:absolute;top:38%;left:0;right:0;text-align:center;font-weight:900;pointer-events:none}
@@ -113,7 +116,7 @@ canvas#fx{pointer-events:none}
     <button class="btn" id="bCam">📷 カメラで あそぶ</button>
     <button class="btn b2" id="bKey">👆 ボタンで あそぶ</button>
   </div>
-  <p class="note">カメラは スマホを よこにおき、2〜3m はなれて 全身が うつるように。<br>キーボード：↑ジャンプ ↓しゃがむ ←→よける C はくしゅ Z パンチ B ばんざい</p>
+  <p class="note">カメラは スマホを よこにおき、2〜3m はなれて 全身が うつるように。<br>キーボード：↑ジャンプ ↓しゃがむ ←→よける C はくしゅ Z X パンチ B ばんざい<br>ボス戦：Z ひだりパンチ X みぎパンチ ←→ あしぶみ ↑ アッパー</p>
   <div id="rot"></div>
 </div>
 <div id="calib" class="screen hide">
@@ -206,11 +209,24 @@ function drawPicto(c, type, S, col = '#fff') {
   }
   else if (type === 'punch') { H(.36, .22); L(.38, .32, .42, .56); L(.39, .37, .66, .37); L(.39, .38, .3, .5, .38, .44); L(.42, .56, .3, .72, .28, .86); L(.42, .56, .56, .72, .58, .86); c.beginPath(); c.arc(.73, .37, .085, 0, 7); c.fill(); c.lineWidth = .04; L(.86, .26, .92, .2); L(.88, .37, .96, .37); L(.86, .48, .92, .54); }
   else if (type === 'banzai') { H(.5, .24); L(.5, .34, .5, .58); L(.5, .38, .3, .14); L(.5, .38, .7, .14); L(.5, .58, .38, .86); L(.5, .58, .62, .86); c.lineWidth = .035; L(.2, .1, .24, .04); L(.8, .1, .76, .04); }
+  else if (type === 'fist') {
+    c.beginPath(); c.roundRect(.24, .26, .52, .46, .13); c.fill();
+    c.beginPath(); c.roundRect(.16, .5, .34, .17, .08); c.fill();
+    c.strokeStyle = 'rgba(0,0,30,.45)'; c.lineWidth = .035; L(.37, .29, .37, .47); L(.5, .29, .5, .47); L(.63, .29, .63, .47); L(.2, .5, .5, .5);
+  }
+  else if (type === 'foot') {
+    c.beginPath(); c.ellipse(.5, .62, .17, .25, 0, 0, 7); c.fill();
+    [[.38, .3, .065], [.47, .26, .055], [.555, .27, .05], [.625, .31, .045], [.675, .37, .04]].forEach(([x, y, r]) => { c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); });
+  }
+  else if (type === 'upper') { H(.42, .3); L(.43, .4, .46, .64); L(.44, .44, .62, .3, .66, .12); c.beginPath(); c.arc(.67, .09, .08, 0, 7); c.fill(); L(.44, .45, .3, .56); L(.46, .64, .34, .78, .32, .92); L(.46, .64, .58, .78, .62, .92); arrow(.84, .5, 0, -.36); }
   c.restore();
 }
-for (const t of ['jump', 'duck', 'left', 'right', 'clap', 'punch', 'banzai']) {
+for (const t of ['jump', 'duck', 'left', 'right', 'clap', 'punch', 'banzai', 'fist', 'foot', 'upper']) {
   const cv = document.createElement('canvas'); cv.width = cv.height = 128; drawPicto(cv.getContext('2d'), t, 128); PIC[t] = cv;
 }
+// ボス戦の 箱と 足の 色（L=ひだりて R=みぎて B=りょうて U=アッパー f=ひだりあし g=みぎあし）
+const NCOL = { L: '#3aa8ff', R: '#ff3d55', B: '#ffd23a', U: '#4dff8a', f: '#3aa8ff', g: '#ff3d55', H: '#ff5a3a' };
+const NLAB = { L: 'ひだりパンチ！', R: 'みぎパンチ！', B: 'りょうてパンチ！', U: 'アッパー！', f: 'あしぶみ！', g: 'あしぶみ！', H: 'しゃがんで！' };
 const LABEL = { jump: ['ジャンプ！', 'JUMP!'], duck: ['しゃがんで！', 'DUCK!'], left: ['ひだりへ！', 'LEFT!'], right: ['みぎへ！', 'RIGHT!'], clap: ['はくしゅ！', 'CLAP!'], punch: ['ワンツー！', 'ONE TWO!'], banzai: ['ばんざい！', 'HANDS UP!'] };
 const GIONGO = { jump: ['ピョーン！', 'ポーン！', 'ビョン！'], duck: ['スッ！', 'シュバッ！'], left: ['ヒュンッ！', 'サッ！'], right: ['ヒュンッ！', 'サッ！'], clap: ['パァン！', 'パチーン！'], punch: ['ドカッ！', 'バキィッ！', 'ズドン！'], banzai: ['キラーン！', 'わーい！'] };
 
@@ -225,7 +241,7 @@ function initAudio() {
   AU.vo = ctx.createGain(); AU.vo.gain.value = 1.1; AU.vo.connect(AU.master);
   const nb = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; AU.noise = nb;
   setInterval(schedule, 25);
-  for (const k of ['jump', 'duck', 'left', 'right', 'clap', 'punch', 'banzai', 'nice', 'great', 'good', 'oshii', 'perfect', 'go', 'c3', 'c2', 'c1', 'gate', 'tpose', 'tok', 'boss', 'win', 'finale', 'fin', 'w1', 'w2', 'w3', 'w4'])
+  for (const k of ['jump', 'duck', 'left', 'right', 'clap', 'punch', 'banzai', 'nice', 'great', 'good', 'oshii', 'perfect', 'go', 'c3', 'c2', 'c1', 'gate', 'tpose', 'tok', 'boss', 'win', 'finale', 'fin', 'w1', 'w2', 'w3', 'w4', 'ashi', 'upper', 'hitit', 'ryote', 'clear', 'lpunch', 'rpunch'])
     fetch(`voice/${k}.mp3`).then(r => r.arrayBuffer()).then(a => ctx.decodeAudioData(a)).then(b => AU.buf[k] = b).catch(() => {});
 }
 let lastVoice = 0;
@@ -311,6 +327,9 @@ function sfx(k) {
   else if (k === 'zap') noise(t, .25, .25, 0, d, 3000);
   else if (k === 'boom') { tone(120, t, .7, 'sine', .9, d, 30); noise(t, .8, .7, 0, d, 400); }
   else if (k === 'thunder') { noise(t, 1.4, .35, 0, d, 200); tone(60, t, 1, 'sine', .3, d, 30); }
+  else if (k === 'step') { tone(110, t, .14, 'sine', .7, d, 40); noise(t, .06, .25, 0, d, 300); }
+  else if (k === 'upper') { tone(220, t, .35, 'sawtooth', .12, d, 1400); noise(t, .3, .3, 0, d, 2000); }
+  else if (k === 'hit') { tone(140, t, .2, 'sine', .8, d, 40); noise(t, .12, .55, 0, d, 1200); tone(mf(88), t, .12, 'square', .08, d); }
   else if (k === 'pop') { tone(900, t, .08, 'sine', .3, d, 1800); noise(t, .06, .3, 3000, d); }
 }
 
@@ -321,13 +340,13 @@ const WORLDS = [
     ev: [[4, 'jump'], [8, 'jump'], [12, 'duck'], [16, 'left'], [20, 'right'], [24, 'clap'], [28, 'jump'], [32, 'duck'], [36, 'punch'], [40, 'banzai'], [44, 'left'], [47.5, 'jump'], [51, 'right'], [54.5, 'clap']] },
   { key: 'circus', name: 'きらきら サーカス', vo: 'w2', runEnd: 51,
     ev: [[3.5, 'jump'], [7, 'clap'], [10.5, 'duck'], [14, 'right'], [17.5, 'punch'], [21, 'jump'], [24.5, 'banzai'], [28, 'left'], [31.5, 'clap'], [35, 'duck'], [38.5, 'punch'], [42, 'jump'], [45, 'right'], [48, 'clap']],
-    boss: { name: 'ボヨヨン・ピエロ', ev: ['punch', 'jump', 'punch', 'clap', 'right', 'punch'] } },
+    boss: { name: 'ボヨヨン・ピエロ', beat: .5, chart: 'L . R . L . R . L R L R . . . . f g f g f g f g . . . . B . . . B . . . H . . . L . R . L R . . f g f g f g f g . . B . . . U' } },
   { key: 'lava', name: 'マグマの おしろ', vo: 'w3', runEnd: 53,
     ev: [[3.5, 'jump'], [6.7, 'duck'], [9.9, 'left'], [13.1, 'jump'], [16.3, 'punch'], [19.5, 'right'], [22.7, 'duck'], [25.9, 'clap'], [29.1, 'jump'], [32.3, 'left'], [35.5, 'banzai'], [38.7, 'punch'], [41.9, 'duck'], [45.1, 'right'], [48.3, 'jump'], [51, 'clap']],
-    boss: { name: 'マグマゴーレム マグドン', ev: ['punch', 'duck', 'left', 'punch', 'jump', 'right', 'punch'] } },
+    boss: { name: 'マグマゴーレム マグドン', beat: .5, chart: 'L . R . L R . . B . . . f g f g f g f g . . H . . . L R L R B . . . f g f g f g f g . . L . R . H . . . L R L R B . B . . . U' } },
   { key: 'library', name: 'ほしの としょかん', vo: 'w4', runEnd: 52,
     ev: [[3.5, 'jump'], [6.6, 'clap'], [9.7, 'punch'], [12.8, 'duck'], [15.9, 'right'], [19, 'jump'], [22.1, 'banzai'], [25.2, 'left'], [28.3, 'punch'], [31.4, 'duck'], [34.5, 'clap'], [37.6, 'jump'], [40.7, 'right'], [43.8, 'punch'], [46.9, 'left'], [50, 'jump']],
-    boss: { name: 'まほうの ずかん ブックン', ev: ['punch', 'clap', 'jump', 'left', 'punch', 'duck', 'right', 'punch'] } }
+    boss: { name: 'まほうの ずかん ブックン', beat: .5, chart: 'L . R . L R . . f g f g f g f g . . B . . . H . . . L R . L R . . f g f g f g f g f g f g . . L . R . B . . . H . . . L R L R L R B . . . . U' } }
 ];
 const ACCENT = { night: 0xc49bff, meadow: 0xffe14a, circus: 0xff4f8b, lava: 0xff7a1a, library: 0x8fd3ff };
 
@@ -693,14 +712,7 @@ function buildWorld(wi) {
     G.events.push({ t, type, st: 'wait', o, boss: false, hits: 0 });
   }
   if (w.boss) {
-    G.bossT0 = w.runEnd + 2.2; G.bossZ = -(V * w.runEnd + V * .8 + 17);
-    const bo = makeBoss(key); bo.position.set(0, 0, G.bossZ); bo.visible = false; W.add(bo); G.boss = bo;
-    G.bossMax = w.boss.ev.filter(x => x === 'punch').length; G.bossHp = G.bossMax;
-    w.boss.ev.forEach((type, i) => {
-      const t = G.bossT0 + 3.2 + i * 3.1; let o = null;
-      if (type !== 'punch') { o = makeObstacle(key, type); o.visible = false; W.add(o); }
-      G.events.push({ t, type, st: 'wait', o, boss: true, hits: 0 });
-    });
+    const bo = makeBoss(key); bo.visible = false; W.add(bo); G.boss = bo;
   } else {
     G.gate = makeGate(ACCENT[key]); G.gateZ = -(V * (w.runEnd + 2.6)); G.gate.position.z = G.gateZ; W.add(G.gate);
   }
@@ -722,9 +734,15 @@ function held(type) {
   if (G.mode === 'cam' && POSE.ok) { if (type === 'duck') return POSE.crouch; if (type === 'left') return POSE.side === -1; if (type === 'right') return POSE.side === 1; if (type === 'banzai') return POSE.banzai; }
   return (ACT.hold[type] || -9) > now();
 }
-function fire(type) {
+function fire(type, side) {
   if (G.phase === 'calib' && type === 'banzai') return;
   const t = now(); ACT.last[type] = t; if (type === 'punch') ACT.punches.push(t);
+  if (G.phase === 'play' && G.sub === 'boss') {
+    if (type === 'duck') { if (G.mode !== 'cam' || AUTO) ACT.hold.duck = t + .85; sfx('duck'); }
+    else if (type === 'step') sfx('step'); else if (type === 'upper') sfx('upper'); else if (type === 'punch') sfx('punch'); else if (type === 'clap') sfx('clap');
+    bossInput(type, side); G.kcal += .05; return;
+  }
+  if (type === 'step' || type === 'upper') return;
   if (G.mode !== 'cam' || AUTO) { if (type === 'duck') ACT.hold.duck = t + .85; if (type === 'left') { ACT.hold.left = t + 1.1; ACT.hold.right = -9; } if (type === 'right') { ACT.hold.right = t + 1.1; ACT.hold.left = -9; } if (type === 'banzai') ACT.hold.banzai = t + .6; }
   if (type === 'jump' && G.jy <= .02 && G.phase === 'play') { G.jv = 6.4; sfx('jump'); }
   if (type === 'duck') sfx('duck');
@@ -811,8 +829,195 @@ function bossDefeat() {
   const b = G.boss, p = new THREE.Vector3(); b.getWorldPosition(p);
   shatter(p.x, 2.6, p.z, b.userData.col, 90, 2.4); shatter(p.x, 2.6, p.z, 0xffffff, 40, 2); burst(p.x, 3, p.z, 0xffe14a, 120, 12);
   b.visible = false; flash(.8); sfx('boom'); G.shake = .8; G.bossHp = 0; hpUI();
-  bigText('やったー！'); voice('win', true);
+  bigText('CLEAR!'); voice('clear', true); setTimeout(() => voice('win', true), 1100);
   setTimeout(() => $('bossbar').classList.add('hide'), 1200);
+}
+
+// ---- ボス戦（とんでくる 箱を パンチ・ながれてくる 足で あしぶみ・さいごに アッパー） ----
+const BOXTX = {}, FOOTTX = {};
+function boxTex(k) {
+  return BOXTX[k] || (BOXTX[k] = ctex(256, 256, (c, w) => {
+    c.fillStyle = '#121838'; c.fillRect(0, 0, w, w);
+    c.shadowColor = NCOL[k]; c.shadowBlur = 30; c.strokeStyle = NCOL[k]; c.lineWidth = 26; c.strokeRect(13, 13, w - 26, w - 26); c.shadowBlur = 0;
+    c.strokeStyle = '#fff'; c.lineWidth = 6; c.strokeRect(34, 34, w - 68, w - 68);
+    c.save(); c.translate(48, 48); if (k === 'R') { c.translate(160, 0); c.scale(-1, 1); } drawPicto(c, k === 'U' ? 'upper' : 'fist', 160); c.restore();
+  }));
+}
+function footTex(k) {
+  return FOOTTX[k] || (FOOTTX[k] = ctex(256, 200, (c, w, h) => {
+    const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, NCOL[k]); g.addColorStop(1, k === 'f' ? '#1660c0' : '#b81e36'); c.fillStyle = g; c.fillRect(0, 0, w, h);
+    c.strokeStyle = '#fff'; c.lineWidth = 10; c.strokeRect(5, 5, w - 10, h - 10);
+    c.save(); c.translate(w / 2 - 80, h / 2 - 80); if (k === 'g') { c.translate(160, 0); c.scale(-1, 1); } drawPicto(c, 'foot', 160); c.restore();
+  }));
+}
+const TX_LANE = ctex(256, 1024, (c, w, h) => {
+  const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(8,8,24,.2)'); g.addColorStop(.25, 'rgba(10,10,30,.9)'); g.addColorStop(1, 'rgba(14,14,40,.95)'); c.fillStyle = g; c.fillRect(0, 0, w, h);
+  c.strokeStyle = 'rgba(130,200,255,.12)'; c.lineWidth = 3; for (let y = 0; y < h; y += 64) { c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke(); }
+  for (const x of [w / 4, w / 2, w * 3 / 4]) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, h); c.stroke(); }
+  c.shadowColor = '#7fe0ff'; c.shadowBlur = 18; c.fillStyle = '#bff0ff'; c.fillRect(0, 0, 8, h); c.fillRect(w - 8, 0, 8, h);
+});
+const TX_PAD = ctex(256, 200, (c, w, h) => { c.shadowColor = '#bff0ff'; c.shadowBlur = 16; c.strokeStyle = '#fff'; c.lineWidth = 10; c.beginPath(); c.roundRect(14, 14, w - 28, h - 28, 18); c.stroke(); });
+const PADX = [-1.65, -.55, .55, 1.65], PADZ = -4.6, HITZ = -3.7, FARZ = -24;
+const LEAD = { L: 1.7, R: 1.7, B: 1.8, U: 2.0, f: 2.2, g: 2.2, H: 1.9 };
+const LATE = { L: .32, R: .32, B: .35, U: .5, f: .32, g: .32, H: .12 };
+function noteCat(k) { return k === 'f' || k === 'g' ? 'ashi' : k === 'B' ? 'ryote' : k === 'U' ? 'upper' : k === 'H' ? 'duck' : 'punch'; }
+function startBossFight(w) {
+  G.sub = 'boss'; G.v = 0; const az = -G.s; G.arenaZ = az; G.bossDone = 0; G.bossT = G.tau;
+  flash(.9); sfx('boom'); G.shake = .45;
+  const A = new THREE.Group(); A.position.z = az; W.add(A); G.arena = A;
+  // くらい 道
+  const lane = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 27), B(0xffffff, { map: TX_LANE, transparent: true, depthWrite: false }));
+  lane.rotation.x = -Math.PI / 2; lane.position.set(0, .04, -14.5); A.add(lane);
+  // 足を おく 4つの マス
+  G.pads = PADX.map(x => {
+    const fr = new THREE.Mesh(new THREE.PlaneGeometry(1.02, .82), B(0xffffff, { map: TX_PAD, transparent: true, depthWrite: false })); fr.rotation.x = -Math.PI / 2; fr.position.set(x, .06, PADZ); A.add(fr);
+    const lit = new THREE.Mesh(new THREE.PlaneGeometry(.96, .76), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); lit.rotation.x = -Math.PI / 2; lit.position.set(x, .07, PADZ); A.add(lit);
+    return lit;
+  });
+  // なかまの 台
+  for (const s of [-1, 1]) {
+    A.add(mesh(G_CYL, M(0x2a2550), s * 3.3, .25, -6.5, .95, .5, .95));
+    const rim = mesh(G_TOR, B(0xbff0ff), s * 3.3, .5, -6.5, .95); rim.rotation.x = Math.PI / 2; A.add(rim);
+  }
+  // 箱・足・ハンマー
+  const tokens = w.boss.chart.trim().split(/\s+/), beat = w.boss.beat || .5, t0 = G.tau + 3.6;
+  G.bn = [];
+  tokens.forEach((k, i) => {
+    if (k === '.') return; const n = { k, t: t0 + i * beat, st: 'wait', o: null };
+    if ('LRU'.includes(k)) { n.o = boxMesh(k, k === 'U' ? .9 : .66); }
+    else if (k === 'B') { n.o = grp(boxMesh('B', .82), boxMesh('B', .82)); n.o.children[0].position.x = -1.2; n.o.children[1].position.x = 1.2; }
+    else if (k === 'f' || k === 'g') { const top = new THREE.MeshBasicMaterial({ map: footTex(k) }), side = B(k === 'f' ? 0x1660c0 : 0xb81e36); n.o = new THREE.Mesh(G_BOX, [side, side, top, side, side, side]); n.o.scale.set(.95, .16, .76); }
+    else if (k === 'H') { const h = new THREE.Group(), roll = grp(mesh(G_CYL, M(0xd8333f), 0, 0, 0, .42, 3.2, .42), mesh(G_CYL, M(0xffcf4a), 0, 1.2, 0, .45, .14, .45), mesh(G_CYL, M(0xffcf4a), 0, -1.2, 0, .45, .14, .45), mesh(G_CYL, M(0x7a4a2a), 0, 1.9, 0, .1, .6, .1), mesh(G_CYL, M(0x7a4a2a), 0, -1.9, 0, .1, .6, .1)); roll.rotation.z = Math.PI / 2; h.add(roll); n.o = h; n.roll = roll; }
+    n.o.visible = false; A.add(n.o); G.bn.push(n);
+  });
+  G.bossMax = G.bn.filter(n => n.k !== 'H').length; G.bossHp = G.bossMax; G.total += G.bn.length;
+  // ボス
+  const b = G.boss; b.visible = true; b.userData.enter = 0; b.position.set(0, 0, az + FARZ);
+  $('bossName').textContent = w.boss.name; $('bossbar').classList.remove('hide'); $('bossbar').classList.add('fight'); hpUI();
+  $('prompt').style.opacity = 0; $('bottom').classList.add('small'); bigText('BOSS!'); voice('boss', true);
+  G.pals.forEach(p => { p.hop = 0; });
+  G.bj = null; G.streaks = []; G.beam = 0; G.cued = null; G.lastCat = null; G.saidHit = 0;
+  setPad('boss');
+}
+function boxMesh(k, s) {
+  const side = B(new THREE.Color(NCOL[k]).getHex()), face = new THREE.MeshBasicMaterial({ map: boxTex(k) });
+  const m = new THREE.Mesh(G_BOX, [side, side, side, side, face, side]); m.scale.set(s, s, s * .5);
+  const gl = glow(new THREE.Color(NCOL[k]).getHex(), s * 2.2, .45); gl.position.z = -.3; m.add(gl); return m;
+}
+function notePos(n, k, v) {
+  // k=0（とおく）→ 1（はんていの 場所）
+  const L = n.k;
+  if (L === 'f' || L === 'g') { v.set(L === 'f' ? PADX[1] : PADX[2], .14, lerp(FARZ, PADZ, k)); return; }
+  if (L === 'H') { v.set(0, lerp(3.6, 2.35, Math.min(1, k * 1.4)), lerp(FARZ + 1, -.6, k)); return; }
+  const x = L === 'L' ? -.75 : L === 'R' ? .75 : 0, y = L === 'U' ? 2.3 : 2.1;
+  const kk = Math.pow(clamp(k, 0, 1.4), 1.25);
+  v.set(lerp(x * .2, x, kk), lerp(3.4, y, kk) + Math.sin(k * Math.PI) * .6, lerp(FARZ + 1, HITZ, kk));
+}
+const _v = new THREE.Vector3();
+function bossInput(type, side) {
+  const tt = now(); let ok = [];
+  if (type === 'punch') ok = ['L', 'R', 'B', 'U']; else if (type === 'step') ok = ['f', 'g']; else if (type === 'upper') ok = ['U', 'B', 'L', 'R']; else if (type === 'banzai') ok = ['U']; else return;
+  let best = null, bs = 9;
+  for (const n of G.bn) {
+    if (n.st !== 'wait' || !ok.includes(n.k)) continue; const d = tt - n.t; if (d < -.55 || d > LATE[n.k]) continue;
+    const want = n.k === 'L' || n.k === 'f' ? 0 : n.k === 'R' || n.k === 'g' ? 1 : null;
+    const sc = Math.abs(d) + (want != null && side != null && want !== side ? .25 : 0) + (n.k === 'U' && type !== 'upper' && type !== 'banzai' ? .3 : 0);
+    if (sc < bs) { bs = sc; best = n; }
+  }
+  if (!best) return;
+  const d = Math.abs(tt - best.t), want = best.k === 'L' || best.k === 'f' ? 0 : best.k === 'R' || best.k === 'g' ? 1 : null;
+  let g = d < .13 ? 2 : d < .26 ? 1 : 0; if (want != null && side != null && want !== side) g = Math.min(g, 1);
+  bossOk(best, ['GOOD', 'GREAT', 'SUPERB'][g]);
+}
+function bossOk(n, grade) {
+  n.st = 'ok'; G.ok++; G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo); G.kcal += .3; comboUI();
+  G.bj = { text: grade, t: .7 };
+  const p = new THREE.Vector3(); n.o.getWorldPosition(p);
+  if (n.k === 'f' || n.k === 'g') {
+    const pad = G.pads[n.k === 'f' ? 1 : 2]; pad.material.color.set(NCOL[n.k]); pad.material.opacity = 1;
+    burst(p.x, .4, p.z, new THREE.Color(NCOL[n.k]).getHex(), 18, 3); n.o.visible = false;
+  } else if (n.k === 'H') {
+    giongo('ヒョイッ！', 'duck');
+  } else {
+    const col = new THREE.Color(NCOL[n.k]).getHex();
+    if (n.k === 'B') n.o.children.forEach(c => { c.getWorldPosition(_v); shatter(_v.x, _v.y, _v.z, col, 16, .5); burst(_v.x, _v.y, _v.z, col, 30, 5); });
+    else { shatter(p.x, p.y, p.z, col, 18, .5); burst(p.x, p.y, p.z, col, 36, 5); }
+    n.o.visible = false; sfx('hit'); G.shake = .3;
+    G.streaks.push({ col: NCOL[n.k], t: .35, dir: n.k === 'L' ? -1 : n.k === 'R' ? 1 : 0 });
+    giongo(n.k === 'U' ? 'ドッカーン！' : pick(GIONGO.punch), 'punch');
+    const b = G.boss; if (b) b.userData.hitT = .35;
+  }
+  if (n.k !== 'H') { G.bossHp = Math.max(0, G.bossHp - 1); if (n.k === 'U') { G.bossHp = 0; G.beam = 1; flash(.6); G.shake = .8; } hpUI(); }
+  if (G.combo > 0 && G.combo % 10 === 0) setTimeout(() => voice('great'), 200);
+}
+function bossMiss(n) {
+  n.st = 'ng'; G.combo = 0; comboUI(); G.bj = { text: 'MISS', t: .5 };
+  if (n.k === 'H') { G.shake = .6; sfx('ng'); giongo('あいたっ', 'ng'); }
+}
+function updateBossFight(dt) {
+  const tt = G.tau, w = WORLDS[G.wi];
+  if (!G.saidHit && tt - G.bossT > 1.7) { G.saidHit = 1; bigText('HIT IT!'); voice('hitit', true); }
+  for (const n of G.bn) {
+    // しゃがむ
+    if (n.k === 'H' && n.st === 'wait' && tt > n.t - .3 && (held('duck') || (ACT.last.duck != null && ACT.last.duck > n.t - 1.3))) bossOk(n, tt > n.t - .15 ? 'GREAT' : 'GOOD');
+    if (n.st === 'wait' && tt > n.t + LATE[n.k]) bossMiss(n);
+    if (AUTO && n.st === 'wait' && !n.a && tt > n.t - (n.k === 'H' ? .5 : .03)) {
+      n.a = 1; const A = { L: ['punch', 0], R: ['punch', 1], B: ['punch', 0], U: ['upper'], f: ['step', 0], g: ['step', 1], H: ['duck'] }[n.k]; fire(A[0], A[1]); if (n.k === 'B') fire('punch', 1);
+    }
+    // うごき
+    const k = 1 - (n.t - tt) / LEAD[n.k];
+    if (k < 0) { n.o.visible = false; continue; }
+    if (!n.spawned) { n.spawned = 1; if (G.boss) G.boss.userData.throwT = .4; if (n.k !== 'f' && n.k !== 'g') sfx('zap'); }
+    if (n.st === 'ok' && n.k !== 'H') { n.o.visible = false; continue; }
+    notePos(n, k, _v); n.o.position.copy(_v);
+    n.o.visible = k < (n.k === 'f' || n.k === 'g' ? 1.25 : 1.45);
+    if (n.st === 'ng' && n.k !== 'H') n.o.visible = k < 1.2;
+    if (n.roll) n.roll.rotation.x = -tt * 9;
+    if ('LRUB'.includes(n.k)) { n.o.rotation.set(Math.sin(tt * 3 + n.t) * .12, Math.sin(tt * 2 + n.t) * .15, 0); }
+  }
+  // つぎの 合図（声と 下の もじ）
+  const nx = G.bn.find(n => n.st === 'wait');
+  if (nx) {
+    const cat = noteCat(nx.k);
+    if (nx !== G.cued && cat !== G.lastCat && nx.t - tt < 1.7) { G.cued = nx; G.lastCat = cat; voice(cat === 'punch' ? (nx.k === 'R' ? 'rpunch' : 'lpunch') : cat, true); }
+    const lead = nx.t - tt; $('bottom').textContent = lead < 2.2 ? (lead < .6 ? 'いま！ ' : '') + NLAB[nx.k] : ''; $('bottom').classList.toggle('now', lead < .6);
+  } else { $('bottom').textContent = ''; }
+  G.pads.forEach(p => { p.material.opacity = Math.max(0, p.material.opacity - dt * 3); });
+  if (G.bj) { G.bj.t -= dt; if (G.bj.t <= 0) G.bj = null; }
+  G.beam = Math.max(0, G.beam - dt * 1.2);
+  if (G.boss && G.boss.visible) animBossFight(dt);
+  // おわり
+  if (!G.bossDone && G.bn.every(n => n.st !== 'wait') && tt > G.bn[G.bn.length - 1].t + .5) { G.bossDone = tt; bossDefeat(); }
+  if (G.bossDone && tt - G.bossDone > 3.2) exitBossFight();
+}
+function animBossFight(dt) {
+  const b = G.boss, u = b.userData, t = G.time;
+  u.enter = Math.min(1, (u.enter || 0) + dt * 1.2);
+  u.throwT = Math.max(0, (u.throwT || 0) - dt);
+  let y = WKEY() === 'circus' ? Math.abs(Math.sin(t * 3)) * .8 : Math.abs(Math.sin(t * 2.4)) * .25;
+  const lean = Math.sin(clamp(u.throwT / .4, 0, 1) * Math.PI) * .25;
+  if (WKEY() === 'library' && u.front) u.front.rotation.y = -(.3 + .3 * Math.sin(t * 4));
+  if (u.hL) { u.hL.position.y = 2.2 + Math.sin(t * 4) * .4 + lean * 3; u.hR.position.y = 2.2 + Math.cos(t * 4) * .4 + lean * 3; }
+  const rec = Math.max(0, u.hitT || 0);
+  b.position.set(Math.sin(t * 1.1) * 1.1, y + (1 - ease(u.enter)) * 10, G.arenaZ + FARZ + 1 - rec * 4 + lean * 2);
+  b.rotation.set(-lean * .5 - rec * .6, Math.sin(t * .9) * .15, Math.sin(rec * 60) * .12 * (rec > 0 ? 1 : 0));
+  if (u.hitT > 0) u.hitT -= dt;
+  b.scale.setScalar(1.45 * (1 + rec * .3));
+}
+function exitBossFight() {
+  if (G.arena) W.remove(G.arena); G.arena = null; G.bn = []; G.pads = [];
+  const w = WORLDS[G.wi]; G.sub = 'exit'; G.v = 0;
+  G.gate = makeGate(ACCENT[w.key]); G.gateZ = -G.s - 34; G.gate.position.z = G.gateZ; W.add(G.gate);
+  G.pals.forEach(p => { p.o.rotation.set(0, Math.PI, 0); p.o.scale.setScalar(1); p.y = 0; p.vy = 0; });
+  $('bossbar').classList.add('hide'); $('bossbar').classList.remove('fight'); $('bottom').textContent = ''; $('bottom').classList.remove('small'); setPad('run'); flash(.5);
+}
+function bossCamera(dt) {
+  G.duckK = damp(G.duckK, held('duck') ? 1 : 0, .07, dt);
+  G.shake = Math.max(0, G.shake - dt * 1.6); const sh = G.shake * G.shake;
+  camera.position.set((Math.random() - .5) * sh * .6, 2.35 - G.duckK * .9 + (Math.random() - .5) * sh * .5, G.arenaZ);
+  camera.rotation.set(-.19, 0, (Math.random() - .5) * sh * .05);
+  const fov = 66 + (aspect < 1 ? 16 : 0); if (Math.abs(camera.fov - fov) > .05) { camera.fov = damp(camera.fov, fov, .3, dt); camera.updateProjectionMatrix(); }
+  G.speedLines = damp(G.speedLines, 0, .3, dt);
 }
 
 // ================= エフェクト =================
@@ -883,6 +1088,34 @@ function drawFX(dt) {
   // あわが はじけた
   if (splashT > 0) { splashT -= dt * 1.3; fc.save(); fc.globalAlpha = clamp(splashT, 0, 1) * .6; for (let i = 0; i < 9; i++) { const x = (i * 137 % 100) / 100 * w, y = (i * 71 % 100) / 100 * h, r = 40 + (i * 37 % 60); const g = fc.createRadialGradient(x, y, r * .6, x, y, r); g.addColorStop(0, 'rgba(190,230,255,0)'); g.addColorStop(1, 'rgba(220,245,255,.9)'); fc.fillStyle = g; fc.beginPath(); fc.arc(x, y, r, 0, 7); fc.fill(); } fc.restore(); }
   if (G.phase === 'finale') drawFinale();
+  if (G.phase === 'play' && G.sub === 'boss') drawBossFx(dt, w, h);
+}
+function drawBossFx(dt, w, h) {
+  const c = fc;
+  // パンチが 当たった ときの ひかりの すじ
+  G.streaks = (G.streaks || []).filter(s => {
+    s.t -= dt; if (s.t <= 0) return false; const a = s.t / .35;
+    c.save(); c.globalAlpha = a; c.strokeStyle = s.col; c.shadowColor = s.col; c.shadowBlur = 30; c.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      c.lineWidth = (14 - i * 4) * (w / 1400); const off = (i - 1) * h * .05;
+      if (s.dir) { const x0 = w / 2 - s.dir * w * .05, y0 = h * .48 + off; c.beginPath(); c.moveTo(x0, y0); c.lineTo(x0 - s.dir * w * .55, y0 + h * .45); c.moveTo(x0, y0); c.lineTo(x0 + s.dir * w * .5, y0 - h * .2); c.stroke(); }
+      else { c.beginPath(); c.moveTo(0, h * .75 + off); c.lineTo(w, h * .25 + off); c.moveTo(0, h * .25 + off); c.lineTo(w, h * .75 + off); c.stroke(); }
+    }
+    c.restore(); return true;
+  });
+  // アッパーの みどりの ひかり
+  if (G.beam > 0) {
+    c.save(); c.globalAlpha = Math.min(1, G.beam * 1.4); c.strokeStyle = '#7dffb0'; c.shadowColor = '#4dff8a'; c.shadowBlur = 40; c.lineCap = 'round';
+    for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + (i - 4.5) * .32; c.lineWidth = (10 + (i % 3) * 6) * (w / 1400); c.beginPath(); c.moveTo(w / 2 + Math.cos(a) * w * .06, h * .45 + Math.sin(a) * w * .06); c.lineTo(w / 2 + Math.cos(a) * w * .9, h * .45 + Math.sin(a) * w * .9); c.stroke(); }
+    c.restore();
+  }
+  // GOOD / GREAT / SUPERB
+  if (G.bj) {
+    const t = G.bj.text, s = 1 + Math.max(0, G.bj.t - .5) * 2;
+    c.save(); c.translate(w / 2, h * .3); c.scale(s, s); c.font = `900 ${Math.round(h * .065)}px 'M PLUS Rounded 1c'`; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.globalAlpha = Math.min(1, G.bj.t * 3); c.lineWidth = h * .012; c.strokeStyle = '#1d1640'; c.strokeText(t, 0, 0);
+    c.fillStyle = t === 'SUPERB' ? '#ffd54a' : t === 'GREAT' ? '#7dffb0' : t === 'GOOD' ? '#7fe0ff' : '#c8c8d8'; c.fillText(t, 0, 0); c.restore();
+  }
 }
 
 // ================= 合図の 表示 =================
@@ -910,14 +1143,14 @@ function updatePrompt() {
 }
 function progUI() {
   let f = 0;
-  if (G.phase === 'play') { const w = WORLDS[G.wi], end = w.boss ? G.bossT0 + 3.2 + w.boss.ev.length * 3.1 + 2 : w.runEnd + 2.6; f = (G.wi + clamp(G.tau / end, 0, 1)) / WORLDS.length; }
+  if (G.phase === 'play') { const w = WORLDS[G.wi], end = w.boss ? w.runEnd + 4.2 + w.boss.chart.trim().split(/\s+/).length * (w.boss.beat || .5) + 6 : w.runEnd + 2.6; f = (G.wi + clamp(G.tau / end, 0, 1)) / WORLDS.length; }
   else if (G.phase === 'finale' || G.phase === 'result') f = 1;
   $('progFill').style.width = (f * 100) + '%'; $('progMark').style.left = (f * 100) + '%';
 }
 (() => { for (let i = 1; i <= WORLDS.length; i++) { const s = document.createElement('div'); s.className = 'pstar'; s.textContent = '★'; s.style.left = (100 * i / WORLDS.length) + '%'; $('prog').appendChild(s); } })();
 
 // ================= カメラで からだを 読む =================
-const POSE = { ok: false, u: .2, baseY: null, baseX: null, crouch: false, side: 0, lastJump: -9, vUp: 0, prevY: null, clapArmed: true, banzai: false, pArm: [true, true], prevW: null, act: 0, lm: null, tpose: 0, lowT: 0, hipOff: .9, prevAll: null };
+const POSE = { ok: false, u: .2, baseY: null, baseX: null, crouch: false, side: 0, lastJump: -9, vUp: 0, prevY: null, clapArmed: true, banzai: false, pArm: [true, true], uArm: [true, true], kb: [null, null], kArm: [true, true], kAlt: 0, prevW: null, act: 0, lm: null, tpose: 0, lowT: 0, hipOff: .9, prevAll: null };
 const CAM = { video: $('camvid'), pose: null, lastVT: -1, ready: false };
 async function startCamera(say) {
   try {
@@ -984,12 +1217,30 @@ function feedPose(lm, dt) {
       [[lw, 0], [rw, 1]].forEach(([w, i]) => {
         const pv = POSE.prevW[i], sp = Math.hypot(w.x - pv.x, w.y - pv.y) / u / dt;
         const zone = w.y > nose.y - .7 * u && w.y < sc.y + 1.0 * u;
-        if (sp > 3.6 && zone && POSE.pArm[i] && d > .6 && !up) { POSE.pArm[i] = false; fire('punch'); }
+        if (sp > 3.6 && zone && POSE.pArm[i] && d > .6 && !up) { POSE.pArm[i] = false; fire('punch', i); }
         else if (sp < 1.4) POSE.pArm[i] = true;
+        // アッパー（手首が 下から 上へ すばやく、顔より 上まで）
+        const vy = (pv.y - w.y) / u / dt;
+        if (vy > 3.0 && w.y < nose.y && POSE.uArm[i]) { POSE.uArm[i] = false; fire('upper', i); }
+        else if (w.y > sc.y + .3 * u) POSE.uArm[i] = true;
       });
     }
     POSE.prevW = [{ x: lw.x, y: lw.y }, { x: rw.x, y: rw.y }];
   } else { POSE.prevW = null; POSE.tpose = 0; }
+  // あしぶみ（ひざが 上がった。こしからの 高さで 見るので ジャンプとは まざらない）
+  const lk = P(25), rk = P(26);
+  if (hipsOk && lk.v > .35 && rk.v > .35 && !POSE.crouch) {
+    const hy = (lh.y + rh.y) / 2;
+    [[lk, 0], [rk, 1]].forEach(([k, i]) => {
+      const rel = (k.y - hy) / u;
+      POSE.kb[i] = POSE.kb[i] == null ? rel : rel > POSE.kb[i] ? damp(POSE.kb[i], rel, .25, dt) : damp(POSE.kb[i], rel, 5, dt);
+      const lift = POSE.kb[i] - rel;
+      if (lift > .26 && POSE.kArm[i]) { POSE.kArm[i] = false; fire('step', i); } else if (lift < .1) POSE.kArm[i] = true;
+    });
+  } else if (G.sub === 'boss') {
+    // 足が うつって いない ときは、からだの 上下で あしぶみと みなす
+    if (lift > .1 && POSE.vUp > .4 && POSE.kArm[0]) { POSE.kArm[0] = false; POSE.kAlt = 1 - (POSE.kAlt || 0); fire('step', POSE.kAlt); } else if (lift < .03) POSE.kArm[0] = true;
+  }
   // うごいた 量（カロリー）
   const idx = [0, 13, 14, 15, 16, 25, 26, 27, 28], cur = idx.map(i => P(i));
   if (POSE.prevAll) { let s = 0; cur.forEach((p, k) => { if (p.v > .4) s += Math.hypot(p.x - POSE.prevAll[k].x, p.y - POSE.prevAll[k].y) / u; }); POSE.act = damp(POSE.act, s / dt, .4, dt); }
@@ -1035,60 +1286,39 @@ function startPlay(wi) {
   buildWorld(wi); const w = WORLDS[wi];
   banner(`STAGE ${wi + 1}`, w.name); setTimeout(() => voice(w.vo, true), 300);
   playSong(w.key); flash(1); sfx('gate');
-  $('bossbar').classList.add('hide');
+  $('bossbar').classList.add('hide'); $('bossbar').classList.remove('fight'); $('bottom').classList.remove('small'); G.arena = null; G.bn = []; setPad('run');
 }
 function nextWorld() { if (G.wi + 1 < WORLDS.length) startPlay(G.wi + 1); else startFinale(); }
 function updatePlay(dt) {
   const w = WORLDS[G.wi];
   G.tau += dt;
   // 速さ
-  if (G.sub === 'run') { G.v = V; if (w.boss && G.tau > w.runEnd) { G.sub = 'boss'; } }
+  if (G.sub === 'run') { G.v = V; if (w.boss && G.tau > w.runEnd + .6) startBossFight(w); }
   if (G.sub === 'boss') {
-    G.v = damp(G.v, 0, .45, dt);
-    const b = G.boss, bt = G.tau - G.bossT0;
-    if (bt > -1.2 && !b.visible && !G.bossDone) { b.visible = true; b.userData.enter = 0; flash(.5); sfx('boom'); G.shake = .5; voice('boss', true); $('bossName').textContent = w.boss.name; $('bossbar').classList.remove('hide'); hpUI(); bigText('BOSS!'); }
-    const last = G.events[G.events.length - 1];
-    if (!G.bossDone && last.st !== 'wait' && G.tau > last.t + .5) { G.bossDone = G.tau; bossDefeat(); }
-    if (G.bossDone && G.tau - G.bossDone > 2.2) { G.sub = 'exit'; G.gate = makeGate(ACCENT[w.key]); G.gateZ = -G.s - 34; G.gate.position.z = G.gateZ; W.add(G.gate); }
+    updateBossFight(dt);
+    G.kcal += dt * (G.mode === 'cam' && POSE.ok ? .09 + .22 * clamp(POSE.act / 4, 0, 1) : .16);
+    return;
   }
   if (G.sub === 'exit') G.v = damp(G.v, V, .5, dt);
   G.s += G.v * dt;
-  // ボス本体の うごき
-  if (G.boss && G.boss.visible) animBoss(dt);
-  // ボスの こうげき（とんでくる もの）
-  for (const e of G.events) {
-    if (!e.boss || !e.o || e.st === 'ng') continue;
-    const k = 1 - (e.t - G.tau) / 1.9; if (k < 0) continue;
-    if (e.st === 'wait' || (e.st === 'ok' && k < 1.6)) {
-      e.o.visible = e.type !== 'clap' || e.st === 'wait';
-      const z0 = G.bossZ + 2, z1 = -G.s; e.o.position.z = lerp(z0, z1, k);
-      if (e.o.userData.roll) e.o.userData.roll.rotation.x = -G.tau * 4;
-      if (k > 1.5) e.o.visible = false;
-    }
-  }
   // ゲートを くぐったら 次へ
   if (G.gate && -G.s < G.gateZ + .5) { nextWorld(); return; }
   judgeAll();
   // カロリー
   G.kcal += dt * (G.mode === 'cam' && POSE.ok ? .09 + .22 * clamp(POSE.act / 4, 0, 1) : .16);
 }
-function animBoss(dt) {
-  const b = G.boss, u = b.userData, t = G.time;
-  u.enter = Math.min(1, (u.enter || 0) + dt * 1.5);
-  let z = G.bossZ, y = 0;
-  // パンチの 合図の ときは 前に 出てくる
-  const pe = G.events.find(e => e.boss && e.type === 'punch' && G.tau > e.t - 2.2 && G.tau < e.t + .8);
-  if (pe) { const k = clamp((G.tau - (pe.t - 2.0)) / 1.2, 0, 1); const back = pe.st === 'ok' ? clamp((G.tau - pe.t + 0) * 3, 0, 1) : 0; z = lerp(G.bossZ, -G.s - 7, ease(k) * (1 - back)); }
-  if (WKEY() === 'circus') y = Math.abs(Math.sin(t * 3)) * 1.2;
-  if (WKEY() === 'library' && u.front) u.front.rotation.y = -(.3 + .3 * Math.sin(t * 4));
-  b.position.set(Math.sin(t * 1.3) * 1.2, y + (1 - u.enter) * 8, z);
-  if (u.hL) { u.hL.position.y = 2.2 + Math.sin(t * 4) * .4; u.hR.position.y = 2.2 + Math.cos(t * 4) * .4; }
-  if (u.hitT > 0) { u.hitT -= dt; b.rotation.z = Math.sin(u.hitT * 60) * .15; b.scale.setScalar(1 + u.hitT * .3); } else { b.rotation.z = 0; b.scale.setScalar(1); }
-}
 function updatePals(dt, running = true) {
   const camZ = -G.s;
   G.pals.forEach((p, i) => {
     const o = p.o, u = o.userData; p.ph += dt * (running ? 14 : 4);
+    if (G.phase === 'play' && G.sub === 'boss' && G.arena) {
+      // 台の 上で おうえん
+      p.hop = Math.min(1, (p.hop || 0) + dt * 2); const k = ease(p.hop), x = (i ? 1 : -1) * 3.3;
+      o.position.set(lerp(p.side, x, k), .5 + Math.abs(Math.sin(G.time * 7.5 + i)) * .3 + Math.sin(k * Math.PI) * 2, lerp(camZ - 6.5 - i * .8, G.arenaZ - 6.5, k));
+      o.rotation.set(0, lerp(Math.PI, (i ? -.35 : .35), k), Math.sin(G.time * 5 + i) * .12); o.scale.setScalar(1 + k * .7);
+      if (u.wings) { u.wings[0].rotation.z = Math.sin(G.time * 16) * .7; u.wings[1].rotation.z = -Math.sin(G.time * 16) * .7; }
+      return;
+    }
     let tx = p.x, act = null;
     if (G.phase === 'play') {
       // 前を 走る なかまは、じゃまものの 少し 前で じぶんで よける
@@ -1272,16 +1502,27 @@ function showResult() {
 }
 
 // ================= ボタン・キー =================
-const KEYMAP = { ArrowUp: 'jump', ' ': 'jump', ArrowDown: 'duck', ArrowLeft: 'left', ArrowRight: 'right', c: 'clap', C: 'clap', z: 'punch', Z: 'punch', x: 'punch', X: 'punch', b: 'banzai', B: 'banzai' };
-addEventListener('keydown', e => { if (e.repeat) return; const a = KEYMAP[e.key]; if (a && (G.phase === 'play' || G.phase === 'finale')) { fire(a); e.preventDefault(); } else if (G.phase === 'intro' && (e.key === ' ' || e.key === 'Enter')) toCalib(); });
-(() => {
-  const pad = $('pad');
-  for (const t of ['left', 'jump', 'duck', 'right', 'clap', 'punch', 'banzai']) {
-    const b = document.createElement('button'); const im = document.createElement('img'); im.src = PIC[t].toDataURL(); b.appendChild(im);
-    b.addEventListener('pointerdown', ev => { ev.preventDefault(); if (G.phase === 'play' || G.phase === 'finale') fire(t); });
+const KEYMAP = { ArrowUp: ['jump'], ' ': ['jump'], ArrowDown: ['duck'], ArrowLeft: ['left'], ArrowRight: ['right'], c: ['clap'], C: ['clap'], z: ['punch', 0], Z: ['punch', 0], x: ['punch', 1], X: ['punch', 1], b: ['banzai'], B: ['banzai'] };
+// ボス戦の キー：Z X パンチ ／ ← → あしぶみ ／ ↑ アッパー ／ ↓ しゃがむ
+const BOSSKEY = { z: ['punch', 0], Z: ['punch', 0], x: ['punch', 1], X: ['punch', 1], ArrowLeft: ['step', 0], ArrowRight: ['step', 1], a: ['step', 0], A: ['step', 0], d: ['step', 1], D: ['step', 1], ArrowUp: ['upper'], ' ': ['upper'], u: ['upper'], U: ['upper'], ArrowDown: ['duck'] };
+addEventListener('keydown', e => {
+  if (e.repeat) return; const a = (G.phase === 'play' && G.sub === 'boss' ? BOSSKEY : KEYMAP)[e.key];
+  if (a && (G.phase === 'play' || G.phase === 'finale')) { fire(a[0], a[1]); e.preventDefault(); } else if (G.phase === 'intro' && (e.key === ' ' || e.key === 'Enter')) toCalib();
+});
+const PADSET = {
+  run: [['left'], ['jump'], ['duck'], ['right'], ['clap'], ['punch'], ['banzai']].map(([t]) => ({ pic: t, act: [t] })),
+  boss: [{ pic: 'fist', act: ['punch', 0], cl: 'cL' }, { pic: 'fist', act: ['punch', 1], cl: 'cR', flip: 1 }, { pic: 'upper', act: ['upper'], cl: 'cU' }, { pic: 'duck', act: ['duck'] }, { pic: 'foot', act: ['step', 0], cl: 'cL' }, { pic: 'foot', act: ['step', 1], cl: 'cR', flip: 1 }]
+};
+let padNow = null;
+function setPad(set) {
+  if (padNow === set) return; padNow = set; const pad = $('pad'); pad.innerHTML = '';
+  for (const it of PADSET[set]) {
+    const b = document.createElement('button'); if (it.cl) b.className = it.cl; const im = document.createElement('img'); im.src = PIC[it.pic].toDataURL(); if (it.flip) im.style.transform = 'scaleX(-1)'; b.appendChild(im);
+    b.addEventListener('pointerdown', ev => { ev.preventDefault(); if (G.phase === 'play' || G.phase === 'finale') fire(it.act[0], it.act[1]); });
     pad.appendChild(b);
   }
-})();
+}
+setPad('run');
 $('gl').addEventListener('pointerdown', () => { if (G.phase === 'intro' && G.introT > 1) toCalib(); });
 async function begin(mode) {
   initAudio(); G.mode = mode; G.kcal = 0; G.combo = 0; G.maxCombo = 0; G.ok = 0; G.total = 0; G.saidGate = G.saidRun = 0;
@@ -1320,7 +1561,9 @@ function tick(ts) {
   for (const a of ANIM) a.f(G.time, dt);
   if (G.phase === 'play') {
     if (AUTO) autoPlay();
-    updatePlay(dt); if (G.phase === 'play') { updateCamera(dt); updatePals(dt, G.v > 1); updateObstacles(dt); updatePrompt(); }
+    updatePlay(dt);
+    if (G.phase === 'play' && G.sub === 'boss') { bossCamera(dt); updatePals(dt, false); }
+    else if (G.phase === 'play') { updateCamera(dt); updatePals(dt, G.v > 1); updateObstacles(dt); updatePrompt(); }
   } else if (G.phase === 'intro') { updateIntro(dt); G.speedLines = 0; }
   else if (G.phase === 'calib') { updateCalib(dt); }
   else if (G.phase === 'count') { updateCount(dt); G.speedLines = damp(G.speedLines, G.runIn > 0 ? 1 : 0, .3, dt); }
@@ -1342,7 +1585,7 @@ function autoPlay() {
 buildIntro(); G.pals.forEach(p => { p.o.scale.setScalar(1); p.o.position.set(p.x, 0, -3); });
 requestAnimationFrame(frame);
 document.fonts && document.fonts.ready.then(() => {});
-if (DBG) window.dbg = { G, POSE, ACT, fire, startPlay, startFinale, showResult, set auto(v) { AUTO = v; }, get auto() { return AUTO; }, set speed(v) { simSpeed = v; }, begin, step(n) { for (let i = 0; i < n; i++) tick(lastT + 33); } };
+if (DBG) window.dbg = { G, POSE, ACT, fire, startPlay, startFinale, showResult, set auto(v) { AUTO = v; }, get auto() { return AUTO; }, set speed(v) { simSpeed = v; }, begin, toBoss() { const w = WORLDS[G.wi]; G.events.forEach(e => { if (e.st === 'wait') { e.st = 'ok'; if (e.o) e.o.visible = false; } }); G.tau = w.runEnd - .3; G.s = V * G.tau; }, step(n) { for (let i = 0; i < n; i++) tick(lastT + 33); } };
 </script>
 </body>
 </html>
