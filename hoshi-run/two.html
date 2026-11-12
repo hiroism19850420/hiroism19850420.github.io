@@ -66,7 +66,7 @@
 </div>
 
 <script>
-const CFG = {"game": "index.html", "title": "ほしのゲート ぜんしんラン！", "levels": [["0", "ステージ1 そうげん"], ["1", "ステージ2 としょかん"], ["2", "ステージ3 サーカス"], ["3", "ステージ4 マグマ"], ["all", "ぜんぶ（4ステージ・やく6ぷん）"]], "lv": "0", "note": "おなじ コースを ふたりで 走って、ボスと たたかおう。たくさん うごいて カロリーが おおい人の かち！", "limit": 0};
+const CFG = {"game": "index.html", "title": "ほしのゲート ぜんしんラン！", "levels": [["0", "ステージ1 そうげん"], ["1", "ステージ2 としょかん"], ["2", "ステージ3 サーカス"], ["3", "ステージ4 マグマ"], ["all", "ぜんぶ（4ステージ・やく6ぷん）"]], "lv": "0", "note": "おなじ コースを ふたりで 走って、ボスと たたかおう。せいこうが おおい人の かち（おなじなら カロリーが おおい人）！", "limit": 0};
 document.getElementById('gname').textContent = CFG.title;
 const $ = id => document.getElementById(id);
 if (CFG.note) $('how').innerHTML += '<br>' + CFG.note;

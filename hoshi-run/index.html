@@ -773,12 +773,10 @@ function fire(type, side) {
   if (G.phase === 'finale') finaleHit(type);
   if (G.phase === 'play') G.kcal += .05;
 }
-// 判定は 激甘：合図と ちがう 動きでも、カメラで 体を 動かしていれば せいこう
-function windowOf(e) { return [e.t - 2.3, e.t + .3]; }
-function anyAct(ws, we) { return ACT.any.some(x => x >= ws && x <= we) || (ACT.move != null && ACT.move >= ws && ACT.move <= we); }
+// 判定（「とまれない」と 同じ 考え方）：合図と 同じ 動きを、まにあう 時間の 中で したときだけ せいこう
+function windowOf(e) { return [e.t - (e.type === 'punch' ? 1.6 : 1.2), e.t + .12]; }
 function satisfied(e, ws, we) {
   const tt = now(), inW = x => x != null && x >= ws && x <= we;
-  if (tt > e.t - 1.2 && anyAct(ws, we)) { if (e.type === 'punch' && e.hits === 0) { e.hits = 1; onPunch1(e); } return true; }
   switch (e.type) {
     case 'jump': return inW(ACT.last.jump) || (G.jy > .25 && tt > e.t - .45);
     case 'duck': return inW(ACT.last.duck) || (held('duck') && tt > e.t - .9);
@@ -884,7 +882,7 @@ const TX_PAD = ctex(256, 200, (c, w, h) => { c.shadowColor = '#bff0ff'; c.shadow
 const PADX = [-1.65, -.55, .55, 1.65], PADZ = -4.6, HITZ = -3.7, FARZ = -24;
 const LANEK = 'fgFGho', PAIRK = 'WNPQw';
 const LEAD = { L: 1.7, R: 1.7, W: 1.8, N: 1.8, P: 1.8, Q: 1.8, w: 1.8, U: 2.0, f: 2.2, g: 2.2, F: 2.2, G: 2.2, h: 2.2, o: 2.2, H: 1.9 };
-const LATE = { L: .5, R: .5, W: .5, N: .5, P: .5, Q: .5, w: .5, U: .7, f: .5, g: .5, F: .5, G: .5, h: .5, o: .5, H: .3 };
+const EARLY = .35, LATE = { L: .3, R: .3, W: .3, N: .3, P: .3, Q: .3, w: .3, U: .4, f: .3, g: .3, F: .3, G: .3, h: .3, o: .3, H: .15 };
 const FOOTX = { f: PADX[1], g: PADX[2], F: PADX[0], G: PADX[3] }, PADI = { f: [1], g: [2], F: [0], G: [3], h: [1, 2], o: [0, 3] };
 const PAIRX = { W: [-1.2, 1.2], w: [-1.2, 1.2], N: [-.42, .42], P: [-1.3, -.6], Q: [.6, 1.3] };
 function noteCat(k) { return LANEK.includes(k) ? 'ashi' : PAIRK.includes(k) ? 'ryote' : k === 'U' ? 'upper' : k === 'H' ? 'duck' : 'punch'; }
@@ -961,14 +959,23 @@ function notePos(n, k, v) {
 }
 const _v = new THREE.Vector3();
 function bossInput(type, side) {
-  // 激甘：どの 動きでも、いちばん 近い 箱・足・ハンマーに 当たる
-  const tt = now(); let best = null, bs = 9;
+  // 合図と 同じ 動きだけ 当たる。L/R・左右の足は 手足も 合わせる。両手の 箱は 左右 両方の パンチ（0.35秒 いない）
+  const tt = now();
+  const fits = n => {
+    if (type === 'punch') return n.k === 'L' ? side !== 1 : n.k === 'R' ? side !== 0 : PAIRK.includes(n.k);
+    if (type === 'step') return 'fF'.includes(n.k) ? side !== 1 : 'gG'.includes(n.k) ? side !== 0 : 'ho'.includes(n.k);
+    if (type === 'upper') return n.k === 'U';
+    return false;
+  };
   for (const n of G.bn) {
-    if (n.st !== 'wait') continue; const d = tt - n.t; if (d < -.9 || d > LATE[n.k]) continue;
-    bs = Math.abs(d); best = n; break; // いちばん 先の ものから 当てる
+    if (n.st !== 'wait') continue; const d = tt - n.t; if (d < -EARLY || d > LATE[n.k]) continue;
+    if (!fits(n)) continue;
+    if (PAIRK.includes(n.k)) {
+      n.ph = n.ph || {}; n.ph[side == null ? (n.ph[0] ? 1 : 0) : side] = tt;
+      if (!(n.ph[0] != null && n.ph[1] != null && Math.abs(n.ph[0] - n.ph[1]) < .35)) return; // もう 片方の 手を まつ
+    }
+    const a = Math.abs(d); bossOk(n, a < .1 ? 'SUPERB' : a < .2 ? 'GREAT' : 'GOOD'); return;
   }
-  if (!best) return;
-  bossOk(best, bs < .3 ? 'SUPERB' : bs < .6 ? 'GREAT' : 'GOOD');
 }
 function bossOk(n, grade) {
   n.st = 'ok'; G.ok++; G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo); G.kcal += .3; comboUI();
@@ -992,8 +999,6 @@ function bossOk(n, grade) {
   }
   if (n.k !== 'H') { G.bossHp = Math.max(0, G.bossHp - 1); if (n.k === 'U') { G.bossHp = 0; G.beam = 1; flash(.6); G.shake = .8; } hpUI(); }
   if (G.combo > 0 && G.combo % 10 === 0) setTimeout(() => voice('great'), 200);
-  // 同じ 時刻の もの（両足 など）は いっしょに 当たり
-  for (const o of G.bn) if (o.st === 'wait' && o.k !== 'H' && Math.abs(o.t - n.t) < .06) bossOk(o, grade);
 }
 function bossMiss(n) {
   n.st = 'ng'; G.combo = 0; comboUI(); G.bj = { text: 'MISS', t: .5 };
@@ -1004,12 +1009,10 @@ function updateBossFight(dt) {
   if (!G.saidHit && tt - G.bossT > 1.0) { G.saidHit = 1; bigText('HIT IT!'); voice('hitit', true); }
   for (const n of G.bn) {
     // しゃがむ
-    if (n.k === 'H' && n.st === 'wait' && tt > n.t - .3 && (held('duck') || (ACT.last.duck != null && ACT.last.duck > n.t - 1.3))) bossOk(n, 'SUPERB');
-    // カメラで 体を 動かして いれば、それだけで 当たり
-    if (n.st === 'wait' && tt > n.t - .1 && ACT.move != null && ACT.move > tt - .7) bossOk(n, 'GOOD');
+    if (n.k === 'H' && n.st === 'wait' && tt > n.t - .25 && (held('duck') || (ACT.last.duck != null && ACT.last.duck > n.t - .8))) bossOk(n, held('duck') ? 'SUPERB' : 'GREAT');
     if (n.st === 'wait' && tt > n.t + LATE[n.k]) bossMiss(n);
     if (AUTO && n.st === 'wait' && !n.a && tt > n.t - (n.k === 'H' ? .5 : .03)) {
-      n.a = 1; const A = n.k === 'L' ? ['punch', 0] : n.k === 'R' ? ['punch', 1] : n.k === 'U' ? ['upper'] : n.k === 'H' ? ['duck'] : PAIRK.includes(n.k) ? ['punch', 0] : ['step', 'gG'.includes(n.k) ? 1 : 0]; fire(A[0], A[1]);
+      n.a = 1; const A = n.k === 'L' ? ['punch', 0] : n.k === 'R' ? ['punch', 1] : n.k === 'U' ? ['upper'] : n.k === 'H' ? ['duck'] : PAIRK.includes(n.k) ? ['punch', 0] : ['step', 'gG'.includes(n.k) ? 1 : 0]; fire(A[0], A[1]); if (PAIRK.includes(n.k)) fire('punch', 1);
     }
     // うごき
     const k = 1 - (n.t - tt) / LEAD[n.k], kEnd = 1 + n.dur / LEAD[n.k];
@@ -1252,19 +1255,20 @@ function feedPose(lm, dt) {
   else if (POSE.lowT > 3) POSE.baseY += (bodyY - POSE.baseY) * Math.min(1, dt / .8);
   else if (lift > .22 && Math.abs(POSE.vUp) < .3) POSE.baseY += (bodyY - POSE.baseY) * Math.min(1, dt / 2.5);
   const t = performance.now() / 1000;
-  if (!POSE.crouch && lift > .17 && POSE.vUp > .55 && t - POSE.lastJump > .5) { POSE.lastJump = t; fire('jump'); }
-  if (!POSE.crouch && lift < -.3) { POSE.crouch = true; fire('duck'); } else if (POSE.crouch && lift > -.18) POSE.crouch = false;
+  // 「とまれない」と 同じくらい：ジャンプ＝肩・こしが かたはばの 0.35 上がる、しゃがむ＝0.5 下がる
+  if (!POSE.crouch && lift > .35 && POSE.vUp > .8 && t - POSE.lastJump > .55) { POSE.lastJump = t; fire('jump'); }
+  if (!POSE.crouch && lift < -.5) { POSE.crouch = true; fire('duck'); } else if (POSE.crouch && lift > -.25) POSE.crouch = false;
   // よこ
   const sh = (hipX - POSE.baseX) / u;
   if (Math.abs(sh) < .35) POSE.baseX += (hipX - POSE.baseX) * Math.min(1, dt / 3);
-  const ns = sh < -.42 ? -1 : sh > .42 ? 1 : (Math.abs(sh) < .28 ? 0 : POSE.side);
+  const ns = sh < -.6 ? -1 : sh > .6 ? 1 : (Math.abs(sh) < .35 ? 0 : POSE.side);
   if (ns !== POSE.side) { POSE.side = ns; if (ns) fire(ns < 0 ? 'left' : 'right'); }
   // 手
   const lw = P(15), rw = P(16), wOk = lw.v > .45 && rw.v > .45;
   if (wOk) {
     const d = Math.hypot(lw.x - rw.x, lw.y - rw.y) / u;
     const low = Math.max(lw.y, rw.y) < (hipsOk ? (lh.y + rh.y) / 2 : sc.y + 1.5 * u);
-    if (d < .8 && POSE.clapArmed) { POSE.clapArmed = false; fire('clap'); } else if (d > 1.1) POSE.clapArmed = true;
+    if (d < .55 && POSE.clapArmed && low) { POSE.clapArmed = false; fire('clap'); } else if (d > 1.0) POSE.clapArmed = true;
     const up = lw.y < nose.y - .1 * u && rw.y < nose.y - .1 * u;
     if (up && !POSE.banzai) { POSE.banzai = true; fire('banzai'); } else if (POSE.banzai && (lw.y > sc.y || rw.y > sc.y)) POSE.banzai = false;
     // T の ポーズ
@@ -1274,13 +1278,14 @@ function feedPose(lm, dt) {
     if (POSE.prevW) {
       [[lw, 0], [rw, 1]].forEach(([w, i]) => {
         const pv = POSE.prevW[i], sp = Math.hypot(w.x - pv.x, w.y - pv.y) / u / dt;
-        const zone = w.y > nose.y - 1.2 * u && w.y < sc.y + 1.6 * u;
-        if (sp > 2.3 && zone && POSE.pArm[i] && !up) { POSE.pArm[i] = false; fire('punch', i); }
-        else if (sp < 1.0) POSE.pArm[i] = true;
-        // アッパー（手首が 下から 上へ すばやく、かたより 上まで）
+        // パンチ：手首が むねの 高さで すばやく 動き、かたから 腕 1本ぶん はなれた
+        const zone = w.y > nose.y - .7 * u && w.y < sc.y + 1.0 * u, reach = Math.abs(w.x - (i ? rs.x : ls.x)) / u;
+        if (sp > 3.4 && zone && reach > .55 && POSE.pArm[i] && !up) { POSE.pArm[i] = false; fire('punch', i); }
+        else if (sp < 1.2) POSE.pArm[i] = true;
+        // アッパー：手首が むねより 下から、顔より 上まで すばやく
         const vy = (pv.y - w.y) / u / dt;
-        if (vy > 1.8 && w.y < sc.y && POSE.uArm[i]) { POSE.uArm[i] = false; fire('upper', i); }
-        else if (w.y > sc.y + .2 * u) POSE.uArm[i] = true;
+        if (vy > 3.0 && w.y < nose.y && POSE.uArm[i]) { POSE.uArm[i] = false; fire('upper', i); }
+        else if (w.y > sc.y + .4 * u) POSE.uArm[i] = true;
       });
     }
     POSE.prevW = [{ x: lw.x, y: lw.y }, { x: rw.x, y: rw.y }];
@@ -1293,17 +1298,14 @@ function feedPose(lm, dt) {
       const rel = (k.y - hy) / u;
       POSE.kb[i] = POSE.kb[i] == null ? rel : rel > POSE.kb[i] ? damp(POSE.kb[i], rel, .25, dt) : damp(POSE.kb[i], rel, 5, dt);
       const lift = POSE.kb[i] - rel;
-      if (lift > .15 && POSE.kArm[i]) { POSE.kArm[i] = false; fire('step', i); } else if (lift < .06) POSE.kArm[i] = true;
+      // ひざが かたはばの 0.3 上がったら 1歩
+      if (lift > .3 && POSE.kArm[i]) { POSE.kArm[i] = false; fire('step', i); } else if (lift < .12) POSE.kArm[i] = true;
     });
-  } else if (G.sub === 'boss') {
-    // 足が うつって いない ときは、からだの 上下で あしぶみと みなす
-    if (lift > .06 && POSE.vUp > .25 && POSE.kArm[0]) { POSE.kArm[0] = false; POSE.kAlt = 1 - (POSE.kAlt || 0); fire('step', POSE.kAlt); } else if (lift < .03) POSE.kArm[0] = true;
   }
   // うごいた 量（カロリー）
   const idx = [0, 13, 14, 15, 16, 25, 26, 27, 28], cur = idx.map(i => P(i));
   if (POSE.prevAll) { let s = 0; cur.forEach((p, k) => { if (p.v > .4) s += Math.hypot(p.x - POSE.prevAll[k].x, p.y - POSE.prevAll[k].y) / u; }); POSE.act = damp(POSE.act, s / dt, .4, dt); }
   POSE.prevAll = cur;
-  if (POSE.act > 1.6) ACT.move = now();
 }
 const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]];
 function drawPip() {
@@ -1500,17 +1502,16 @@ function startFinale() {
 }
 function finaleHit(type) {
   const F = G.finale; if (!F) return; const tt = now();
-  // 激甘：どの 動きでも、いちばん 先の ノーツに 当たる
-  let best = null; for (const n of F.notes) { if (n.st !== 'wait') continue; const d = tt - n.t; if (d > -1.0 && d < .9) { best = n; break; } }
+  // 合図と 同じ 動きを、ちかい タイミングで
+  let best = null; for (const n of F.notes) { if (n.st !== 'wait' || n.type !== type) continue; const d = Math.abs(n.t - tt); if (d < .45 && (!best || d < Math.abs(best.t - tt))) best = n; }
   if (!best) return; const d = Math.abs(best.t - tt);
   best.st = 'ok'; G.ok++; G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo); G.kcal += .3; comboUI();
-  F.judge = d < .4 ? 'GREAT!' : 'GOOD!'; F.judgeT = .6; sfx('ok'); burst(rr(-2, 2), 2.5, -4, pick([0xffe14a, 0xff9be0, 0x9fd8ff]), 40, 6);
+  F.judge = d < .2 ? 'GREAT!' : 'GOOD!'; F.judgeT = .6; sfx('ok'); burst(rr(-2, 2), 2.5, -4, pick([0xffe14a, 0xff9be0, 0x9fd8ff]), 40, 6);
   if (best.type === 'punch') G.shake = .25;
 }
 function updateFinale(dt) {
   const F = G.finale; G.tau += dt; const tt = G.tau;
-  if (G.mode === 'cam' && ACT.move != null && ACT.move > tt - .7) { const n = F.notes.find(n => n.st === 'wait' && tt > n.t - .1); if (n) finaleHit(n.type); }
-  for (const n of F.notes) if (n.st === 'wait' && tt > n.t + .9) { n.st = 'ng'; G.combo = 0; comboUI(); F.judge = 'MISS'; F.judgeT = .5; }
+  for (const n of F.notes) if (n.st === 'wait' && tt > n.t + .45) { n.st = 'ng'; G.combo = 0; comboUI(); F.judge = 'MISS'; F.judgeT = .5; }
   if (AUTO) for (const n of F.notes) if (n.st === 'wait' && tt > n.t - .05 && !n.auto) { n.auto = 1; fire(n.type); }
   const nx = F.notes.find(n => n.st === 'wait'); if (nx && nx !== F.said && nx.t - tt < 1.1) { F.said = nx; voice(nx.type, true); }
   G.pals.forEach((p, i) => { p.o.position.y = Math.abs(Math.sin(tt * Math.PI * 144 / 60)) * .35; p.o.rotation.y = Math.sin(tt * 2 + i) * .5; });
@@ -1560,7 +1561,7 @@ function showResult() {
   $('rK').textContent = G.kcal.toFixed(1); $('rOk').textContent = `${G.ok}/${G.total}`; $('rC').textContent = G.maxCombo;
   const r = G.ok / Math.max(1, G.total); $('rank').textContent = r > .9 ? '★★★ ほしの ランナー！' : r > .7 ? '★★☆ すごい ランナー！' : r > .4 ? '★☆☆ ナイス ランナー！' : '☆ また はしろう！';
   voice('fin', true);
-  if (window.SLAVE) { $('bAgain').style.display = $('bTop').style.display = 'none'; SLAVE.report({ score: Math.round(G.kcal * 10) / 10, higher: true, text: `${G.kcal.toFixed(1)} kcal<br><small>せいこう ${G.ok}/${G.total}</small>` }); }
+  if (window.SLAVE) { $('bAgain').style.display = $('bTop').style.display = 'none'; SLAVE.report({ score: G.ok * 1000 + Math.round(G.kcal * 10), higher: true, text: `せいこう ${G.ok}/${G.total}<br><small>${G.kcal.toFixed(1)} kcal</small>` }); }
 }
 
 // ================= ボタン・キー =================
