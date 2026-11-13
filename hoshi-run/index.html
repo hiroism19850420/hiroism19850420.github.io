@@ -51,6 +51,29 @@ canvas#fx{pointer-events:none}
 @keyframes ban{0%{opacity:0;transform:translateX(30%) skewX(-12deg)}12%{opacity:1;transform:none}82%{opacity:1;transform:none}100%{opacity:0;transform:translateX(-30%) skewX(12deg)}}
 #big{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:clamp(70px,18vw,200px);-webkit-text-stroke:6px var(--ink);paint-order:stroke fill;text-shadow:0 10px 0 var(--ink);pointer-events:none}
 #big{opacity:0}
+#runsil{position:absolute;z-index:5;left:50%;top:50%;height:72%;transform:translate(-50%,-50%);pointer-events:none;opacity:0;transition:opacity .25s}
+#say{position:absolute;left:0;right:0;top:30%;text-align:center;font-weight:900;font-size:clamp(34px,7vw,84px);color:#fff;-webkit-text-stroke:5px var(--ink);paint-order:stroke fill;text-shadow:0 6px 0 var(--ink);pointer-events:none;opacity:0}
+#say.show{animation:sayk 2.6s ease-out forwards}
+@keyframes sayk{0%{opacity:0;transform:scale(.3)}12%{opacity:1;transform:scale(1.08)}20%{transform:scale(1)}80%{opacity:1}100%{opacity:0}}
+#story{position:absolute;inset:0;pointer-events:none}
+#story.dark{background:#05040e}
+#stText{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;font-weight:900;font-size:clamp(36px,8vw,100px);color:#fff;-webkit-text-stroke:6px var(--ink);paint-order:stroke fill;text-shadow:0 7px 0 var(--ink);padding:0 4%}
+#stText.pop{animation:stpop .45s cubic-bezier(.2,1.6,.4,1)}
+@keyframes stpop{from{transform:translateY(-50%) scale(.3);opacity:0}to{transform:translateY(-50%) scale(1);opacity:1}}
+#story.dark #stText{top:22%}
+#stCome{position:absolute;left:0;right:0;bottom:14%;text-align:center;font-weight:900;font-size:clamp(28px,6vw,70px);color:#fff;-webkit-text-stroke:5px var(--ink);paint-order:stroke fill;letter-spacing:.06em}
+#stSkip{position:absolute;right:16px;bottom:16px;pointer-events:auto;font:900 18px 'M PLUS Rounded 1c',sans-serif;color:#fff;background:rgba(0,0,0,.45);border:2px solid #fff8;border-radius:24px;padding:8px 18px;display:none}
+#stMap{position:absolute;inset:5% 5% 5%;display:none;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2.5%}
+#stMap.on{display:grid}
+.tile{position:relative;border-radius:16px;overflow:hidden;border:4px solid rgba(255,255,255,.2);background-size:cover;background-position:center;filter:brightness(.5) saturate(.6);transition:filter .5s,border-color .5s,transform .5s,box-shadow .5s}
+.tile.done{filter:brightness(.85)}
+.tile.cur{filter:none;border-color:#ffe14a;transform:scale(1.04);box-shadow:0 0 34px #ffe14a99;z-index:2}
+.tile .lv{position:absolute;left:12px;bottom:8px;color:#fff;font-weight:900;font-size:clamp(13px,2.2vw,22px);-webkit-text-stroke:3px var(--ink);paint-order:stroke fill}
+.tile .bn{position:absolute;left:12px;top:8px;color:#fff;font-weight:900;font-size:clamp(14px,2.6vw,28px);-webkit-text-stroke:4px var(--ink);paint-order:stroke fill}
+.tile .st{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-14deg);font-weight:900;font-size:clamp(30px,7.5vw,90px);color:#ff2a3a;border:7px solid #ff2a3a;border-radius:14px;padding:0 16px;background:rgba(255,255,255,.3);opacity:0}
+.tile .st.on{opacity:1}
+.tile .st.pop{animation:stamp .35s ease-out}
+@keyframes stamp{from{transform:translate(-50%,-50%) rotate(-14deg) scale(3);opacity:0}to{transform:translate(-50%,-50%) rotate(-14deg) scale(1);opacity:1}}
 #big.go{animation:bigin .7s forwards}
 @keyframes bigin{0%{transform:scale(2.2);opacity:0}30%{transform:scale(1);opacity:1}100%{transform:scale(.9);opacity:0}}
 #talk{position:absolute;left:50%;top:22%;transform:translateX(-50%);background:#fff;color:var(--ink);font-weight:900;font-size:clamp(18px,3.4vw,30px);padding:10px 22px;border-radius:24px;box-shadow:0 5px 0 rgba(0,0,0,.35);white-space:nowrap}
@@ -105,6 +128,9 @@ canvas#fx{pointer-events:none}
   <div id="banner"><div class="s"></div><div class="n"></div></div>
   <div id="talk" class="hide"></div>
   <div id="big"></div>
+  <canvas id="runsil" width="300" height="450"></canvas>
+  <div id="say"></div>
+  <div id="story" class="hide"><div id="stMap"></div><div id="stText"></div><div id="stCome"></div><button id="stSkip">スキップ ▶</button></div>
   <div id="bottom"></div>
   <div id="kcal"><b id="kcalN">0.0</b> kcal</div>
   <canvas id="pip" width="240" height="180" class="hide"></canvas>
@@ -163,7 +189,7 @@ const renderer = new THREE.WebGLRenderer({ canvas: $('gl'), antialias: true, pow
 renderer.setPixelRatio(window.SLAVE ? 1 : Math.min(devicePixelRatio, isPhone ? 1.5 : 2)); // ふたりのときは 2つ うごくので かるく
 // ふたりで あそぶ：lv が 数字なら その ステージ（と ボス）だけ
 const ONLY = window.SLAVE && SLAVE.lv && SLAVE.lv !== 'all' ? +SLAVE.lv : null;
-const firstWorld = () => ONLY != null ? ONLY : Q.has('w') ? +Q.get('w') : 0;
+const firstWorld = () => ONLY != null ? ONLY + 1 : Q.has('w') ? +Q.get('w') : 0; // 0＝はじまりの みち、1〜4＝ボスの いる ステージ
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(68, 1, 0.1, 175);
 const hemi = new THREE.HemisphereLight(0xffffff, 0x556070, 1.5); scene.add(hemi);
@@ -224,18 +250,24 @@ function drawPicto(c, type, S, col = '#fff') {
     c.beginPath(); c.ellipse(.5, .62, .17, .25, 0, 0, 7); c.fill();
     [[.38, .3, .065], [.47, .26, .055], [.555, .27, .05], [.625, .31, .045], [.675, .37, .04]].forEach(([x, y, r]) => { c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); });
   }
+  else if (type === 'bigjump') { H(.5, .3); L(.5, .4, .5, .6); L(.5, .44, .36, .2); L(.5, .44, .64, .2); L(.5, .6, .4, .72, .44, .84); L(.5, .6, .6, .72, .56, .84); arrow(.18, .7, 0, -.5); arrow(.82, .7, 0, -.5); }
+  else if (type === 'sprint') { H(.56, .2); L(.54, .3, .46, .54); L(.52, .36, .7, .44); L(.52, .36, .36, .3, .3, .42); L(.46, .54, .62, .68, .6, .86); L(.46, .54, .32, .64, .2, .6); c.lineWidth = .04; L(.06, .36, .2, .36); L(.02, .48, .18, .48); L(.08, .6, .2, .6); }
+  else if (type === 'dodge') { H(.46, .46); L(.48, .54, .58, .66); L(.46, .5, .34, .36, .5, .3); L(.58, .66, .72, .72, .66, .86); L(.58, .66, .44, .76, .46, .86); c.lineWidth = .05; for (let i = 0; i < 4; i++) L(.2 + i * .2, .08, .26 + i * .2, .18, .32 + i * .2, .08); }
+  else if (type === 'stop') { H(.5, .2); L(.5, .3, .5, .58); L(.5, .36, .3, .5); L(.5, .36, .76, .36); c.beginPath(); c.arc(.84, .36, .08, 0, 7); c.fill(); L(.5, .58, .42, .86); L(.5, .58, .58, .86); }
+  else if (type === 'gogo') { H(.5, .2); L(.48, .3, .42, .54); L(.46, .36, .64, .46); L(.46, .36, .3, .34, .24, .44); L(.42, .54, .58, .66, .56, .86); L(.42, .54, .3, .66, .18, .62); arrow(.66, .14, .26, 0); }
+  else if (type === 'mirror') { H(.5, .3); L(.5, .4, .5, .64); L(.5, .44, .38, .26, .48, .08); L(.5, .44, .62, .26, .52, .08); L(.5, .64, .5, .92); L(.5, .64, .66, .72, .52, .78); }
   else if (type === 'upper') { H(.42, .3); L(.43, .4, .46, .64); L(.44, .44, .62, .3, .66, .12); c.beginPath(); c.arc(.67, .09, .08, 0, 7); c.fill(); L(.44, .45, .3, .56); L(.46, .64, .34, .78, .32, .92); L(.46, .64, .58, .78, .62, .92); arrow(.84, .5, 0, -.36); }
   c.restore();
 }
-for (const t of ['jump', 'duck', 'left', 'right', 'clap', 'punch', 'banzai', 'fist', 'foot', 'upper']) {
+for (const t of ['jump', 'duck', 'left', 'right', 'clap', 'punch', 'banzai', 'fist', 'foot', 'upper', 'bigjump', 'sprint', 'dodge', 'stop', 'gogo', 'mirror']) {
   const cv = document.createElement('canvas'); cv.width = cv.height = 128; drawPicto(cv.getContext('2d'), t, 128); PIC[t] = cv;
 }
 // ボス戦の 箱と 足の 色（L=ひだりて R=みぎて B=りょうて U=アッパー f=ひだりあし g=みぎあし）
 const NCOL = { L: '#3aa8ff', R: '#ff3d55', B: '#ffd23a', U: '#4dff8a', f: '#3aa8ff', g: '#ff3d55', F: '#3aa8ff', G: '#ff3d55', H: '#ff5a3a' };
 const NLAB = { L: 'ひだりパンチ！', R: 'みぎパンチ！', W: 'りょうて ひらいて！', N: 'りょうて まえ！', P: 'りょうて ひだりへ！', Q: 'りょうて みぎへ！', w: 'りょうて ひらいて キープ！', U: 'アッパー！',
   f: 'ひだりあし！', g: 'みぎあし！', F: 'ひだりあし おおまた！', G: 'みぎあし おおまた！', h: 'あしぶみ れんだ！', o: 'おおまたで キープ！', H: 'しゃがんで！' };
-const LABEL = { jump: ['ジャンプ！', 'JUMP!'], duck: ['しゃがんで！', 'DUCK!'], left: ['ひだりへ！', 'LEFT!'], right: ['みぎへ！', 'RIGHT!'], clap: ['はくしゅ！', 'CLAP!'], punch: ['ワンツー！', 'ONE TWO!'], banzai: ['ばんざい！', 'HANDS UP!'] };
-const GIONGO = { jump: ['ピョーン！', 'ポーン！', 'ビョン！'], duck: ['スッ！', 'シュバッ！'], left: ['ヒュンッ！', 'サッ！'], right: ['ヒュンッ！', 'サッ！'], clap: ['パァン！', 'パチーン！'], punch: ['ドカッ！', 'バキィッ！', 'ズドン！'], banzai: ['キラーン！', 'わーい！'] };
+const LABEL = { jump: ['ジャンプ！', 'JUMP!'], duck: ['しゃがんで！', 'DUCK!'], left: ['ひだりへ！', 'LEFT!'], right: ['みぎへ！', 'RIGHT!'], clap: ['はくしゅ！', 'CLAP!'], punch: ['ワンツー！', 'ONE TWO!'], banzai: ['ばんざい！', 'HANDS UP!'], bigjump: ['おおジャンプ！', 'BIG JUMP!'], sprint: ['ダッシュ！', 'SPRINT!'], dodge: ['かがんで よけて！', 'DODGE!'], stop: ['ストップ！', 'STOP!'], gogo: ['ゴー！', 'GO!'], mirror: ['ポーズを まねして！', 'MIRROR ME!'] };
+const GIONGO = { jump: ['ピョーン！', 'ポーン！', 'ビョン！'], duck: ['スッ！', 'シュバッ！'], left: ['ヒュンッ！', 'サッ！'], right: ['ヒュンッ！', 'サッ！'], clap: ['パァン！', 'パチーン！'], punch: ['ドカッ！', 'バキィッ！', 'ズドン！'], banzai: ['キラーン！', 'わーい！'], bigjump: ['ビョーーン！', 'ドーン！'], sprint: ['ダダダッ！', 'ビューン！'], dodge: ['シュバッ！', 'サッ！'], stop: ['ピタッ！'], gogo: ['ダッ！', 'いくぞ！'], mirror: ['ピッタリ！', 'スポッ！'] };
 
 // ================= 音 =================
 const AU = { ctx: null, master: null, bgm: null, sfx: null, buf: {}, song: null, next: 0, step: 0, noise: null };
@@ -248,7 +280,7 @@ function initAudio() {
   AU.vo = ctx.createGain(); AU.vo.gain.value = 1.1; AU.vo.connect(AU.master);
   const nb = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate), d = nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; AU.noise = nb;
   setInterval(schedule, 25);
-  for (const k of ['jump', 'duck', 'left', 'right', 'clap', 'punch', 'banzai', 'nice', 'great', 'good', 'oshii', 'perfect', 'go', 'c3', 'c2', 'c1', 'gate', 'tpose', 'tok', 'boss', 'win', 'finale', 'fin', 'w1', 'w2', 'w3', 'w4', 'ashi', 'upper', 'hitit', 'ryote', 'clear', 'lpunch', 'rpunch'])
+  for (const k of ['jump', 'duck', 'left', 'right', 'clap', 'punch', 'banzai', 'nice', 'great', 'good', 'oshii', 'perfect', 'go', 'c3', 'c2', 'c1', 'gate', 'tpose', 'tok', 'boss', 'win', 'finale', 'fin', 'w1', 'w2', 'w3', 'w4', 'ashi', 'upper', 'hitit', 'ryote', 'clear', 'lpunch', 'rpunch', 'bigjump', 'sprint', 'dodge', 'stop', 'gogo', 'mirror', 's_bosses', 's_portal', 's_mix', 's_duo', 's_team', 's_escaped', 's_keep', 's_great', 's_show', 's_almost', 's_giveall', 's_incoming', 's_angry', 's_closed', 's_best', 's_thanks', 's_mirror', 's_kcal'])
     fetch(`voice/${k}.mp3`).then(r => r.arrayBuffer()).then(a => ctx.decodeAudioData(a)).then(b => AU.buf[k] = b).catch(() => {});
 }
 let lastVoice = 0;
@@ -275,6 +307,8 @@ const mf = m => 440 * Math.pow(2, (m - 69) / 12);
 const SONGS = {
   night: { bpm: 117.5, root: 62, dr: 'soft', lead: 'triangle', bell: true, ch: [[0], [7], [9, 'm'], [5]],
     mel: '9 - 7 - 4 - 2 - | 4 - - - . . . . | 7 - 9 - 11 - 9 7 | 9 - - - . . . .' },
+  pro: { bpm: 117.5, root: 62, dr: 'pop', lead: 'square', ch: [[0], [7], [9, 'm'], [5], [0], [7], [5], [7]],
+    mel: '9 - 7 9 12 - 9 7 | 7 - 4 - 2 - . . | 4 - 7 - 9 7 4 2 | 4 - - - . . . . | 9 - 7 9 14 - 12 9 | 11 - 9 7 4 - 2 . | 5 - 4 2 4 - 7 - | 9 - - - 7 - 11 -' },
   meadow: { bpm: 129.76, root: 64, dr: 'pop', lead: 'square', ph: .471, ch: [[0, 'm'], [8], [3], [10], [0, 'm'], [8], [10], [7]],
     mel: '7 - 7 5 7 - 10 - | 12 - 10 7 3 - . . | 7 - 7 5 7 - 14 - | 12 - 10 - 9 - 5 . | 7 - 12 - 15 - 14 12 | 10 - 12 - 15 - 19 - | 17 - 15 - 14 - 10 - | 11 - 14 - 19 - 18 -' },
   library: { bpm: 143.36, root: 64, dr: 'smooth', lead: 'triangle', bell: true, ph: .132, ch: [[0], [9, 'm'], [5], [7], [0], [4, 'm'], [5], [7]],
@@ -368,22 +402,54 @@ function sfx(k) {
 // ================= ステージの ようす =================
 const V = 13; // 走る 速さ（m/s）
 const WORLDS = [
+  // 走るところの 合図も 動画から 読みとった 時刻（「はじまり 種類 おわり」。C＝はくしゅ れんぞく：「はじまり C おわり さいしょ さいご」）
+  // J ジャンプ BJ おおジャンプ D しゃがむ L/R よこ P ワンツー SP ダッシュ DG かがんで よける ST ストップ GO ゴー M ポーズを まねる
+  { key: 'meadow', song: 'pro', pro: true, name: 'はじまりの みち', vo: 'w0', vs: 44.0, endAt: 76.4, sil: [46.2, 46.7], say: [[68.1, 'かべの ポーズを まねしよう！', 's_mirror']],
+    cues: '50.97 J 52.90, 53.17 J 54.97, 55.23 D 57.07, 57.40 L 59.13, 59.40 R 61.23, 61.50 BJ 63.37, 64.97 C 68.03 65.70 67.70, 73.30 M 76.37' },
   // ボス戦の 譜面は 動画（mariocirbyrun.mp4）から 読みとった 時刻（秒）。base＝道が 出た 時刻。
   // L/R＝左手/右手パンチ W＝両手を ひらいて N＝両手を まえ P/Q＝両手で 左/右 U＝アッパー
   // f/g＝左足/右足（内がわ） F/G＝左足/右足（外がわ・おおまた） h＝内がわ 両足 キープ o＝外がわ 両足 キープ w＝両手 ひらいて キープ（数字＝長さ） H＝しゃがむ
-  { key: 'meadow', name: 'ぽかぽか そうげん', vo: 'w1', runEnd: 58,
-    ev: [[4, 'jump'], [8, 'jump'], [12, 'duck'], [16, 'left'], [20, 'right'], [24, 'clap'], [28, 'jump'], [32, 'duck'], [36, 'punch'], [40, 'banzai'], [44, 'left'], [47.5, 'jump'], [51, 'right'], [54.5, 'clap']],
+  { key: 'meadow', name: 'ぽかぽか そうげん', vo: 'w1', vs: 90.0, mapAt: 180.0, sil: [90.0, 95.2], say: [],
+    cues: '95.30 J 97.23, 97.33 D 99.20, 99.33 BJ 101.20, 101.43 J 103.20, 103.30 BJ 105.20, 105.30 P 107.57, 109.27 J 111.03, 111.17 D 113.03, 113.17 J 115.03, 115.13 D 117.03, 117.17 L 119.03, 119.27 J 121.03, 121.27 R 123.03, 123.27 P 125.43, 127.07 D 128.87, 129.07 J 130.87, 131.07 D 132.87, 133.33 SP 136.23',
     boss: { name: 'どんぐり大王 ドングラン', base: 140.7, chart: '147.13L 147.6R 148.27L 148.72R 148.98L 149.45R 150.05L 150.2W 150.65N 151.15W 151.6N 153.3f 153.75g 154.2f 154.65g 155.1f 155.55f 155.55g 156.0f 156.0g 156.95R 157.45L 157.7R 158.2L 158.85R 161.0H 162.0f 162.45g 162.95f 163.4g 163.9f 164.35g 164.8f 165.25f 165.25g 165.8L 166.25R 166.6L 167.05W 167.5N 168.0W 168.45N 169.85f 170.3g 170.8f 171.25g 171.7f 172.15g 172.65F 172.65G 172.85R 173.45L 174.15R 174.55L 174.75R 175.45L 175.95R 176.45L 176.55R 177.05L 177.5U' } },
-  { key: 'library', name: 'ほしの としょかん', vo: 'w2', runEnd: 52,
-    ev: [[3.5, 'jump'], [6.6, 'clap'], [9.7, 'punch'], [12.8, 'duck'], [15.9, 'right'], [19, 'jump'], [22.1, 'banzai'], [25.2, 'left'], [28.3, 'punch'], [31.4, 'duck'], [34.5, 'clap'], [37.6, 'jump'], [40.7, 'right'], [43.8, 'punch'], [46.9, 'left'], [50, 'jump']],
+  { key: 'library', name: 'ほしの としょかん', vo: 'w2', vs: 200.0, mapAt: 308.0, sil: [201.8, 204.4], say: [],
+    cues: '204.47 D 206.23, 206.23 BJ 208.27, 208.27 J 210.17, 210.17 BJ 212.07, 212.07 D 213.00, 213.00 M 215.93, 215.93 J 217.87, 217.87 R 219.77, 219.77 J 221.73, 221.73 L 223.40, 223.40 DG 225.43, 228.33 J 230.10, 230.27 P 232.43, 234.00 J 236.00, 236.00 C 239.87 236.70 239.20, 239.87 J 241.80, 241.80 BJ 243.70, 243.70 C 245.60 244.20 245.20, 245.60 J 247.57, 247.57 D 249.33, 254.87 L 256.40, 256.40 J 257.83, 257.83 R 259.27, 259.27 D 260.57, 260.57 L 261.90, 261.90 R 263.13, 263.13 L 264.37, 264.37 J 265.50, 265.50 L 266.57, 266.57 D 267.50, 269.93 SP 271.83',
     boss: { name: 'まほうの ずかん ブックン', base: 272.0, chart: '278.3L 278.7R 279.2L 279.5W 279.95N 280.4W 280.8N 281.2W 281.65N 282.05W 282.45N 283.6f 284.05g 284.45f 284.9g 285.3f 285.75g 286.15f 286.6g 287.0f 287.45g 287.85f 287.85g 288.9H 289.5W 289.95N 290.4W 290.8N 291.25W 291.65N 292.05W 292.45N 293.75F 294.2G 294.6F 295.05G 295.45F 295.9G 296.25F 296.65G 297.05F 297.5G 297.9F 297.9G 298.4L 298.6R 299.0L 299.55P 300.0Q 300.45P 300.85Q 301.3P 301.7Q 302.1P 302.55Q 303.8f 304.25g 304.6F 304.6G 305.05f 305.05g 305.5R 306.0L 306.15U' } },
-  { key: 'circus', name: 'きらきら サーカス', vo: 'w3', runEnd: 51,
-    ev: [[3.5, 'jump'], [7, 'clap'], [10.5, 'duck'], [14, 'right'], [17.5, 'punch'], [21, 'jump'], [24.5, 'banzai'], [28, 'left'], [31.5, 'clap'], [35, 'duck'], [38.5, 'punch'], [42, 'jump'], [45, 'right'], [48, 'clap']],
+  { key: 'circus', name: 'きらきら サーカス', vo: 'w3', vs: 328.0, mapAt: 452.0, sil: [328.0, 332.9], say: [],
+    cues: '332.97 BJ 334.90, 334.90 D 336.80, 336.80 J 338.60, 338.60 BJ 340.50, 340.50 J 342.33, 342.33 BJ 344.20, 344.20 P 346.30, 347.87 L 349.70, 349.70 J 351.47, 351.47 R 353.43, 353.43 L 355.17, 357.97 L 359.30, 359.30 ST 361.70, 361.70 GO 362.57, 363.87 M 366.77, 366.77 C 368.70 367.20 368.20, 368.70 P 370.80, 372.23 DG 374.13, 376.87 BJ 378.73, 378.73 J 380.60, 380.60 D 381.93, 381.93 M 384.93, 384.93 J 386.77, 386.77 R 388.60, 388.60 J 390.47, 390.47 L 392.30, 392.30 D 394.10, 394.10 C 395.90 394.70 395.70, 397.10 SP 400.10',
     boss: { name: 'ボヨヨン・ピエロ', base: 404.5, chart: '410.0W 410.45N 410.9W 411.35N 411.8W 412.2N 412.65W 413.1N 413.5W 413.95N 414.35W 414.8N 416.1H 417.15f 417.6g 418.0f 418.45F 418.45G 418.8h1.7 420.45Q 420.95Q 421.35P 421.6P 421.95Q 422.45Q 422.95P 424.35F 424.75G 425.15F 425.55G 425.95F 425.95G 426.35f 426.35g 426.95L 427.25R 427.6L 427.75W 428.15N 428.55W 429.0N 430.35F 430.75G 431.15f 431.55g 431.95F 432.35f 432.35g 432.75F 432.75G 433.55f 434.3W 434.7N 435.1W 435.5N 436.75f 437.15g 437.55f 437.95g 438.35f 438.75f 438.75g 439.1f 439.1g 439.55L 439.95R 440.3L 440.55W 440.95N 441.35W 441.75N 442.15W 442.55N 442.95W 443.4N 444.8F 445.2G 445.6F 446.0G 446.4F 446.8G 447.2F 447.6G 448.0F 448.4G 448.75f 448.75g 449.5H 449.9U' } },
-  { key: 'lava', name: 'マグマの おしろ', vo: 'w4', runEnd: 53,
-    ev: [[3.5, 'jump'], [6.7, 'duck'], [9.9, 'left'], [13.1, 'jump'], [16.3, 'punch'], [19.5, 'right'], [22.7, 'duck'], [25.9, 'clap'], [29.1, 'jump'], [32.3, 'left'], [35.5, 'banzai'], [38.7, 'punch'], [41.9, 'duck'], [45.1, 'right'], [48.3, 'jump'], [51, 'clap']],
+  { key: 'lava', name: 'マグマの おしろ', vo: 'w4', vs: 472.0, mapAt: 644.0, sil: [475.4, 476.7], say: [[564.6, 'くるぞ！', 's_incoming'], [588.0, 'おこってるぞ！', 's_angry']],
+    cues: '476.73 D 478.30, 478.30 BJ 480.07, 480.07 J 481.80, 481.80 D 483.57, 483.57 J 485.43, 485.43 BJ 486.20, 486.20 M 488.93, 488.93 C 490.77 489.70 490.20, 490.77 J 492.60, 492.60 L 494.30, 496.97 L 498.37, 498.53 P 501.07, 502.20 D 504.00, 504.00 P 506.03, 507.10 ST 509.57, 509.57 GO 510.50, 512.20 BJ 513.97, 513.97 C 515.30 514.70 514.70, 515.30 M 518.07, 518.07 J 519.93, 519.93 D 521.73, 521.73 BJ 523.47, 523.47 DG 525.23, 527.37 M 530.23, 530.23 BJ 532.00, 532.00 L 533.80, 533.80 J 535.60, 535.60 R 537.43, 537.43 C 538.60 538.20 538.20, 538.60 ST 541.10, 541.10 GO 542.03, 543.03 C 544.87 543.70 544.70, 544.87 J 546.57, 546.57 R 548.43, 548.43 J 550.23, 550.23 L 551.97, 551.97 D 553.83, 553.83 J 555.50, 555.50 D 557.37, 557.37 L 559.07, 559.07 J 560.90, 560.90 R 562.63, 562.63 C 564.53 563.20 564.20, 568.67 L 570.17, 570.17 R 571.60, 571.60 D 572.93, 572.93 J 574.40, 574.40 L 575.70, 575.70 D 576.93, 576.93 L 578.13, 578.13 D 579.27, 579.27 R 580.37, 580.37 D 581.33, 581.33 J 582.40, 582.40 D 583.33, 583.33 R 584.23, 584.23 L 585.03, 585.03 J 585.90, 585.90 R 586.57, 586.57 J 587.37, 587.37 D 588.23, 588.23 J 589.07, 589.07 R 590.00, 592.40 SP 594.30',
     boss: { name: 'マグマゴーレム マグドン', base: 594.4, chart: '599.0o1.5 600.6L 601.0R 601.3L 601.75W 602.15N 602.55W 602.95N 603.4W 603.75N 604.2W 604.55N 606.0H 606.9f 607.3g 607.7f 608.1g 608.5f 608.85g 609.3F 609.3G 609.7f 609.7g 610.2L 610.6R 610.95L 611.45W 611.85N 612.3W 612.7N 613.75F 614.15G 614.5F 614.95G 615.35F 615.75f 615.75g 616.1F 616.1G 616.9f 617.85P 618.25Q 618.65P 619.05Q 619.45P 619.85Q 620.25P 620.65Q 621.05P 621.45Q 621.85P 622.25Q 623.3F 623.75G 624.1f 624.5h1.2 626.3o1.2 628.0H 628.95W 629.35N 629.75W 630.15N 630.6W 631.3F 631.75G 632.1F 632.5G 632.9F 633.3G 633.7f 633.7g 634.2L 634.55R 634.9L 635.4W 635.8N 636.2W 636.6N 637.0w1.2 638.6R 638.95L 639.35R 639.75L 640.0U' } }
 ];
+WORLDS.forEach(w => { w.runEnd = w.boss ? w.boss.base - w.vs - .6 : w.endAt - w.vs; });
+const CUEK = { J: 'jump', BJ: 'bigjump', D: 'duck', L: 'left', R: 'right', P: 'punch', SP: 'sprint', DG: 'dodge', ST: 'stop', GO: 'gogo', M: 'mirror', C: 'clap' };
+// 合図 → 判定の 時間。ds〜de＝合図が 出ている あいだ、t＝じゃまものに とどく 時刻、ws〜we＝動いて いい 時間
+function cueEvents(w) {
+  const out = [];
+  for (const str of w.cues.split(',')) {
+    const p = str.trim().split(/\s+/), a = +p[0] - w.vs, type = CUEK[p[1]], b = +p[2] - w.vs, dur = b - a;
+    if (type === 'clap') { for (let t = +p[3] - w.vs; t <= +p[4] - w.vs + .01; t += .5) out.push({ t, type, ds: a, de: b, ws: t - .3, we: t + .3, ser: a }); continue; }
+    const e = { type, ds: a, de: b, ws: a };
+    if (type === 'punch') { e.t = b - .3; e.we = b; }
+    else if (type === 'sprint') { e.t = b; e.we = b + .1; }
+    else if (type === 'stop') { e.t = b; e.we = b; }
+    else if (type === 'gogo') { e.t = a + .6; e.we = b + .1; }
+    else if (type === 'mirror') { e.t = b - .2; e.we = b; }
+    else if (type === 'dodge') { e.t = (a + b) / 2; e.we = b; }
+    else { e.t = a + .55 * Math.min(dur, 1.9); e.we = Math.min(e.t + .35, b + .1); }
+    out.push(e);
+  }
+  return out;
+}
+// ストップの ところでは 止まる。進んだ きょりを 時刻から 引けるように 先に つくる
+function buildPath(w, evs) {
+  const stops = evs.filter(e => e.type === 'stop').map(e => [e.ws + .5, e.we]), N = Math.ceil((w.runEnd + 40) / .02), S = new Float32Array(N + 1);
+  let s = 0;
+  for (let i = 0; i <= N; i++) { S[i] = s; const t = i * .02; let f = 1; for (const [a, b] of stops) if (t > a - .4 && t < b + .6) f = Math.min(f, t < a ? (a - t) / .4 : t > b ? (t - b) / .6 : 0); s += V * f * .02; }
+  G.path = S;
+}
+function pathS(t) { const P = G.path; if (!P) return V * t; const i = clamp(t / .02, 0, P.length - 1), i0 = Math.floor(i), i1 = Math.min(i0 + 1, P.length - 1); return P[i0] + (P[i1] - P[i0]) * (i - i0); }
 const ACCENT = { night: 0xc49bff, meadow: 0xffe14a, circus: 0xff4f8b, lava: 0xff7a1a, library: 0x8fd3ff };
 
 // ---- 空 ----
@@ -665,6 +731,29 @@ function makeObstacle(key, type, dir) {
     g.add(b, st, sh, glow(acc, 3, .5)); g.children[3].position.y = 1.8; g.userData.star = st;
   } else if (type === 'punch') {
     const e = makeEnemy(key); e.scale.setScalar(1.2); g.add(e); g.userData.enemy = e;
+  } else if (type === 'bigjump') {
+    const lo = makeObstacle(key, 'jump'); lo.scale.set(1, 1.9, 1); g.add(lo);
+    g.add(mesh(G_BOX, M(acc), 0, 2.35, 0, 8, .14, .14)); const gl = glow(acc, 7, .5); gl.position.y = 2.35; g.add(gl);
+  } else if (type === 'dodge') {
+    // トゲの ついた ころがる 丸太（頭の 高さ）と、りょうがわの トゲの 柱
+    const bar = new THREE.Group(); bar.position.y = 1.55; const lg = mesh(G_CYL, M(0x6a3a1a), 0, 0, 0, .32, 8, .32); lg.rotation.z = Math.PI / 2; bar.add(lg);
+    for (let i = 0; i < 16; i++) { const a = (i % 2) * Math.PI + (i >> 1) * .7; const c = mesh(G_CONE, M(0xd0c8c0), -3.6 + (i >> 1) * 1.03, Math.cos(a) * .52, Math.sin(a) * .52, .14, .5, .14, 6); c.rotation.x = a; bar.add(c); }
+    g.add(bar); g.userData.dbar = bar;
+    for (const sx of [-1, 1]) { g.add(mesh(G_CYL, M(0x5a3018), sx * 4.3, 1.6, 0, .55, 3.2, .55)); for (let k = 0; k < 6; k++) { const c = mesh(G_CONE, M(0xd0c8c0), sx * 3.75, .5 + k * .5, (k % 2) * .3 - .15, .12, .45, .12, 6); c.rotation.z = sx * Math.PI / 2; g.add(c); } }
+  } else if (type === 'sprint') {
+    // 床の 矢じるし（ここまで ダッシュ）
+    for (let i = 0; i < 7; i++) { const sh = new THREE.Shape(); sh.moveTo(-1.6, 0); sh.lineTo(0, 1.1); sh.lineTo(1.6, 0); sh.lineTo(1.6, .55); sh.lineTo(0, 1.65); sh.lineTo(-1.6, .55); sh.closePath(); const m = new THREE.Mesh(new THREE.ShapeGeometry(sh), B(acc, { transparent: true, opacity: .85, side: THREE.DoubleSide })); m.rotation.x = -Math.PI / 2; m.position.set(0, .03, 6 + i * 5.5); g.add(m); }
+  } else if (type === 'stop' || type === 'gogo') {
+    const red = type === 'stop', col = red ? 0xff2a3a : 0x2ad66a;
+    g.add(mesh(G_CYL, M(0x30304a), -3.9, 2.2, 0, .12, 4.4, .12), mesh(G_CYL, M(0x30304a), 3.9, 2.2, 0, .12, 4.4, .12), mesh(G_BOX, M(0x30304a), 0, 4.4, 0, 8, .3, .3));
+    g.add(mesh(G_BOX, M(0x1d1d2e), 0, 3.5, .1, 2.6, 1.3, .3));
+    g.add(mesh(G_SPH, B(red ? 0xff2a3a : 0x553038), -.6, 3.5, .3, .42, .42, .1), mesh(G_SPH, B(red ? 0x30553a : 0x2ad66a), .6, 3.5, .3, .42, .42, .1));
+    const gl = glow(col, 6, .8); gl.position.set(red ? -.6 : .6, 3.5, .5); g.add(gl);
+    g.add(mesh(G_BOX, B(col, { transparent: true, opacity: .8 }), 0, .03, 0, 8, .04, .5));
+  } else if (type === 'mirror') {
+    // ポーズの あなが あいた かべ（ポーズを まねして くぐる）
+    const tx = new THREE.CanvasTexture(poseWallCanvas()); tx.colorSpace = THREE.SRGBColorSpace;
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(9, 5.4), new THREE.MeshBasicMaterial({ map: tx, transparent: true, side: THREE.DoubleSide })); wall.position.y = 2.7; g.add(wall); g.userData.wall = wall;
   } else if (type === 'banzai') {
     const ring = new THREE.Mesh(starRing(2.4, 1.05, .3), B(0xffe14a, { side: THREE.DoubleSide })); ring.position.y = 2.6;
     const gl = glow(0xffe14a, 8, .55); gl.position.y = 2.6; g.add(gl, ring); g.userData.ring = ring;
@@ -672,6 +761,16 @@ function makeObstacle(key, type, dir) {
   return g;
 }
 
+// ポーズの かべ：白い かべに 青い 人がたの あな（片足で 立って 手を 上で あわせる）
+function poseWallCanvas() {
+  const cv = document.createElement('canvas'); cv.width = 450; cv.height = 270; const c = cv.getContext('2d');
+  c.fillStyle = '#f4f2ee'; c.fillRect(0, 0, 450, 270); c.fillStyle = '#e3dfd8'; for (let i = 0; i < 9; i++) c.fillRect(i * 50, 0, 2, 270);
+  c.save(); c.translate(225, 30); c.fillStyle = c.strokeStyle = '#2f8cff'; c.lineCap = c.lineJoin = 'round';
+  c.beginPath(); c.arc(0, 26, 17, 0, 7); c.fill(); c.lineWidth = 24;
+  const L = (...q) => { c.beginPath(); c.moveTo(q[0], q[1]); for (let i = 2; i < q.length; i += 2) c.lineTo(q[i], q[i + 1]); c.stroke(); };
+  L(0, 50, 0, 130); c.lineWidth = 14; L(-6, 58, -30, 22, -8, -6); L(6, 58, 30, 22, 8, -6); c.lineWidth = 16; L(-6, 130, -10, 232); L(6, 130, 40, 170, 4, 188);
+  c.restore(); return cv;
+}
 // ---- ボス ----
 function makeBoss(key) {
   const g = new THREE.Group(); let parts = {};
@@ -720,8 +819,8 @@ const G = {
   camX: 0, jy: 0, jv: 0, duckK: 0, shake: 0, events: [], gate: null, gateZ: 0, boss: null, bossHp: 0, bossMax: 0, bossT0: 0, bossZ: 0, bossDone: 0,
   pals: [], finale: null, introT: 0, calibT: 0, worldT: 0, time: 0, speedLines: 0
 };
-const ACT = { last: {}, punches: [], hold: {}, any: [], move: null };
-function resetAct() { ACT.last = {}; ACT.punches = []; ACT.hold = {}; ACT.any = []; ACT.move = null; }
+const ACT = { last: {}, punches: [], hold: {}, any: [], move: null, steps: [] };
+function resetAct() { ACT.last = {}; ACT.punches = []; ACT.hold = {}; ACT.any = []; ACT.move = null; ACT.steps = []; }
 const now = () => G.tau;
 
 function clearWorld() {
@@ -752,15 +851,12 @@ function buildWorld(wi) {
   }
   buildScenery(key, L);
   // じゃまもの
-  for (const [t, type] of w.ev) {
-    const o = makeObstacle(key, type); o.position.z = -V * t; W.add(o);
-    G.events.push({ t, type, st: 'wait', o, boss: false, hits: 0 });
+  const evs = cueEvents(w); buildPath(w, evs);
+  for (const e of evs) {
+    const o = makeObstacle(key, e.type); o.position.z = -pathS(e.t); W.add(o);
+    G.events.push({ ...e, st: 'wait', o, boss: false, hits: 0 });
   }
-  if (w.boss) {
-    const bo = makeBoss(key); bo.visible = false; W.add(bo); G.boss = bo;
-  } else {
-    G.gate = makeGate(ACCENT[key]); G.gateZ = -(V * (w.runEnd + 2.6)); G.gate.position.z = G.gateZ; W.add(G.gate);
-  }
+  if (w.boss) { const bo = makeBoss(key); bo.visible = false; W.add(bo); G.boss = bo; }
   addPals();
   G.total += G.events.length;
 }
@@ -788,7 +884,8 @@ function fire(type, side) {
     else if (type === 'step') sfx('step'); else if (type === 'upper') sfx('upper'); else if (type === 'punch') sfx('punch'); else if (type === 'clap') sfx('clap');
     bossInput(type, side); G.kcal += .05; return;
   }
-  if (type === 'step' || type === 'upper') return;
+  if (type === 'step') { ACT.steps.push(t); if (ACT.steps.length > 60) ACT.steps.shift(); if (G.phase === 'play') { sfx('step'); G.kcal += .03; } return; }
+  if (type === 'upper') return;
   if (G.mode !== 'cam' || AUTO) { if (type === 'duck') ACT.hold.duck = t + .85; if (type === 'left') { ACT.hold.left = t + 1.1; ACT.hold.right = -9; } if (type === 'right') { ACT.hold.right = t + 1.1; ACT.hold.left = -9; } if (type === 'banzai') ACT.hold.banzai = t + .6; }
   if (type === 'jump' && G.jy <= .02 && G.phase === 'play') { G.jv = 6.4; sfx('jump'); }
   if (type === 'duck') sfx('duck');
@@ -799,11 +896,16 @@ function fire(type, side) {
   if (G.phase === 'play') G.kcal += .05;
 }
 // 判定（「とまれない」と 同じ 考え方）：合図と 同じ 動きを、まにあう 時間の 中で したときだけ せいこう
-function windowOf(e) { return [e.t - (e.type === 'punch' ? 1.6 : 1.2), e.t + .12]; }
+function windowOf(e) { return [e.ws, e.we]; }
 function satisfied(e, ws, we) {
   const tt = now(), inW = x => x != null && x >= ws && x <= we;
   switch (e.type) {
-    case 'jump': return inW(ACT.last.jump) || (G.jy > .25 && tt > e.t - .45);
+    case 'jump': case 'bigjump': return inW(ACT.last.jump) || (G.jy > .25 && tt > e.t - .45);
+    case 'dodge': return inW(ACT.last.duck) || (held('duck') && tt > ws + .2);
+    case 'sprint': return ACT.steps.filter(inW).length >= 4;
+    case 'gogo': return ACT.steps.some(inW) || ACT.any.some(inW);
+    case 'stop': return tt >= we - .03 && !e.moved;
+    case 'mirror': return (e.hold || 0) >= .4;
     case 'duck': return inW(ACT.last.duck) || (held('duck') && tt > e.t - .9);
     case 'left': case 'right': return inW(ACT.last[e.type]) || (held(e.type) && tt > e.t - 1.1);
     case 'clap': return inW(ACT.last.clap);
@@ -811,12 +913,14 @@ function satisfied(e, ws, we) {
     case 'punch': { const n = ACT.punches.filter(inW).length; if (n > e.hits) { e.hits = n; if (n === 1) onPunch1(e); } return n >= 2; }
   }
 }
-function judgeAll() {
+function judgeAll(dt = 0) {
   const tt = now();
   for (const e of G.events) {
     if (e.st !== 'wait') continue;
     const [ws, we] = windowOf(e);
     if (tt < ws) continue;
+    if (e.type === 'mirror' && held('banzai')) e.hold = (e.hold || 0) + dt;
+    if (e.type === 'stop' && tt > ws + .5 && (ACT.any.some(x => x >= ws + .5 && x <= tt) || (G.mode === 'cam' && POSE.ok && POSE.act > 5))) e.moved = true;
     if (satisfied(e, ws, we)) success(e);
     else if (tt > we) fail(e);
   }
@@ -826,8 +930,10 @@ const ASSIST = { jumpAt: -9, duckTo: -9, laneTo: -9, lane: 0 };
 function success(e) {
   e.st = 'ok'; G.ok++; G.combo++; G.maxCombo = Math.max(G.maxCombo, G.combo); G.kcal += .4;
   const tt = now();
-  if (e.type === 'jump') ASSIST.jumpAt = e.t - .36;
-  if (e.type === 'duck') ASSIST.duckTo = e.t + .3;
+  if (e.type === 'jump' || e.type === 'bigjump') ASSIST.jumpAt = e.t - .36;
+  if (e.type === 'duck' || e.type === 'dodge') ASSIST.duckTo = Math.max(e.t + .3, tt + .4);
+  if (e.type === 'mirror' && e.o) { const wp2 = objWorldPos(e); burst(wp2.x, 2.6, wp2.z, 0x2f8cff, 70, 7); ringFx({ x: wp2.x, z: wp2.z }, 0x9fd8ff); e.o.userData.wall.material.opacity = .25; sfx('pop'); }
+  if (e.type === 'sprint') G.speedLines = 1.5;
   if (e.type === 'left' || e.type === 'right') { ASSIST.laneTo = e.t + .35; ASSIST.lane = e.type === 'left' ? -1 : 1; }
   const wp = objWorldPos(e);
   if (e.type === 'clap' && e.o) { burst(wp.x, 1.8, wp.z, ACCENT[WKEY()], 60, 7); ringFx(wp, 0xffffff); e.o.visible = false; sfx('pop'); }
@@ -838,8 +944,7 @@ function success(e) {
     G.shake = .35;
   }
   if ((e.type === 'left' || e.type === 'right' || e.type === 'jump' || e.type === 'duck') && e.boss && e.o) { /* そのまま 通りすぎる */ }
-  giongo(pick(GIONGO[e.type]), e.type);
-  sfx('ok');
+  sfx('ok'); // 動画と おなじく 走る ところでは 文字を 出さない
   const praise = G.combo > 0 && G.combo % 5 === 0 ? 'great' : pick(['nice', 'good', null, null]);
   if (praise) setTimeout(() => voice(praise), 380);
   comboUI();
@@ -851,14 +956,12 @@ function fail(e) {
   if (e.o && e.boss) e.o.visible = false;
   if (e.type === 'punch' && e.boss) bossHit(false);
   if (e.type === 'clap') splash();
-  giongo(pick(['おしい！', 'ドテッ', 'あわわ']), 'ng');
   setTimeout(() => voice('oshii'), 150);
 }
 function onPunch1(e) {
   G.kcal += .1; G.shake = .2;
   if (e.boss) { bossHit(true, true); return; }
   const en = e.o && e.o.userData.enemy; if (en) { en.userData.recoil = 1; const wp = objWorldPos(e); burst(wp.x, 1.2, wp.z + .5, 0xffffff, 16, 4); }
-  giongo('ワン！', 'punch');
 }
 function objWorldPos(e) { const v = new THREE.Vector3(); if (e.boss && e.type === 'punch' && G.boss) G.boss.getWorldPosition(v); else if (e.o) e.o.getWorldPosition(v); else v.set(0, 0, camera.position.z - 6); return v; }
 const WKEY = () => G.phase === 'intro' ? 'night' : WORLDS[G.wi].key;
@@ -1075,7 +1178,6 @@ function updateBossFight(dt) {
   if (G.boss && G.boss.visible) animBossFight(dt);
   // おわり
   if (!G.bossDone && G.bn.every(n => n.st !== 'wait') && tt > G.bn[G.bn.length - 1].t + .5) { G.bossDone = tt; bossDefeat(); }
-  if (G.bossDone && tt - G.bossDone > 3.2) exitBossFight();
 }
 function animBossFight(dt) {
   const b = G.boss, u = b.userData, t = G.time;
@@ -1219,21 +1321,23 @@ const ringC = $('ring').getContext('2d');
 let shownE = null, saidE = null;
 function updatePrompt() {
   const tt = now(); let e = null;
-  if (G.phase === 'play') e = G.events.find(x => x.st === 'wait' && x.t - tt < 2.9 && x.t - tt > -.2) || null;
+  if (G.phase === 'play') e = G.events.find(x => x.st === 'wait' && tt >= x.ds && tt <= x.de) || null;
   const P = $('prompt'), bt = $('bottom');
   if (!e) { P.style.opacity = 0; if (!G.finale) bt.textContent = ''; shownE = null; return; }
   const lead = e.t - tt;
   if (shownE !== e) { shownE = e; $('plabel').innerHTML = `${LABEL[e.type][0]}<small>${LABEL[e.type][1]}</small>`; }
-  if (saidE !== e && lead < 2.3) { saidE = e; voice(e.type, true); }
+  if (saidE !== e) { if (e.ser == null || !saidE || saidE.ser !== e.ser) voice(e.type, true); saidE = e; }
   P.style.opacity = 1;
-  const nowZ = lead < 1.0; P.classList.toggle('now', nowZ); bt.classList.toggle('now', nowZ);
+  const multi = ['sprint', 'stop', 'gogo', 'mirror', 'dodge', 'punch'].includes(e.type);
+  const nowZ = multi ? tt >= e.ws : lead < .5; P.classList.toggle('now', nowZ); bt.classList.toggle('now', nowZ);
   bt.textContent = nowZ ? `いま！ ${LABEL[e.type][0]}` : `つぎは ${LABEL[e.type][0]}`;
+  if (e.type === 'sprint' && nowZ) bt.textContent = `ダッシュ！ ${Math.min(4, ACT.steps.filter(x => x >= e.ws).length)}/4`;
   if (e.type === 'punch' && e.hits === 1) bt.textContent = 'もう いっぱつ！';
   // 輪
   const c = ringC, S = 208; c.clearRect(0, 0, S, S);
   c.fillStyle = nowZ ? '#3a1a6a' : '#1d1640'; c.beginPath(); c.arc(S / 2, S / 2, 92, 0, 7); c.fill();
   c.lineWidth = 12; c.strokeStyle = 'rgba(255,255,255,.25)'; c.beginPath(); c.arc(S / 2, S / 2, 96, 0, 7); c.stroke();
-  const k = clamp(lead / 2.9, 0, 1); c.strokeStyle = nowZ ? '#ffd54a' : '#7fd8ff'; c.beginPath(); c.arc(S / 2, S / 2, 96, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); c.stroke();
+  const k = clamp((e.de - tt) / Math.max(.3, e.de - e.ds), 0, 1); c.strokeStyle = nowZ ? '#ffd54a' : '#7fd8ff'; c.beginPath(); c.arc(S / 2, S / 2, 96, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * k); c.stroke();
   c.drawImage(PIC[e.type], S / 2 - 70, S / 2 - 74, 140, 140);
   c.lineWidth = 4; c.strokeStyle = '#fff'; c.beginPath(); c.arc(S / 2, S / 2, 103, 0, 7); c.stroke();
 }
@@ -1241,6 +1345,8 @@ function progUI() {
   let f = 0;
   if (G.phase === 'play') { const w = WORLDS[G.wi], end = w.boss ? w.runEnd + .6 + (w.boss.len || (w.boss.len = Math.max(...parseChart(w.boss).map(n => n.rel + n.dur)))) + 4 : w.runEnd + 2.6; f = (G.wi + clamp(G.tau / end, 0, 1)) / WORLDS.length; }
   else if (G.phase === 'finale' || G.phase === 'result') f = 1;
+  else if (G.phase === 'story') f = G.progLast || 0;
+  if (G.phase === 'play') G.progLast = f;
   $('progFill').style.width = (f * 100) + '%'; $('progMark').style.left = (f * 100) + '%';
 }
 (() => { for (let i = 1; i <= WORLDS.length; i++) { const s = document.createElement('div'); s.className = 'pstar'; s.textContent = '★'; s.style.left = (100 * i / WORLDS.length) + '%'; $('prog').appendChild(s); } })();
@@ -1358,7 +1464,7 @@ function skel(c, lm, w, h, lw, col, ox = 0, oy = 0, sc = 1) {
 }
 
 // ================= 白い ふちどりの 人（はじまりと おわり） =================
-function drawSilhouette(cv, pose) {
+function drawSilhouette(cv, pose, outline) {
   const c = cv.getContext('2d'), w = cv.width, h = cv.height; c.clearRect(0, 0, w, h);
   const s = h / 10, cx = w / 2;
   // pose: { la, ra } うでの 角度（0=下, PI/2=よこ, PI=上）
@@ -1371,35 +1477,50 @@ function drawSilhouette(cv, pose) {
     c.fillStyle = col; c.beginPath(); c.ellipse(cx, 1.5 * s, .62 * s + (wd - .55 * s) / 2, .78 * s + (wd - .55 * s) / 2, 0, 0, 7); c.fill();
   };
   c.save(); c.translate(w * .08, h * .1); c.scale(.84, .84);
-  c.shadowColor = '#bfe6ff'; c.shadowBlur = 16; path(.62 * s + 6, '#fff'); c.shadowBlur = 0; path(.62 * s, '#000');
+  c.shadowColor = '#bfe6ff'; c.shadowBlur = 16; path(.62 * s + 6, '#fff'); c.shadowBlur = 0; if (outline) c.globalCompositeOperation = 'destination-out'; path(.62 * s, '#000'); c.globalCompositeOperation = 'source-over';
   c.restore();
 }
 
 // ================= 動き（フェーズ） =================
 let CAMZ = 0;
 function startPlay(wi) {
-  G.phase = 'play'; G.wi = wi; G.tau = 0; G.s = 0; G.v = V; G.sub = 'run'; G.bossDone = 0; resetAct();
-  buildWorld(wi); const w = WORLDS[wi];
-  banner(`STAGE ${wi + 1}`, w.name); setTimeout(() => voice(w.vo, true), 300);
-  playSong(w.key); flash(1); sfx('gate');
+  G.phase = 'play'; G.wi = wi; G.tau = 0; G.s = 0; G.v = V; G.sub = 'run'; G.bossDone = 0; resetAct(); G.sayI = 0;
+  buildWorld(wi); const w = WORLDS[wi]; storyUI(false); $('runsil').drawn = 0;
+  if (w.pro) { bigText('GO!'); voice('go', true); sfx('go'); }
+  else if (ONLY != null) { banner(`STAGE ${wi}`, w.name); setTimeout(() => voice(w.vo, true), 300); }
+  playSong(w.song || w.key); flash(1); sfx('gate');
   $('bossbar').classList.add('hide'); $('bossbar').classList.remove('fight'); $('bottom').classList.remove('small'); G.arena = null; G.bn = []; setPad('run');
 }
-function nextWorld() { if (ONLY != null) { G.phase = 'done'; flash(1); sfx('banzai'); bigText('ゴール！'); setTimeout(showResult, 1500); return; } if (G.wi + 1 < WORLDS.length) startPlay(G.wi + 1); else startFinale(); }
+function nextWorld() { endWorld(); }
+// ステージの おわり：動画と 同じ 地図・ことばを はさんで 次へ
+function endWorld() {
+  $('runsil').style.opacity = 0;
+  if (ONLY != null) { G.phase = 'done'; flash(1); sfx('banzai'); bigText('ゴール！'); setTimeout(showResult, 1500); return; }
+  const wi = G.wi; startStory(AFTER[wi], () => wi + 1 < WORLDS.length ? startPlay(wi + 1) : showResult());
+}
+// 走って いる あいだの 白い 人がた（立ち位置の 合図）・ひとこと・100kcal
+function runExtras(w) {
+  const vt = G.tau + w.vs, rs = $('runsil');
+  const on = w.sil && vt >= w.sil[0] && vt <= w.sil[1];
+  rs.style.opacity = on ? 1 : 0; if (on && !rs.drawn) { drawSilhouette(rs, { la: .12, ra: .12 }, true); rs.drawn = 1; }
+  while (w.say && G.sayI < w.say.length && vt >= w.say[G.sayI][0]) { const [, tx, vo] = w.say[G.sayI++]; sayText(tx); voice(vo, true); }
+  if (!G.said100 && G.kcal >= 100) { G.said100 = 1; sayText('100kcal もえた！'); voice('s_kcal', true); }
+}
+function sayText(t) { const d = $('say'); d.textContent = t; d.className = ''; void d.offsetWidth; d.className = 'show'; }
 function updatePlay(dt) {
   const w = WORLDS[G.wi];
   G.tau += dt;
   // 速さ
-  if (G.sub === 'run') { G.v = V; if (w.boss && G.tau > w.runEnd + .6) startBossFight(w); }
+  if (G.sub === 'run') { if (w.boss && G.tau > w.runEnd + .6) { startBossFight(w); return; } if (!w.boss && G.tau >= w.runEnd) { endWorld(); return; } }
   if (G.sub === 'boss') {
     updateBossFight(dt);
+    if (G.phase === 'play' && G.bossDone && G.tau >= w.mapAt - w.vs && G.tau - G.bossDone > .3) { endWorld(); return; }
     G.kcal += dt * (G.mode === 'cam' && POSE.ok ? .09 + .22 * clamp(POSE.act / 4, 0, 1) : .16);
     return;
   }
-  if (G.sub === 'exit') G.v = damp(G.v, V, .5, dt);
-  G.s += G.v * dt;
-  // ゲートを くぐったら 次へ
-  if (G.gate && -G.s < G.gateZ + .5) { nextWorld(); return; }
-  judgeAll();
+  { const s0 = G.s; G.s = pathS(G.tau); G.v = (G.s - s0) / Math.max(dt, 1e-4); }
+  runExtras(w);
+  judgeAll(dt);
   // カロリー
   G.kcal += dt * (G.mode === 'cam' && POSE.ok ? .09 + .22 * clamp(POSE.act / 4, 0, 1) : .16);
 }
@@ -1421,13 +1542,13 @@ function updatePals(dt, running = true) {
       const ahead = 6.5 + i * .8;
       for (const e of G.events) { if (e.boss) continue; const rel = (e.t - G.tau) - ahead / V; if (rel < .45 && rel > -.35) { act = e.type; break; } }
       if (act === 'left') tx = p.x - 2.4; if (act === 'right') tx = p.x + 2.4;
-      if (act === 'jump' && p.y <= 0 && p.vy <= 0) p.vy = 6.5;
+      if ((act === 'jump' || act === 'bigjump') && p.y <= 0 && p.vy <= 0) p.vy = act === 'bigjump' ? 8.5 : 6.5;
       o.position.z = camZ - ahead;
       if (G.sub === 'boss') { o.position.z = Math.max(camZ - ahead, G.bossZ + 6); }
     }
     p.side = damp(p.side, tx, .14, dt); p.vy -= 18 * dt; p.y = Math.max(0, p.y + p.vy * dt); if (p.y === 0) p.vy = Math.max(0, p.vy);
     o.position.x = p.side; o.position.y = p.y + (running ? Math.abs(Math.sin(p.ph)) * .12 : 0);
-    const sq = act === 'duck' ? .65 : 1; o.scale.y = damp(o.scale.y, sq * (o.userData.s || 1), .06, dt);
+    const sq = act === 'duck' || act === 'dodge' ? .65 : 1; o.scale.y = damp(o.scale.y, sq * (o.userData.s || 1), .06, dt);
     if (u.feet) { u.feet[0].position.z = .05 + Math.sin(p.ph) * .18; u.feet[1].position.z = .05 - Math.sin(p.ph) * .18; }
     if (u.wings) { u.wings[0].rotation.z = Math.sin(p.ph * 1.5) * .6; u.wings[1].rotation.z = -Math.sin(p.ph * 1.5) * .6; }
     if (act === 'clap' || act === 'banzai') o.rotation.z = Math.sin(p.ph) * .2; else o.rotation.z = 0;
@@ -1439,6 +1560,7 @@ function updateObstacles(dt) {
     if (u.enemy) { const en = u.enemy; en.position.y = Math.abs(Math.sin(G.time * 5 + e.t)) * .3; en.userData.recoil = Math.max(0, (en.userData.recoil || 0) - dt * 3); en.position.z = -en.userData.recoil * 1.2; en.rotation.x = -en.userData.recoil * .5; }
     if (u.star) u.star.rotation.y = G.time * 3;
     if (u.ring) u.ring.rotation.z = G.time * .8;
+    if (u.dbar) u.dbar.rotation.x = G.time * 4;
     if (u.roll && !e.boss) u.roll.rotation.x = G.time * 2;
     if (u.spin) e.o.children.forEach((c, i) => { if (c.isSprite) c.scale.setScalar(1.6 + Math.sin(G.time * 14 + i) * .3); });
   }
@@ -1481,16 +1603,17 @@ function updateIntro(dt) {
     o.rotation.y = 0;
     p.o.userData.s = 1;
   });
-  if (t > 1.0 && !G.saidGate) { G.saidGate = 1; voice('gate', true); talk('ほしの ゲートが ひらいた！', 2200); sfx('gate'); }
+  if (G.phase === 'story') { /* 動画の はじまりの 場面で つかう */ }
+  else if (t > 1.0 && !G.saidGate) { G.saidGate = 1; voice('gate', true); talk('ほしの ゲートが ひらいた！', 2200); sfx('gate'); }
   if (t > 4.3 && !G.saidRun) { G.saidRun = 1; talk('いっしょに はしろう！', 1800); }
   camera.position.set(Math.sin(t * .3) * .6, 1.7, lerp(6, 3, clamp(t / 5, 0, 1)));
   camera.lookAt(0, 2, gp.z);
-  if (t > 6.2) toCalib();
+  if (t > 6.2 && G.phase === 'intro') toCalib();
 }
 function toCalib() {
   if (G.mode === 'cam') {
     G.phase = 'calib'; G.calibT = 0; $('calib').classList.remove('hide'); voice('tpose', true);
-  } else countdown();
+  } else afterCalib();
 }
 function updateCalib(dt) {
   const cv = $('silh'); const c = cv.getContext('2d');
@@ -1498,7 +1621,13 @@ function updateCalib(dt) {
   if (POSE.lm) { c.globalAlpha = .9; skel(c, POSE.lm, 600, 450, 6, '#7fe0ff', 0, 75); c.globalAlpha = 1; }
   const k = clamp(POSE.tpose / 1.0, 0, 1); $('calibBar').style.width = (k * 100) + '%';
   $('calibMsg').textContent = !CAM.ready ? $('calibMsg').textContent : !POSE.ok ? 'カメラに 全身が うつるように はなれてね' : POSE.tpose > 0 ? 'そのまま…！' : '';
-  if (k >= 1 || (AUTO && (G.calibT += dt) > 1)) { POSE.baseY = null; voice('tok', true); sfx('ok'); $('calib').classList.add('hide'); $('pip').classList.remove('hide'); countdown(); }
+  if (k >= 1 || (AUTO && (G.calibT += dt) > 1)) { POSE.baseY = null; voice('tok', true); sfx('ok'); $('calib').classList.add('hide'); $('pip').classList.remove('hide'); afterCalib(); }
+}
+// じゅんびが できたら：動画と 同じ はじまり（44秒）→ GO
+function afterCalib() {
+  $('hud').classList.remove('hide'); $('kcal').classList.remove('hide'); $('prog').classList.remove('hide');
+  if (ONLY != null) { G.total = 0; startPlay(firstWorld()); if (window.SLAVE) SLAVE.started(); return; }
+  playSong('night'); startStory(OPENING, () => { G.total = 0; startPlay(0); if (window.SLAVE) SLAVE.started(); }, true);
 }
 function countdown() {
   G.phase = 'count'; $('kcal').classList.remove('hide'); $('prog').classList.remove('hide');
@@ -1515,6 +1644,112 @@ function updateCount(dt) {
     G.pals.forEach(p => { p.o.position.z -= dt * V * 1.1; p.o.position.y = Math.abs(Math.sin(G.time * 13)) * .15; });
     if (cz < G.gate.position.z + 1) { G.total = 0; startPlay(firstWorld()); if (window.SLAVE) SLAVE.started(); }
   }
+}
+
+// ---- 動画と 同じ 場面（ことば・地図） ----
+// はじまり：0〜12 ボスが 手を くむ／12〜32 このあと（5つ）／32〜40 ゲート／40〜44 カウント → 44 で GO
+const OPENING = [
+  { k: 'pair', d: 12, talk: [[1.5, 'ボスたちが てを くんだ…！', 's_bosses']] },
+  { k: 'preview', wi: 1, off: 6, d: 4 }, { k: 'preview', wi: 2, off: 14, d: 4 }, { k: 'preview', wi: 3, off: 22, d: 4 }, { k: 'preview', wi: 4, off: 12, d: 4 }, { k: 'preview', wi: 4, off: 60, d: 4 },
+  { k: 'gate', d: 4, text: 'ほしの ゲートが ひらいた！？', v: 's_portal' },
+  { k: 'gate', keep: 1, d: 4, text: 'ふたつの せかいが まざった！', v: 's_mix' },
+  { k: 'count', keep: 1, d: 4 }
+];
+// ステージの あと（地図 → ことば2つ）。秒数は 動画の まま
+const AFTER = [
+  [{ k: 'map', d: 7.6, clear: 0, cur: [0, 3.6] }, { k: 'stage', key: 'meadow', d: 4, text: 'ボスが まちうけてる！', v: 's_duo' }, { k: 'stage', keep: 1, d: 2, text: 'みんなで いこう！', v: 's_team' }],
+  [{ k: 'map', d: 12, clear: 0, stamp: [0, 4], cur: [1, 8] }, { k: 'stage', key: 'library', d: 4, text: 'ボスが にげた！', v: 's_escaped' }, { k: 'stage', keep: 1, d: 4, text: 'このまま はしろう！', v: 's_keep' }],
+  [{ k: 'map', d: 12, clear: 1, stamp: [1, 4], cur: [2, 8] }, { k: 'stage', key: 'circus', d: 4, text: 'いい ちょうし！', v: 's_great' }, { k: 'stage', keep: 1, d: 4, text: 'ショータイム！', v: 's_show' }],
+  [{ k: 'map', d: 12, clear: 2, stamp: [2, 4], cur: [3, 8] }, { k: 'stage', key: 'lava', d: 4, text: 'あと すこし！', v: 's_almost' }, { k: 'stage', keep: 1, d: 4, text: 'ぜんりょくで いこう！', v: 's_giveall' }],
+  [{ k: 'map', d: 8, clear: 3, stamp: [3, 4] }, { k: 'all', d: 4, text: 'ゲートが とじた！', v: 's_closed' }, { k: 'all', keep: 1, d: 4, text: 'さいこうの チーム！', v: 's_best' }, { k: 'dark', d: 10, text: 'ありがとう！', v: 's_thanks' }]
+];
+function storyUI(on, dark) {
+  $('story').classList.toggle('hide', !on); $('story').classList.toggle('dark', !!dark);
+  if (!on) { $('stMap').classList.remove('on'); $('stText').textContent = ''; $('stCome').textContent = ''; $('stSkip').style.display = 'none'; }
+}
+function startStory(steps, done, opening) {
+  G.phase = 'story'; G.st = { steps, i: -1, t: 0, done, opening }; $('say').className = ''; $('talk').classList.add('hide');
+  $('prompt').style.opacity = 0; $('bottom').textContent = ''; $('bossbar').classList.add('hide'); $('runsil').style.opacity = 0;
+  storyUI(true); $('stSkip').style.display = opening ? 'block' : 'none';
+  if (!opening) playSong('result');
+  nextStep();
+}
+function skipStory() { const st = G.st; if (G.phase !== 'story' || !st.opening) return; st.i = st.steps.length; nextStep(); }
+function stageScene(keys, look) {
+  clearWorld(); setupWorldLook(look);
+  const fl = new THREE.Mesh(new THREE.CircleGeometry(40, 48), B(0xffffff, { map: floorTex(look, false) })); fl.material.map.wrapS = fl.material.map.wrapT = THREE.RepeatWrapping; fl.material.map.repeat.set(5, 5); fl.rotation.x = -Math.PI / 2; W.add(fl);
+  buildScenery(look, 60);
+  G.stObjs = keys.map((k, i) => { const b = makeBoss(k); const n = keys.length; b.scale.setScalar(n > 1 ? .55 : 1); b.position.set(n > 1 ? (i - (n - 1) / 2) * 3.8 : 0, 0, n > 1 ? -12 : -11); W.add(b); return b; });
+  addPals(0); G.pals[0].o.position.set(-1.7, 0, -4.6); G.pals[1].o.position.set(1.7, 0, -4.6);
+  camera.position.set(0, 2.1, 3); camera.rotation.set(0, 0, 0); camera.lookAt(0, 2.4, -10);
+}
+function nextStep() {
+  const st = G.st; st.i++; st.t = 0; st.fired = {};
+  if (st.i >= st.steps.length) { storyUI(false); const d = st.done; G.st = null; d(); return; }
+  const sp = st.steps[st.i];
+  $('stText').textContent = ''; $('stCome').textContent = ''; $('stMap').classList.toggle('on', sp.k === 'map'); $('story').classList.toggle('dark', sp.k === 'map' || sp.k === 'dark');
+  if (sp.text) { const t = $('stText'); t.textContent = sp.text; t.className = ''; void t.offsetWidth; t.className = 'pop'; if (sp.v) voice(sp.v, true); sfx('pop'); }
+  if (sp.k === 'pair') {
+    buildIntro(); G.pals.forEach(p => p.o.visible = false);
+    G.stObjs = [['meadow', -3.4, .55], ['lava', 3.4, -.55]].map(([k, x, r]) => { const b = makeBoss(k); b.position.set(x, 0, -9); b.rotation.y = r; W.add(b); return b; });
+  } else if (sp.k === 'preview') {
+    const tot = G.total; buildWorld(sp.wi); G.total = tot; G.wi = sp.wi; G.events.forEach(e => e.st = 'show');
+    $('stCome').textContent = 'このあと…！'; flash(.6); sfx('side');
+  } else if (sp.k === 'gate') {
+    if (!sp.keep) { buildIntro(); G.introT = 0; G.saidGate = G.saidRun = 1; sfx('gate'); }
+  } else if (sp.k === 'stage') {
+    if (!sp.keep) stageScene([sp.key], sp.key);
+  } else if (sp.k === 'all') {
+    if (!sp.keep) { stageScene(['meadow', 'library', 'circus', 'lava'], 'meadow'); sfx('banzai'); }
+  } else if (sp.k === 'dark') {
+    clearWorld(); scene.background = new THREE.Color(0x05040e); scene.fog = null; const rs = $('runsil'); drawSilhouette(rs, { la: .12, ra: .12 }, true); rs.style.opacity = 1; rs.drawn = 0;
+  } else if (sp.k === 'map') {
+    buildMap(sp);
+  }
+}
+function updateStory(dt) {
+  const st = G.st; if (!st) return; const sp = st.steps[st.i]; st.t += dt; const t = st.t;
+  const once = (k, f) => { if (!st.fired[k]) { st.fired[k] = 1; f(); } };
+  if (sp.talk) sp.talk.forEach(([at, tx, vo], j) => { if (t >= at) once('talk' + j, () => { talk(tx, 2600); voice(vo, true); }); });
+  if (sp.k === 'pair') {
+    const [a, b] = G.stObjs, k = clamp((t - 5) / 2.5, 0, 1);
+    a.position.x = lerp(-3.4, -2.2, ease(k)); b.position.x = lerp(3.4, 2.2, ease(k)); a.position.y = Math.abs(Math.sin(t * 2.2)) * .2; b.position.y = Math.abs(Math.sin(t * 2.2 + 1)) * .2;
+    if (t > 7.6) once('bump', () => { flash(.7); sfx('boom'); G.shake = .6; burst(0, 3, -9, 0xc49bff, 120, 9); });
+    G.shake = Math.max(0, G.shake - dt * 1.6);
+    camera.position.set((Math.random() - .5) * G.shake * .3, 2.6, lerp(5, 2.5, clamp(t / 12, 0, 1))); camera.lookAt(0, 2.8, -9);
+  } else if (sp.k === 'preview') {
+    const tt = sp.off + t; camera.position.set(Math.sin(t) * .3, 1.75, -pathS(tt)); camera.rotation.set(-.04, 0, 0); G.tau = tt; updateObstacles(dt);
+    G.speedLines = damp(G.speedLines, 1, .3, dt);
+  } else if (sp.k === 'gate' || sp.k === 'count') {
+    updateIntro(dt);
+    if (sp.k === 'count') [['3', 'c3', 0], ['2', 'c2', 1.33], ['1', 'c1', 2.67]].forEach(([n, v, at]) => { if (t >= at) once(n, () => { bigText(n); voice(v, true); sfx('count'); }); });
+  } else if (sp.k === 'stage' || sp.k === 'all') {
+    (G.stObjs || []).forEach((b, i) => { b.position.y = Math.abs(Math.sin(G.time * 2.4 + i)) * .3; b.rotation.y = Math.sin(G.time * .8 + i) * .25; });
+    G.pals.forEach((p, i) => { p.o.position.y = Math.abs(Math.sin(G.time * 6 + i * 1.6)) * .35; p.o.rotation.y = Math.sin(G.time * 2 + i) * .3; });
+    camera.position.x = Math.sin(G.time * .3) * .5; camera.lookAt(0, 2.4, -10);
+  } else if (sp.k === 'map') {
+    if (sp.stamp && t >= sp.stamp[1]) once('stamp', () => { const s2 = $('stMap').children[sp.stamp[0]].querySelector('.st'); s2.classList.add('on', 'pop'); $('stMap').children[sp.stamp[0]].classList.add('done'); sfx('boom'); voice('clear', true); flash(.3); });
+    if (sp.cur && t >= sp.cur[1]) once('cur', () => { [...$('stMap').children].forEach((el, i) => el.classList.toggle('cur', i === sp.cur[0])); sfx('ok'); });
+  }
+  if (t >= sp.d) nextStep();
+}
+// 地図（4つの ステージ。ボスの 絵は その場で 3D から とる）
+const BOSSPIC = {};
+function snapBoss(key) {
+  if (BOSSPIC[key]) return BOSSPIC[key];
+  const Wd = 400, Hd = 240, rt = new THREE.WebGLRenderTarget(Wd, Hd), sc = new THREE.Scene(); sc.background = skyTex(key);
+  sc.add(new THREE.HemisphereLight(0xffffff, 0x50506a, 1.7)); const dl = new THREE.DirectionalLight(0xffffff, 1.8); dl.position.set(3, 7, 9); sc.add(dl);
+  const b = makeBoss(key); sc.add(b); const cam = new THREE.PerspectiveCamera(42, Wd / Hd, .1, 200); cam.position.set(0, 3, 11.5); cam.lookAt(0, 2.7, 0);
+  renderer.setRenderTarget(rt); renderer.render(sc, cam); const buf = new Uint8Array(Wd * Hd * 4); renderer.readRenderTargetPixels(rt, 0, 0, Wd, Hd, buf); renderer.setRenderTarget(null); rt.dispose();
+  const cv = document.createElement('canvas'); cv.width = Wd; cv.height = Hd; const c = cv.getContext('2d'), im = c.createImageData(Wd, Hd);
+  for (let y = 0; y < Hd; y++) for (let x = 0; x < Wd; x++) { const si = ((Hd - 1 - y) * Wd + x) * 4, di = (y * Wd + x) * 4; for (let k = 0; k < 3; k++) im.data[di + k] = 255 * Math.pow(buf[si + k] / 255, 1 / 2.2); im.data[di + 3] = 255; }
+  c.putImageData(im, 0, 0); return (BOSSPIC[key] = cv.toDataURL());
+}
+function buildMap(sp) {
+  const m = $('stMap'); m.innerHTML = '';
+  WORLDS.forEach((w, i) => { if (!w.boss) return; const n = i - 1;
+    const d = document.createElement('div'); d.className = 'tile' + (n < sp.clear ? ' done' : ''); d.style.backgroundImage = `url(${snapBoss(w.key)})`;
+    d.innerHTML = `<div class="bn">${w.boss.name}</div><div class="lv">LEVEL ${n + 1}　${w.name}</div><div class="st${n < sp.clear ? ' on' : ''}">CLEAR!</div>`; m.appendChild(d); });
 }
 
 // ---- さいごの リズム ----
@@ -1600,15 +1835,15 @@ function showResult() {
 }
 
 // ================= ボタン・キー =================
-const KEYMAP = { ArrowUp: ['jump'], ' ': ['jump'], ArrowDown: ['duck'], ArrowLeft: ['left'], ArrowRight: ['right'], c: ['clap'], C: ['clap'], z: ['punch', 0], Z: ['punch', 0], x: ['punch', 1], X: ['punch', 1], b: ['banzai'], B: ['banzai'] };
+const KEYMAP = { ArrowUp: ['jump'], ' ': ['jump'], ArrowDown: ['duck'], ArrowLeft: ['left'], ArrowRight: ['right'], c: ['clap'], C: ['clap'], z: ['punch', 0], Z: ['punch', 0], x: ['punch', 1], X: ['punch', 1], b: ['banzai'], B: ['banzai'], s: ['step'], S: ['step'] };
 // ボス戦の キー：Z X パンチ ／ ← → あしぶみ ／ ↑ アッパー ／ ↓ しゃがむ
 const BOSSKEY = { z: ['punch', 0], Z: ['punch', 0], x: ['punch', 1], X: ['punch', 1], ArrowLeft: ['step', 0], ArrowRight: ['step', 1], a: ['step', 0], A: ['step', 0], d: ['step', 1], D: ['step', 1], ArrowUp: ['upper'], ' ': ['upper'], u: ['upper'], U: ['upper'], ArrowDown: ['duck'] };
 addEventListener('keydown', e => {
   if (e.repeat) return; const a = (G.phase === 'play' && G.sub === 'boss' ? BOSSKEY : KEYMAP)[e.key];
-  if (a && (G.phase === 'play' || G.phase === 'finale')) { fire(a[0], a[1]); e.preventDefault(); } else if (G.phase === 'intro' && (e.key === ' ' || e.key === 'Enter')) toCalib();
+  if (a && (G.phase === 'play' || G.phase === 'finale')) { fire(a[0], a[1]); e.preventDefault(); } else if (G.phase === 'intro' && (e.key === ' ' || e.key === 'Enter')) toCalib(); else if (G.phase === 'story' && e.key === 'Enter') skipStory();
 });
 const PADSET = {
-  run: [['left'], ['jump'], ['duck'], ['right'], ['clap'], ['punch'], ['banzai']].map(([t]) => ({ pic: t, act: [t] })),
+  run: [['left'], ['jump'], ['duck'], ['right'], ['clap'], ['punch'], ['banzai'], ['sprint', 'step']].map(([t, a]) => ({ pic: t, act: [a || t] })),
   boss: [{ pic: 'fist', act: ['punch', 0], cl: 'cL' }, { pic: 'fist', act: ['punch', 1], cl: 'cR', flip: 1 }, { pic: 'upper', act: ['upper'], cl: 'cU' }, { pic: 'duck', act: ['duck'] }, { pic: 'foot', act: ['step', 0], cl: 'cL' }, { pic: 'foot', act: ['step', 1], cl: 'cR', flip: 1 }]
 };
 let padNow = null;
@@ -1633,12 +1868,13 @@ async function begin(mode) {
     if (!ok) { alert('カメラが つかえないので、ボタンで あそびます'); G.mode = 'key'; $('pad').classList.toggle('hide', !isTouch); }
   }
   if (Q.has('skip')) { $('hud').classList.remove('hide'); buildIntro(); countdownSkip(); return; }
-  startIntro();
+  buildIntro(); $('hud').classList.remove('hide'); $('kcal').classList.add('hide'); $('prog').classList.add('hide'); playSong('night'); camera.position.set(0, 1.9, 4); camera.lookAt(0, 2, -16); G.pals.forEach(p => { p.o.scale.setScalar(1); p.o.position.set(p.x, 0, -3); }); toCalib();
 }
 function countdownSkip() { G.total = 0; if (Q.get('w') === 'f') startFinale(); else startPlay(firstWorld()); }
 $('bCam').onclick = () => begin('cam');
 $('bKey').onclick = () => begin('key');
-$('bCalibSkip').onclick = () => { G.mode = 'key'; $('calib').classList.add('hide'); $('pad').classList.toggle('hide', !isTouch); countdown(); };
+$('bCalibSkip').onclick = () => { G.mode = 'key'; $('calib').classList.add('hide'); $('pad').classList.toggle('hide', !isTouch); afterCalib(); };
+$('stSkip').onclick = skipStory;
 $('bAgain').onclick = () => begin(G.mode);
 $('bTwo').onclick = () => { location.href = 'two.html'; };
 // ふたりの ときは タイトルを とばして カメラで すぐ はじめる（T ポーズで じゅんび）
@@ -1667,6 +1903,7 @@ function tick(ts) {
     else if (G.phase === 'play') { updateCamera(dt); updatePals(dt, G.v > 1); updateObstacles(dt); updatePrompt(); }
   } else if (G.phase === 'intro') { updateIntro(dt); G.speedLines = 0; }
   else if (G.phase === 'calib') { updateCalib(dt); }
+  else if (G.phase === 'story') { updateStory(dt); if (!G.st || G.st.steps[G.st.i].k !== 'preview') G.speedLines = damp(G.speedLines, 0, .3, dt); }
   else if (G.phase === 'count') { updateCount(dt); G.speedLines = damp(G.speedLines, G.runIn > 0 ? 1 : 0, .3, dt); }
   else if (G.phase === 'finale') { updateFinale(dt); G.speedLines = 0; }
   else if (G.phase === 'title' || G.phase === 'result') { camera.position.set(Math.sin(G.time * .2) * 2, 2, 7); camera.lookAt(0, 2.6, -16); G.speedLines = 0; if (G.phase === 'title') updatePals(dt, false); }
@@ -1679,14 +1916,19 @@ function tick(ts) {
 function autoPlay() {
   for (const e of G.events) {
     if (e.st !== 'wait') continue; const lead = e.t - G.tau;
+    if (G.tau < e.ws) continue;
     if (e.type === 'punch') { if (lead < .9 && !e.a1) { e.a1 = 1; fire('punch'); } if (lead < .5 && !e.a2) { e.a2 = 1; fire('punch'); } }
-    else if (lead < .45 && !e.a1) { e.a1 = 1; if (AUTO === 'miss' && Math.random() < .3) continue; fire(e.type); }
+    else if (e.type === 'sprint') { if (G.tau - (e.lastS || -9) > .3) { e.lastS = G.tau; fire('step', (e.n = (e.n || 0) + 1) % 2); } }
+    else if (e.type === 'stop') { }
+    else if (e.type === 'mirror') { if (G.tau > e.ws + .4 && G.tau - (e.lastB || -9) > .5) { e.lastB = G.tau; fire('banzai'); } }
+    else if (e.type === 'gogo') { if (!e.a1) { e.a1 = 1; fire('step'); } }
+    else if (lead < .45 && !e.a1) { e.a1 = 1; if (AUTO === 'miss' && Math.random() < .3) continue; fire(e.type === 'bigjump' ? 'jump' : e.type === 'dodge' ? 'duck' : e.type); }
   }
 }
 buildIntro(); G.pals.forEach(p => { p.o.scale.setScalar(1); p.o.position.set(p.x, 0, -3); });
 requestAnimationFrame(frame);
 document.fonts && document.fonts.ready.then(() => {});
-if (DBG) window.dbg = { G, AU, initAudio, playSong, POSE, ACT, fire, startPlay, startFinale, showResult, set auto(v) { AUTO = v; }, get auto() { return AUTO; }, set speed(v) { simSpeed = v; }, begin, toBoss() { const w = WORLDS[G.wi]; G.events.forEach(e => { if (e.st === 'wait') { e.st = 'ok'; if (e.o) e.o.visible = false; } }); G.tau = w.runEnd - .3; G.s = V * G.tau; }, step(n) { for (let i = 0; i < n; i++) tick(lastT + 33); } };
+if (DBG) window.dbg = { G, AU, initAudio, playSong, POSE, ACT, fire, startPlay, startFinale, showResult, set auto(v) { AUTO = v; }, get auto() { return AUTO; }, set speed(v) { simSpeed = v; }, begin, toBoss() { const w = WORLDS[G.wi]; G.events.forEach(e => { if (e.st === 'wait') { e.st = 'ok'; if (e.o) e.o.visible = false; } }); G.tau = w.runEnd - .3; G.s = pathS(G.tau); }, WORLDS, endWorld, startStory, OPENING, AFTER, skipStory, afterCalib, step(n) { for (let i = 0; i < n; i++) tick(lastT + 33); } };
 </script>
 </body>
 </html>
