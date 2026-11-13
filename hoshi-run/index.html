@@ -1496,7 +1496,7 @@ function nextWorld() { endWorld(); }
 function endWorld() {
   $('runsil').style.opacity = 0;
   if (ONLY != null) { G.phase = 'done'; flash(1); sfx('banzai'); bigText('ゴール！'); setTimeout(showResult, 1500); return; }
-  const wi = G.wi; startStory(AFTER[wi], () => wi + 1 < WORLDS.length ? startPlay(wi + 1) : showResult());
+  const wi = G.wi; startStory(AFTER[wi], () => wi + 1 < WORLDS.length ? startPlay(wi + 1) : showResult()); G.st.base = WORLDS[wi].boss ? WORLDS[wi].mapAt + (G.tau - (WORLDS[wi].mapAt - WORLDS[wi].vs)) : WORLDS[wi].endAt;
 }
 // 走って いる あいだの 白い 人がた（立ち位置の 合図）・ひとこと・100kcal
 function runExtras(w) {
@@ -1509,7 +1509,7 @@ function runExtras(w) {
 function sayText(t) { const d = $('say'); d.textContent = t; d.className = ''; void d.offsetWidth; d.className = 'show'; }
 function updatePlay(dt) {
   const w = WORLDS[G.wi];
-  G.tau += dt;
+  G.tau += G.dtT || dt;
   // 速さ
   if (G.sub === 'run') { if (w.boss && G.tau > w.runEnd + .6) { startBossFight(w); return; } if (!w.boss && G.tau >= w.runEnd) { endWorld(); return; } }
   if (G.sub === 'boss') {
@@ -1627,7 +1627,7 @@ function updateCalib(dt) {
 function afterCalib() {
   $('hud').classList.remove('hide'); $('kcal').classList.remove('hide'); $('prog').classList.remove('hide');
   if (ONLY != null) { G.total = 0; startPlay(firstWorld()); if (window.SLAVE) SLAVE.started(); return; }
-  playSong('night'); startStory(OPENING, () => { G.total = 0; startPlay(0); if (window.SLAVE) SLAVE.started(); }, true);
+  playSong('night'); startStory(OPENING, () => { G.total = 0; startPlay(0); if (window.SLAVE) SLAVE.started(); }, true); if (VS) VS.start(0);
 }
 function countdown() {
   G.phase = 'count'; $('kcal').classList.remove('hide'); $('prog').classList.remove('hide');
@@ -1663,6 +1663,36 @@ const AFTER = [
   [{ k: 'map', d: 12, clear: 2, stamp: [2, 4], cur: [3, 8] }, { k: 'stage', key: 'lava', d: 4, text: 'あと すこし！', v: 's_almost' }, { k: 'stage', keep: 1, d: 4, text: 'ぜんりょくで いこう！', v: 's_giveall' }],
   [{ k: 'map', d: 8, clear: 3, stamp: [3, 4] }, { k: 'all', d: 4, text: 'ゲートが とじた！', v: 's_closed' }, { k: 'all', keep: 1, d: 4, text: 'さいこうの チーム！', v: 's_best' }, { k: 'dark', d: 10, text: 'ありがとう！', v: 's_thanks' }]
 ];
+// ---- 手元の 確認：動画の 音声と かさねる（?dbg&vid） ----
+// 動画ファイルは 自分の PC から えらぶ だけで、どこにも コピー・アップロード しない
+const VS = DBG && Q.has('vid') ? { v: null } : null;
+// いまの ゲームが 動画の 何秒に あたるか
+function vclock() {
+  if (G.phase === 'play') { const w = WORLDS[G.wi]; return w.vs + G.tau; }
+  if (G.phase === 'story' && G.st) { let t = G.st.base || 0; for (let i = 0; i < G.st.i; i++) t += G.st.steps[i].d; return t + G.st.t; }
+  return null;
+}
+if (VS) {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:8px;top:8px;z-index:99;background:rgba(0,0,0,.75);color:#fff;font:700 14px sans-serif;padding:8px 10px;border-radius:10px;max-width:340px';
+  box.innerHTML = `<div>手元の 確認：動画の 音声を かさねる</div><input type="file" id="vsFile" accept="video/*,audio/*" style="margin:6px 0;max-width:300px"><br>
+    <label><input type="checkbox" id="vsBgm" checked> ゲームの 曲を けす</label><br><label><input type="checkbox" id="vsSe"> ゲームの 声・効果音を けす</label><br>
+    <label><input type="checkbox" id="vsShow" checked> 動画を 小さく 見せる</label><div id="vsOut" style="margin-top:6px;font-size:16px"></div>`;
+  document.body.appendChild(box);
+  const v = VS.v = document.createElement('video'); v.playsInline = true; v.style.cssText = 'position:fixed;right:8px;bottom:8px;width:320px;z-index:98;border:2px solid #fff;border-radius:8px;background:#000'; document.body.appendChild(v);
+  $('vsFile').onchange = e => { const f = e.target.files[0]; if (f) { v.src = URL.createObjectURL(f); v.load(); } };
+  $('vsShow').onchange = () => v.style.opacity = $('vsShow').checked ? 1 : 0;
+  VS.start = t => { if (!v.src) return; v.currentTime = t; v.play(); };
+  VS.tick = () => {
+    if (AU.bgm) AU.bgm.gain.value = $('vsBgm').checked ? 0 : .55;
+    if (AU.sfx) { AU.sfx.gain.value = $('vsSe').checked ? 0 : .55; AU.vo.gain.value = $('vsSe').checked ? 0 : 1.1; }
+    const g = vclock(), out = $('vsOut');
+    if (!v.src) { out.textContent = '↑ 動画ファイル（mariocirbyrun.mp4）を えらんでから はじめてね'; return; }
+    if (g == null || v.paused) { out.textContent = v.paused ? '（ゲームが はじまると 動画も はじまる）' : ''; return; }
+    const d = v.currentTime - g; VS.max = Math.max(VS.max || 0, Math.abs(d));
+    out.innerHTML = `動画 ${v.currentTime.toFixed(1)}秒 ／ ゲーム ${g.toFixed(1)}秒<br><span style="font-size:22px;color:${Math.abs(d) < .15 ? '#7dffb0' : Math.abs(d) < .5 ? '#ffd54a' : '#ff6a6a'}">ずれ ${d >= 0 ? '+' : ''}${d.toFixed(2)}秒</span>（＋は ゲームが おくれ）<br>いままでの 最大 ${VS.max.toFixed(2)}秒`;
+  };
+}
 function storyUI(on, dark) {
   $('story').classList.toggle('hide', !on); $('story').classList.toggle('dark', !!dark);
   if (!on) { $('stMap').classList.remove('on'); $('stText').textContent = ''; $('stCome').textContent = ''; $('stSkip').style.display = 'none'; }
@@ -1674,7 +1704,7 @@ function startStory(steps, done, opening) {
   if (!opening) playSong('result');
   nextStep();
 }
-function skipStory() { const st = G.st; if (G.phase !== 'story' || !st.opening) return; st.i = st.steps.length; nextStep(); }
+function skipStory() { const st = G.st; if (G.phase !== 'story' || !st.opening) return; st.i = st.steps.length; nextStep(); if (VS && VS.v.src) VS.v.currentTime = WORLDS[0].vs; }
 function stageScene(keys, look) {
   clearWorld(); setupWorldLook(look);
   const fl = new THREE.Mesh(new THREE.CircleGeometry(40, 48), B(0xffffff, { map: floorTex(look, false) })); fl.material.map.wrapS = fl.material.map.wrapT = THREE.RepeatWrapping; fl.material.map.repeat.set(5, 5); fl.rotation.x = -Math.PI / 2; W.add(fl);
@@ -1708,7 +1738,7 @@ function nextStep() {
   }
 }
 function updateStory(dt) {
-  const st = G.st; if (!st) return; const sp = st.steps[st.i]; st.t += dt; const t = st.t;
+  const st = G.st; if (!st) return; const sp = st.steps[st.i]; st.t += G.dtT || dt; const t = st.t;
   const once = (k, f) => { if (!st.fired[k]) { st.fired[k] = 1; f(); } };
   if (sp.talk) sp.talk.forEach(([at, tx, vo], j) => { if (t >= at) once('talk' + j, () => { talk(tx, 2600); voice(vo, true); }); });
   if (sp.k === 'pair') {
@@ -1731,7 +1761,7 @@ function updateStory(dt) {
     if (sp.stamp && t >= sp.stamp[1]) once('stamp', () => { const s2 = $('stMap').children[sp.stamp[0]].querySelector('.st'); s2.classList.add('on', 'pop'); $('stMap').children[sp.stamp[0]].classList.add('done'); sfx('boom'); voice('clear', true); flash(.3); });
     if (sp.cur && t >= sp.cur[1]) once('cur', () => { [...$('stMap').children].forEach((el, i) => el.classList.toggle('cur', i === sp.cur[0])); sfx('ok'); });
   }
-  if (t >= sp.d) nextStep();
+  if (t >= sp.d) { const over = t - sp.d; nextStep(); if (G.st) G.st.t = over; else if (G.phase === 'play') G.tau = over; }
 }
 // 地図（4つの ステージ。ボスの 絵は その場で 3D から とる）
 const BOSSPIC = {};
@@ -1870,7 +1900,7 @@ async function begin(mode) {
   if (Q.has('skip')) { $('hud').classList.remove('hide'); buildIntro(); countdownSkip(); return; }
   buildIntro(); $('hud').classList.remove('hide'); $('kcal').classList.add('hide'); $('prog').classList.add('hide'); playSong('night'); camera.position.set(0, 1.9, 4); camera.lookAt(0, 2, -16); G.pals.forEach(p => { p.o.scale.setScalar(1); p.o.position.set(p.x, 0, -3); }); toCalib();
 }
-function countdownSkip() { G.total = 0; if (Q.get('w') === 'f') startFinale(); else startPlay(firstWorld()); }
+function countdownSkip() { G.total = 0; if (Q.get('w') === 'f') startFinale(); else { startPlay(firstWorld()); if (VS) VS.start(WORLDS[G.wi].vs); } }
 $('bCam').onclick = () => begin('cam');
 $('bKey').onclick = () => begin('key');
 $('bCalibSkip').onclick = () => { G.mode = 'key'; $('calib').classList.add('hide'); $('pad').classList.toggle('hide', !isTouch); afterCalib(); };
@@ -1892,7 +1922,9 @@ addEventListener('resize', resize); resize();
 let lastT = performance.now(), simSpeed = 1;
 function frame(ts) { requestAnimationFrame(frame); tick(ts); }
 function tick(ts) {
-  let dt = Math.min(.05, (ts - lastT) / 1000) * simSpeed; lastT = ts; G.time += dt;
+  const raw = (ts - lastT) / 1000; let dt = Math.min(.05, raw) * simSpeed; lastT = ts; G.time += dt;
+  // 重くて 止まった 時間も あとで とりもどす（動画・曲と ずれない ように）
+  G.lag = (G.lag || 0) + Math.min(Math.max(raw, 0), 1) * simSpeed - dt; const cu = Math.min(G.lag, .1); G.lag -= cu; G.dtT = dt + cu;
   CAM.dtAcc = (CAM.dtAcc || 0) + dt;
   if (G.mode === 'cam') camTick(ts, dt);
   for (const a of ANIM) a.f(G.time, dt);
@@ -1910,7 +1942,7 @@ function tick(ts) {
   if (G.phase === 'result') { const t = G.time; drawSilhouette($('rsilh'), { la: Math.PI * (.72 + .1 * Math.sin(t * 6)), ra: .2 + .1 * Math.sin(t * 2) }); }
   stepParticles(dt); stepShards(dt); stepRings(dt);
   $('kcalN').textContent = G.kcal.toFixed(1);
-  progUI(); drawFX(dt);
+  progUI(); drawFX(dt); if (VS) VS.tick();
   renderer.render(scene, camera);
 }
 function autoPlay() {
